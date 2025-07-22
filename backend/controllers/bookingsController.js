@@ -153,3 +153,6 @@ exports.markAsCompleted = async (req, res) => {
     res.status(500).json({ message: 'Failed to mark as completed', error: err.message });
   }
 };
+
+
+// exports.getBookingDetails = async (req, res) => {
