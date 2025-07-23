@@ -3,9 +3,19 @@ const router = express.Router();
 const messagesController = require('../controllers/messagesController');
 const auth = require('../middleware/auth');
 
+// Send a message (real-time)
 router.post('/', auth, messagesController.sendMessage);
-router.get('/conversations', auth, messagesController.getConversations);
-router.get('/:userId', auth, messagesController.getMessagesWithUser); 
-router.delete('/:messageId', auth, messagesController.deleteMessage);
+
+// Get specific conversation (between two users)
+router.get('/conversation/:otherUserId', auth, messagesController.getConversation);
+
+// Get inbox (list of latest chats)
+router.get('/inbox', auth, messagesController.getInbox);
+
+// Mark a specific message as read
+router.patch('/:id/read', auth, messagesController.markAsRead);
+
+// Mark an entire conversation as read
+router.patch('/conversation/:otherUserId/read', auth, messagesController.markConversationAsRead);
 
 module.exports = router;

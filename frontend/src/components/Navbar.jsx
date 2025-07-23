@@ -37,6 +37,11 @@ const Navbar = () => {
   useEffect(() => {
     if (!isLoggedIn || !socket) return;
 
+    // 🔥 Register user in socket.io so backend knows their socketId
+    if (user && user.id) {
+      socket.emit('register', user.id);
+    }
+
     fetchNotifications();
 
     const handleNewNotification = (data) => {
@@ -54,7 +59,7 @@ const Navbar = () => {
     return () => {
       socket.off("newNotification", handleNewNotification);
     };
-  }, [isLoggedIn, socket, fetchNotifications]);
+  }, [isLoggedIn, socket, user, fetchNotifications]);
 
   const markAsRead = async (id) => {
     try {

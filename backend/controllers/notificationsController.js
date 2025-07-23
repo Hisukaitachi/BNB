@@ -1,5 +1,5 @@
 const pool = require('../db');
-const { getIo } = require('../socket');
+ const { getIo, getOnlineUsers } = require('../socket');
 
 exports.getMyNotifications = async (req, res) => {
   const { page = 1, limit = 5 } = req.query;
@@ -64,11 +64,13 @@ exports.createNotification = async ({ userId, message, type }) => {
     created_at: new Date()
   };
 
+ 
   const io = getIo();
-  if (io) {
-    io.to(`user_${userId}`).emit('newNotification', notification);
+  const socketId = getOnlineUsers()[userId];
+
+  if (socketId) {
+    io.to(socketId).emit('newNotification', notification);
   }
 
   return notification;
 };
-

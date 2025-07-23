@@ -1,95 +1,92 @@
 const pool = require('../db');
+const { getIo, getOnlineUsers } = require('../socket');
 
 exports.sendMessage = async (req, res) => {
-  const { receiver_id, message } = req.body;
-  const sender_id = req.user.id;
+  const senderId = req.user.id;
+  const { receiverId, message } = req.body;
 
   try {
-    await pool.query(
-      'INSERT INTO messages (sender_id, receiver_id, message) VALUES (?, ?, ?)',
-      [sender_id, receiver_id, message]
-    );
-    res.status(201).json({ message: 'Message sent' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+    await pool.query('CALL sp_send_message(?, ?, ?)', [senderId, receiverId, message]);
 
-exports.getMessagesWithUser = async (req, res) => {
-  const userId = req.user.id;
-  const otherUserId = req.params.userId;
+    const newMessage = {
+      sender_id: senderId,
+      receiver_id: receiverId,
+      message,
+      is_read: 0,
+      created_at: new Date()
+    };
 
-  try {
-    const [rows] = await pool.query(
-      `SELECT * FROM messages 
-       WHERE (sender_id = ? AND receiver_id = ?) 
-          OR (sender_id = ? AND receiver_id = ?)
-       ORDER BY created_at ASC`,
-      [userId, otherUserId, otherUserId, userId]
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+    const io = getIo();
+    const onlineUsers = getOnlineUsers();
 
-exports.getConversations = async (req, res) => {
-  const userId = req.user.id;
-  console.log(" User ID from token:", userId);
+    const receiverSocketId = onlineUsers[receiverId];
+    const senderSocketId = onlineUsers[senderId];
 
-  try {
-    const [rows] = await pool.query(`
-      SELECT 
-  m.id AS messageId,
-  m.sender_id,
-  m.receiver_id,
-  m.message,
-  m.created_at,
-  IF(m.sender_id = ?, m.receiver_id, m.sender_id) AS other_user_id,
-  u.name AS other_user_name
-FROM messages m
-JOIN (
-  SELECT 
-    LEAST(sender_id, receiver_id) AS user1,
-    GREATEST(sender_id, receiver_id) AS user2,
-    MAX(id) AS max_id
-  FROM messages
-  WHERE sender_id = ? OR receiver_id = ?
-  GROUP BY user1, user2
-) latest ON latest.max_id = m.id
-JOIN users u ON u.id = IF(m.sender_id = ?, m.receiver_id, m.sender_id)
-ORDER BY m.created_at DESC;
-
-    `, [userId, userId, userId, userId]);
-
-    console.log(" Raw conversation rows:", rows); // Debug log
-    res.json(rows);
-  } catch (err) {
-    console.error(" Error fetching conversations:", err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-
-exports.deleteMessage = async (req, res) => {
-  const userId = req.user.id;
-  const { messageId } = req.params;
-
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM messages WHERE id = ? AND (sender_id = ? OR receiver_id = ?)',
-      [messageId, userId, userId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'Message not found or unauthorized' });
+    // Real-time message for the receiver's chat window
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('receiveMessage', newMessage);
+      io.to(receiverSocketId).emit('updateInbox'); // <--- Add this for inbox refresh
     }
 
-    await pool.query('DELETE FROM messages WHERE id = ?', [messageId]);
+    // Optional: Update sender's inbox too (for last message preview)
+    if (senderSocketId) {
+      io.to(senderSocketId).emit('updateInbox');
+    }
 
-    res.json({ message: 'Message deleted' });
+    res.json({ message: 'Message sent', data: newMessage });
+
   } catch (err) {
-    console.error('Error deleting message:', err);
-    res.status(500).json({ message: 'Error deleting message', error: err.message });
+    console.error(err);
+    res.status(500).json({ message: 'Failed to send message', error: err.message });
+  }
+};
+
+exports.getConversation = async (req, res) => {
+  const userId = req.user.id;
+  const { otherUserId } = req.params;
+
+  try {
+    const [rows] = await pool.query('CALL sp_get_conversation(?, ?)', [userId, otherUserId]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch conversation', error: err.message });
+  }
+};
+
+exports.getInbox = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const [rows] = await pool.query('CALL sp_get_inbox(?)', [userId]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch inbox', error: err.message });
+  }
+};
+
+exports.markAsRead = async (req, res) => {
+  const messageId = req.params.id;
+
+  try {
+    await pool.query('CALL sp_mark_message_as_read(?)', [messageId]);
+    res.json({ message: 'Message marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to mark as read', error: err.message });
+  }
+};
+
+exports.markConversationAsRead = async (req, res) => {
+  const userId = req.user.id;
+  const { otherUserId } = req.params;
+
+  try {
+    await pool.query('CALL sp_mark_conversation_as_read(?, ?)', [userId, otherUserId]);
+    res.json({ message: 'Conversation marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to mark conversation as read', error: err.message });
   }
 };

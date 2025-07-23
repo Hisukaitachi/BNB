@@ -14,13 +14,21 @@ exports.createBooking = async (req, res) => {
     await pool.query('CALL sp_create_booking_safe(?,?,?,?,?)',
       [listing_id, clientId, start_date, end_date, total_price]);
 
+    // Notify Host
     await createNotification({
       userId: hostId,
       message: `New booking request for '${listing.title}' from ${req.user.name}`,
       type: 'booking_request'
     });
 
-    res.status(201).json({ message: 'Booking request created and host notified' });
+    // 🔥 Notify Client (this was missing)
+    await createNotification({
+      userId: clientId,
+      message: `Your booking request for '${listing.title}' has been sent to the host.`,
+      type: 'booking_sent'
+    });
+
+    res.status(201).json({ message: 'Booking request created, host and client notified' });
 
   } catch (err) {
     console.error(err);
@@ -154,5 +162,3 @@ exports.markAsCompleted = async (req, res) => {
   }
 };
 
-
-// exports.getBookingDetails = async (req, res) => {

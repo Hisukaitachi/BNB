@@ -22,6 +22,8 @@ import Notifications from "./pages/Notifications";
 import NotificationsPage from "./pages/NotificationsPage";
 import Favorites from "./pages/Favorites";
 import NotFound from "./pages/NotFound";
+import ChatWindow from "./pages/chatbox/ChatWindow";
+import Inbox from "./pages/chatbox/Inbox";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -62,6 +64,8 @@ function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/listing/:id" element={<ListingDetails />} />
               <Route path="/favorites" element={<Favorites />} />
+              <Route path="/chat/:otherUserId" element={<ChatWindow />} />
+              <Route path="/inbox" element={<Inbox />} />
 
               {/* Host Routes with Layout */}
               <Route path="/host-dashboard" element={<PrivateRoute><HostLayout /></PrivateRoute>}>
