@@ -1,6 +1,6 @@
 // src/pages/ChangePassword.jsx
 import { useState } from "react";
-import axios from "../api/axios";
+import axios from "../../api/axios";
 
 const ChangePassword = () => {
   const [form, setForm] = useState({

@@ -11,5 +11,7 @@ router.get('/host-bookings', auth, bookingsController.getBookingsByHost);
 router.put('/:id/status', auth, bookingsController.updateBookingStatus);
 router.get('/:id/history', auth, bookingsController.getBookingHistory);
 router.put('/:id/complete', auth, bookingsController.markAsCompleted);
+router.put('/:bookingId/complete', auth, bookingsController.markBookingCompleted);
+
 module.exports = router;
 

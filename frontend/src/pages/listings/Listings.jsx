@@ -1,7 +1,7 @@
 // src/pages/Listings.jsx
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import axios from "../api/axios";
+import axios from "../../api/axios";
 
 const Listings = () => {
   const [listings, setListings] = useState([]);

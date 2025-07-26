@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import axios from "../api/axios";
-import { useSocket } from "../context/SocketContext";
+import axios from "../../api/axios";
+import { useSocket } from "../../context/SocketContext";
 import { CalendarCheck, CheckCircle, AlertCircle, Bell } from "lucide-react";
 import { toast } from "react-toastify";
 

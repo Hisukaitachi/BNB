@@ -123,42 +123,100 @@ exports.deleteListing = async (req, res) => {
 };
 
 exports.searchListings = async (req, res) => {
-  const { city, price_min, price_max, keyword, page = 1, limit = 10, sortBy = 'created_at', order = 'DESC' } = req.query;
+  const {
+    city,
+    price_min,
+    price_max,
+    keyword,
+    min_rating,
+    check_in,
+    check_out,
+    page = 1,
+    limit = 10,
+    sortBy = 'created_at',
+    order = 'DESC',
+  } = req.query;
+
   const offset = (parseInt(page) - 1) * parseInt(limit);
-
-  let query = 'SELECT * FROM listings WHERE 1=1';
   const queryParams = [];
+  const countParams = [];
 
+  let baseQuery = 'FROM listings l WHERE 1=1';
+
+  // City / location filter
   if (city) {
-    query += ' AND location LIKE ?';
+    baseQuery += ' AND l.location LIKE ?';
     queryParams.push(`%${city}%`);
+    countParams.push(`%${city}%`);
   }
+
+  // Price filters
   if (price_min) {
-    query += ' AND price_per_night >= ?';
+    baseQuery += ' AND l.price_per_night >= ?';
     queryParams.push(price_min);
+    countParams.push(price_min);
   }
   if (price_max) {
-    query += ' AND price_per_night <= ?';
+    baseQuery += ' AND l.price_per_night <= ?';
     queryParams.push(price_max);
+    countParams.push(price_max);
   }
+
+  // Keyword filter
   if (keyword) {
-    query += ' AND (title LIKE ? OR description LIKE ?)';
+    baseQuery += ' AND (l.title LIKE ? OR l.description LIKE ?)';
     queryParams.push(`%${keyword}%`, `%${keyword}%`);
+    countParams.push(`%${keyword}%`, `%${keyword}%`);
   }
 
-  const validSortFields = ['price_per_night', 'created_at'];
-  if (validSortFields.includes(sortBy)) {
-    query += ` ORDER BY ${sortBy} ${order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`;
+  // Rating filter
+  if (min_rating) {
+    baseQuery += ' AND l.average_rating >= ?';
+    queryParams.push(min_rating);
+    countParams.push(min_rating);
   }
 
-  query += ' LIMIT ? OFFSET ?';
+  // Availability filter
+  if (check_in && check_out) {
+    baseQuery += `
+      AND l.id NOT IN (
+        SELECT b.listing_id
+        FROM bookings b
+        WHERE 
+          (b.status = 'approved' OR b.status = 'pending')
+          AND (b.check_in < ? AND b.check_out > ?)
+      )
+    `;
+    queryParams.push(check_out, check_in);
+    countParams.push(check_out, check_in);
+  }
+
+  // Sorting
+  const validSortFields = ['price_per_night', 'created_at', 'average_rating'];
+  const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+  const safeOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+  const sortClause = ` ORDER BY l.${safeSortBy} ${safeOrder}`;
+
+  // Listings query
+  const listingsQuery = `SELECT l.* ${baseQuery} ${sortClause} LIMIT ? OFFSET ?`;
   queryParams.push(parseInt(limit), offset);
 
+  // Count query
+  const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+
   try {
-    const [listings] = await pool.query(query, queryParams);
-    res.json(listings);
+    const [listings] = await pool.query(listingsQuery, queryParams);
+    const [countResult] = await pool.query(countQuery, countParams);
+
+    res.json({
+      listings,
+      total: countResult[0].total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error fetching filtered listings', error: err.message });
+    console.error('Search error:', err);
+    res.status(500).json({ message: 'Error fetching listings', error: err.message });
   }
 };
+

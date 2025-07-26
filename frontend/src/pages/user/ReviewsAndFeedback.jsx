@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "../api/axios";
-import ReviewCard from "../components/ReviewCard";
+import axios from "../../api/axios";
+import ReviewCard from "../../components/ReviewCard";
 
 const ReviewsAndFeedback = () => {
   const [written, setWritten] = useState([]);

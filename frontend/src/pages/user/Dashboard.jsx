@@ -1,7 +1,7 @@
 // src/pages/Dashboard.jsx
 import { useContext, useEffect } from "react";
-import { AuthContext } from "../context/AuthContext";
-import { useSocket } from "../context/SocketContext";
+import { AuthContext } from "../../context/AuthContext";
+import { useSocket } from "../../context/SocketContext";
 import { toast } from "react-toastify";
 
 const Dashboard = () => {

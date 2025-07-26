@@ -162,3 +162,14 @@ exports.markAsCompleted = async (req, res) => {
   }
 };
 
+exports.markBookingCompleted = async (req, res) => {
+  const { bookingId } = req.params;
+
+  try {
+    await pool.query('CALL sp_mark_booking_completed(?)', [bookingId]);
+    res.json({ message: 'Booking marked as completed' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to complete booking', error: err.message });
+  }
+};

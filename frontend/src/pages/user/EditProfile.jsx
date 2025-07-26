@@ -1,6 +1,6 @@
 // src/pages/EditProfile.jsx
 import { useEffect, useState } from "react";
-import axios from "../api/axios";
+import axios from "../../api/axios";
 
 const EditProfile = () => {
   const [form, setForm] = useState({ name: "", email: "" });

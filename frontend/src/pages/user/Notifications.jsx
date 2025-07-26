@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "../api/axios";
-import { useSocket } from "../context/SocketContext";
+import axios from "../../api/axios";
+import { useSocket } from "../../context/SocketContext";
 import { toast } from "react-toastify";
 
 const Notifications = () => {

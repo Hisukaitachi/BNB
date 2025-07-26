@@ -6,21 +6,21 @@ import 'react-toastify/dist/ReactToastify.css';
 
 // Pages - Public & Client/Host
 import Home from "./pages/Home";
-import Listings from "./pages/Listings";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import EditProfile from "./pages/EditProfile";
-import ChangePassword from "./pages/ChangePassword";
-import MyBookings from "./pages/MyBookings"; // New combined file
-import ListingDetails from "./pages/ListingDetails";
-import Notifications from "./pages/Notifications";
-import NotificationsPage from "./pages/NotificationsPage";
-import Favorites from "./pages/Favorites";
+import Listings from "./pages/listings/Listings";
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
+import VerifyEmail from "./pages/auth/VerifyEmail";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
+import Dashboard from "./pages/user/Dashboard";
+import Profile from "./pages/user/Profile";
+import EditProfile from "./pages/user/EditProfile";
+import ChangePassword from "./pages/auth/ChangePassword";
+import MyBookings from "./pages/user/MyBookings"; // New combined file
+import ListingDetails from "./pages/listings/ListingDetails";
+import Notifications from "./pages/user/Notifications";
+import NotificationsPage from "./pages/user/NotificationsPage";
+import Favorites from "./pages/user/Favorites";
 import NotFound from "./pages/NotFound";
 import ChatWindow from "./pages/chatbox/ChatWindow";
 import Inbox from "./pages/chatbox/Inbox";

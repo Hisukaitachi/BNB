@@ -23,9 +23,9 @@ exports.createReview = async (req, res) => {
     res.status(201).json({ message: 'Review created successfully' });
   } catch (err) {
     if (err.errno === 1644) {
-      return res.status(400).json({ message: err.sqlMessage }); // custom SIGNAL error
+      return res.status(400).json({ message: err.sqlMessage }); // Custom SIGNAL error
     }
-    console.error(err);
+    console.error('[Create Review] Error:', err);
     res.status(500).json({ message: 'Failed to create review', error: err.message });
   }
 };
@@ -36,22 +36,24 @@ exports.getAllReviews = async (req, res) => {
     const [reviews] = await pool.query('CALL sp_get_all_reviews()');
     res.json(reviews[0]);
   } catch (err) {
-    console.error(err);
+    console.error('[Get All Reviews] Error:', err);
     res.status(500).json({ message: 'Failed to fetch reviews', error: err.message });
   }
 };
 
 // ========== GET REVIEWS FOR A LISTING ==========
 exports.getReviewsForListing = async (req, res) => {
-  const listingId = req.params.id;
+  const { listingId } = req.params;
   try {
-    const [reviews] = await pool.query('CALL sp_get_reviews_for_listing(?)', [listingId]);
-    res.json(reviews[0]);
+    const [rows] = await pool.query('CALL sp_get_reviews_for_listing(?)', [listingId]);
+    res.json({ reviews: rows[0] });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Failed to fetch listing reviews', error: err.message });
+    res.status(500).json({ message: "Error getting reviews" });
   }
 };
+
+
 
 // ========== GET MY REVIEWS ==========
 exports.getMyReviews = async (req, res) => {
@@ -61,7 +63,7 @@ exports.getMyReviews = async (req, res) => {
     const [received] = await pool.query('CALL sp_get_my_received_reviews(?)', [userId]);
     res.json({ written: written[0], received: received[0] });
   } catch (err) {
-    console.error(err);
+    console.error('[Get My Reviews] Error:', err);
     res.status(500).json({ message: 'Failed to fetch user reviews', error: err.message });
   }
 };
@@ -84,7 +86,7 @@ exports.deleteReview = async (req, res) => {
     await pool.query('CALL sp_delete_review(?)', [reviewId]);
     res.json({ message: 'Review deleted successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('[Delete Review] Error:', err);
     res.status(500).json({ message: 'Failed to delete review', error: err.message });
   }
 };

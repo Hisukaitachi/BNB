@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "../../api/axios";
 import { useSocket } from "../../context/SocketContext";
 import { toast } from "react-toastify";
-import { BadgeCheck, XCircle, Home } from "lucide-react";
+import { BadgeCheck, XCircle, Home, CheckCircle } from "lucide-react";
 
 const HostBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -14,8 +14,6 @@ const HostBookings = () => {
       const res = await axios.get("/bookings/host-bookings", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-
-      console.log("Host bookings:", res.data); // Debug: check the data
       setBookings(res.data);
     } catch (err) {
       console.error("Failed to fetch host bookings", err);
@@ -41,6 +39,25 @@ const HostBookings = () => {
     } catch (err) {
       console.error("Failed to update status", err);
       toast.error("Failed to update booking.");
+    }
+  };
+
+  const markAsCompleted = async (id) => {
+    if (!window.confirm("Mark this booking as completed?")) return;
+
+    try {
+      await axios.put(
+        `/bookings/${id}/complete`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        }
+      );
+      toast.success("Booking marked as completed.");
+      fetchHostBookings();
+    } catch (err) {
+      console.error("Failed to mark as completed", err);
+      toast.error("Failed to mark booking as completed.");
     }
   };
 
@@ -98,25 +115,37 @@ const HostBookings = () => {
           </div>
         </div>
 
-        {booking.status === "pending" && (
-          <div className="mt-4 flex space-x-2">
-            <button
-              onClick={() => updateStatus(booking.id, "approved")}
-              className="flex items-center bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
-            >
-              <BadgeCheck size={16} className="mr-1" />
-              Approve
-            </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {booking.status === "pending" && (
+            <>
+              <button
+                onClick={() => updateStatus(booking.id, "approved")}
+                className="flex items-center bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
+              >
+                <BadgeCheck size={16} className="mr-1" />
+                Approve
+              </button>
 
+              <button
+                onClick={() => updateStatus(booking.id, "declined")}
+                className="flex items-center bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm"
+              >
+                <XCircle size={16} className="mr-1" />
+                Decline
+              </button>
+            </>
+          )}
+
+          {booking.status === "approved" && (
             <button
-              onClick={() => updateStatus(booking.id, "declined")}
-              className="flex items-center bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm"
+              onClick={() => markAsCompleted(booking.id)}
+              className="flex items-center bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
             >
-              <XCircle size={16} className="mr-1" />
-              Decline
+              <CheckCircle size={16} className="mr-1" />
+              Mark as Completed
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
