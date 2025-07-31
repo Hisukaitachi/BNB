@@ -51,15 +51,22 @@ exports.getBookingsByClient = async (req, res) => {
 };
 
 exports.getBookingsByHost = async (req, res) => {
-  const hostId = req.user.id;
   try {
+    const hostId = req.user?.id;
+    console.log("Decoded host ID:", hostId);
+    
     const [rows] = await pool.query('CALL sp_get_bookings_by_host(?)', [hostId]);
+    console.log("Host bookings fetched:", rows[0]);
+
     res.json(rows[0]);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch host bookings', error: error.message });
+  } catch (err) {
+    console.error('Error fetching host bookings:', err.message);
+    console.error(err); // full trace
+    res.status(500).json({ message: 'Internal server error', error: err.message });
   }
 };
+
+
 
 exports.updateBookingStatus = async (req, res) => {
   const userId = req.user.id;

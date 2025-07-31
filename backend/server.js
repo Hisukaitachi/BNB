@@ -19,6 +19,7 @@ app.use(morgan('dev'));
 app.use('/uploads', express.static('uploads'));
 
 // Routes
+app.use('/api/payouts', require('./routes/payoutRoutes'));
 app.use('/api/refunds', require('./routes/refundRoutes'));
 app.use('/api/notifications', require('./routes/notificationsRoutes'));
 app.use('/api/transactions', require('./routes/transactionsRoutes'));

@@ -29,6 +29,10 @@ router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.removeReview);
 
 //Payout&Refunds
+router.get('/admin/earnings/:hostId', adminController.getHostEarnings);
+router.post('/admin/mark-paid', adminController.markHostAsPaid);
+router.get('/payouts-summary', adminController.getHostsPendingPayouts);
+router.post('/payouts/host/:hostId', adminController.processHostPayout);
 router.post('/payout/:bookingId', adminController.processPayout);
 router.post('/refund/:transactionId', adminController.processRefund);
 router.get('/transactions', adminController.getAllTransactions);

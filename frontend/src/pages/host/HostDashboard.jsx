@@ -7,7 +7,6 @@ const HostDashboard = () => {
     listingsCount: 0,
     pendingBookings: 0,
     approvedBookings: 0,
-    earnings: 0,
   });
 
   const [recentBookings, setRecentBookings] = useState([]);
@@ -32,15 +31,10 @@ const HostDashboard = () => {
         const pending = allBookings.filter(b => b.status === "pending").length;
         const approved = allBookings.filter(b => b.status === "approved").length;
 
-        const earnings = allBookings
-          .filter(b => b.status === "approved")
-          .reduce((sum, b) => sum + b.total_price, 0);
-
         setStats({
           listingsCount: listingsRes.data.length,
           pendingBookings: pending,
           approvedBookings: approved,
-          earnings,
         });
 
         setRecentBookings(allBookings.slice(0, 3));
@@ -61,7 +55,7 @@ const HostDashboard = () => {
       <h1 className="text-3xl font-bold mb-6">Host Dashboard</h1>
 
       {/* Stats Section */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <div className="bg-blue-50 rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold">My Listings</h2>
           <p className="text-2xl">{stats.listingsCount}</p>
@@ -75,11 +69,6 @@ const HostDashboard = () => {
         <div className="bg-green-50 rounded-xl shadow p-4">
           <h2 className="text-lg font-semibold">Approved Bookings</h2>
           <p className="text-2xl">{stats.approvedBookings}</p>
-        </div>
-
-        <div className="bg-purple-50 rounded-xl shadow p-4">
-          <h2 className="text-lg font-semibold">Earnings</h2>
-          <p className="text-2xl">₱{stats.earnings}</p>
         </div>
       </div>
 

@@ -7,3 +7,7 @@ const auth = require('../middleware/auth');
 router.post('/host-only-action', auth, Host, (req, res) => {
   res.send('Host action performed');
 });
+
+router.get("/earnings/:hostId", verifyToken, getHostEarnings);
+
+module.exports = router;

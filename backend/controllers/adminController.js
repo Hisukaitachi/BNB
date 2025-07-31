@@ -149,16 +149,23 @@ exports.getDashboardStats = async (req, res) => {
 // PAYOUTS
 exports.processPayout = async (req, res) => {
   const { bookingId } = req.params;
-  const taxPercentage = 10; // Platform fee (adjust if needed)
-  const adminId = req.user.id; // From token (admin role)
+  const taxPercentage = 10; // platform fee %
+  const adminId = req.user.id;
 
   try {
-    await pool.query('CALL sp_admin_process_payout(?, ?, ?)', [bookingId, taxPercentage, adminId]);
+    await pool.query('CALL sp_admin_process_payout(?, ?, ?)', [
+      bookingId,
+      taxPercentage,
+      adminId,
+    ]);
+
     res.json({ message: 'Payout processed successfully.' });
   } catch (err) {
-    res.status(500).json({ message: 'Error processing payout', error: err.message });
+    console.error('Payout error:', err);
+    res.status(500).json({ error: err.message || 'Failed to process payout.' });
   }
 };
+
 
 // ADMIN REFUND
 exports.processRefund = async (req, res) => {
@@ -179,5 +186,92 @@ exports.getAllTransactions = async (req, res) => {
     res.json(result[0]);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching transactions', error: err.message });
+  }
+};
+
+exports.getHostsPendingPayouts = async (req, res) => {
+  try {
+    const [result] = await pool.query('CALL sp_get_host_earnings_for_payout()');
+    res.json(result[0]);
+  } catch (err) {
+    console.error('Error fetching host payouts:', err);
+    res.status(500).json({ message: 'Error fetching host payouts', error: err.message });
+  }
+};
+
+exports.processHostPayout = async (req, res) => {
+  const { hostId } = req.params;
+  const taxPercentage = 10; // or make this configurable
+  const adminId = req.user.id;
+
+  try {
+    await pool.query('START TRANSACTION');
+
+    const [earnings] = await pool.query(
+      'CALL sp_get_host_earnings_for_payout_by_id(?)',
+      [hostId]
+    );
+
+    const total = earnings[0][0]?.earnings;
+    if (!total) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ message: 'No pending payout for this host.' });
+    }
+
+    await pool.query(
+      'INSERT INTO payouts (host_id, amount, status, paid_at) VALUES (?, ?, ?, NOW())',
+      [hostId, total, 'paid']
+    );
+
+    await pool.query('CALL sp_mark_bookings_paid(?)', [hostId]);
+
+    await pool.query('COMMIT');
+    res.json({ message: 'Host payout processed successfully.', amount: total });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Host payout error:', err);
+    res.status(500).json({ error: err.message || 'Failed to process host payout.' });
+  }
+};
+
+exports.getHostEarnings = async (req, res) => {
+  const hostId = req.params.hostId;
+
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        SUM(b.total_price) AS total_earnings,
+        SUM(b.total_price) * 0.10 AS platform_fee,
+        SUM(b.total_price) * 0.90 AS net_earnings
+      FROM bookings b
+      JOIN listings l ON b.listing_id = l.id
+      WHERE l.host_id = ?
+        AND b.status = 'approved'
+        AND b.end_date < CURDATE()
+        AND b.paid_out = 0
+    `, [hostId]);
+
+    res.json({
+      host_id: hostId,
+      host_total_earnings: rows[0].total_earnings || 0,
+      platform_fee: rows[0].platform_fee || 0,
+      host_net_earnings: rows[0].net_earnings || 0,
+    });
+  } catch (err) {
+    console.error('Error in getHostEarnings (admin):', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// POST: Admin marks host’s bookings as paid
+exports.markHostAsPaid = async (req, res) => {
+  const { hostId } = req.body;
+
+  try {
+    await pool.query('CALL sp_mark_bookings_paid(?)', [hostId]);
+    res.json({ message: 'Host bookings marked as paid.' });
+  } catch (err) {
+    console.error('Error in markHostAsPaid (admin):', err);
+    res.status(500).json({ error: 'Failed to mark as paid.' });
   }
 };

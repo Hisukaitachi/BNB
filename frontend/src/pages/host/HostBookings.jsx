@@ -14,9 +14,11 @@ const HostBookings = () => {
       const res = await axios.get("/bookings/host-bookings", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      setBookings(res.data);
+
+      // Some backends return `{ bookings: [...] }`, adjust if needed
+      setBookings(res.data.bookings || res.data);
     } catch (err) {
-      console.error("Failed to fetch host bookings", err);
+      console.error("Error fetching bookings", err);
       toast.error("Failed to load bookings.");
     } finally {
       setLoading(false);
@@ -119,7 +121,7 @@ const HostBookings = () => {
           {booking.status === "pending" && (
             <>
               <button
-                onClick={() => updateStatus(booking.id, "approved")}
+                onClick={() => updateStatus(booking.booking_id, "approved")}
                 className="flex items-center bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
               >
                 <BadgeCheck size={16} className="mr-1" />
@@ -127,7 +129,7 @@ const HostBookings = () => {
               </button>
 
               <button
-                onClick={() => updateStatus(booking.id, "declined")}
+               onClick={() => updateStatus(booking.booking_id, "declined")}
                 className="flex items-center bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm"
               >
                 <XCircle size={16} className="mr-1" />

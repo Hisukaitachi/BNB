@@ -61,6 +61,10 @@ const HostNavbar = () => {
             Bookings
           </Link>
 
+          <Link to="/host-dashboard/calendar" className="hover:text-yellow-300 transition-colors">
+            Calendar & Earnings
+          </Link>
+
           <Link to="/notifications" className="relative hover:text-yellow-300 transition-colors">
             <Bell size={22} />
             {unreadCount > 0 && (
@@ -71,12 +75,12 @@ const HostNavbar = () => {
           </Link>
 
           <button
-  onClick={handleSwitchToClient}
-  className="flex items-center bg-blue-600 px-3 py-1 rounded-md hover:bg-blue-500 text-sm transition"
->
-  <Repeat size={16} className="mr-1" />
-  Switch to Traveller
-</button>
+            onClick={handleSwitchToClient}
+            className="flex items-center bg-blue-600 px-3 py-1 rounded-md hover:bg-blue-500 text-sm transition"
+          >
+            <Repeat size={16} className="mr-1" />
+            Switch to Traveller
+          </button>
 
 
           <button

@@ -6,51 +6,70 @@ import { toast } from "react-toastify";
 const AdminTransactions = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [processingId, setProcessingId] = useState(null);
 
-  const fetchBookings = async () => {
+  const fetchPayouts = async () => {
     try {
       const res = await axios.get("/admin/bookings");
       setBookings(res.data);
     } catch (err) {
-      console.error("Error fetching bookings:", err);
-      toast.error("Failed to fetch bookings");
+      console.error("Error fetching payouts:", err);
+      toast.error("Failed to fetch payouts");
     }
   };
 
   useEffect(() => {
-    fetchBookings();
+    fetchPayouts();
   }, []);
 
-  const processPayout = async (bookingId) => {
-    const confirm = window.confirm("Are you sure you want to process payout for this booking?");
+  const releasePayout = async (booking) => {
+    if (!booking) {
+      console.error("Booking is undefined");
+      return;
+    }
+
+    const confirm = window.confirm(`Release payout of ₱${booking.total_price} to host?`);
     if (!confirm) return;
 
     setLoading(true);
+    setProcessingId(booking.id);
+
     try {
-      await axios.post(`/admin/payout/${bookingId}`);
-      toast.success("Payout processed successfully");
-      fetchBookings();
+      await axios.post("/payouts/release", {
+        host_id: booking.host_id,
+        booking_id: booking.id,
+        amount: booking.total_price,
+      });
+
+      toast.success("Payout released successfully!");
+      await fetchPayouts();
     } catch (err) {
       console.error("Payout error:", err);
-      toast.error(err.response?.data?.message || "Failed to process payout");
+      toast.error(err.response?.data?.message || "Failed to release payout");
+    } finally {
+      setLoading(false);
+      setProcessingId(null);
     }
-    setLoading(false);
   };
 
   const processRefund = async (bookingId) => {
-    const confirm = window.confirm("Are you sure you want to refund this booking?");
+    const confirm = window.confirm("Are you sure you want to process a refund?");
     if (!confirm) return;
 
     setLoading(true);
+    setProcessingId(bookingId);
+
     try {
-      await axios.post(`/admin/refund/${bookingId}`);
-      toast.success("Refund processed successfully");
-      fetchBookings();
+      await axios.post("/refunds/process", { booking_id: bookingId });
+      toast.success("Refund processed successfully!");
+      await fetchPayouts();
     } catch (err) {
       console.error("Refund error:", err);
       toast.error(err.response?.data?.message || "Failed to process refund");
+    } finally {
+      setLoading(false);
+      setProcessingId(null);
     }
-    setLoading(false);
   };
 
   return (
@@ -59,11 +78,15 @@ const AdminTransactions = () => {
       <div className="p-6 flex-1">
         <h1 className="text-2xl font-bold mb-6">Transaction Management</h1>
 
-        {loading && <p className="text-blue-500 mb-4">Processing...</p>}
+        {loading && (
+          <p className="text-blue-500 mb-4">
+            Processing transaction #{processingId}...
+          </p>
+        )}
 
-        <table className="w-full border">
+        <table className="w-full border text-sm">
           <thead>
-            <tr className="bg-gray-200">
+            <tr className="bg-gray-200 text-left">
               <th className="p-2">Booking ID</th>
               <th className="p-2">Listing</th>
               <th className="p-2">Client</th>
@@ -74,32 +97,42 @@ const AdminTransactions = () => {
           </thead>
           <tbody>
             {bookings.map((b) => (
-              <tr key={b.id} className="text-center border-b">
+              <tr key={b.id} className="border-b">
                 <td className="p-2">{b.id}</td>
                 <td className="p-2">{b.listing_title}</td>
                 <td className="p-2">{b.client_name}</td>
                 <td className="p-2">₱{b.total_price}</td>
-                <td className="p-2">{b.status}</td>
+                <td className="p-2 capitalize">{b.status}</td>
                 <td className="p-2 space-x-2">
                   <button
-                    onClick={() => processPayout(b.id)}
-                    disabled={loading || b.status === "paid_out" || b.status === "refunded"}
-                    className={`px-3 py-1 rounded ${
+                    onClick={() => releasePayout(b)}
+                    disabled={
+                      loading ||
+                      processingId === b.id ||
+                      b.status === "paid_out" ||
+                      b.status === "refunded"
+                    }
+                    className={`px-3 py-1 rounded text-white ${
                       b.status === "paid_out" || b.status === "refunded"
                         ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-green-500 hover:bg-green-600"
-                    } text-white`}
+                        : "bg-green-600 hover:bg-green-700"
+                    }`}
                   >
                     Payout
                   </button>
                   <button
                     onClick={() => processRefund(b.id)}
-                    disabled={loading || b.status === "paid_out" || b.status === "refunded"}
-                    className={`px-3 py-1 rounded ${
+                    disabled={
+                      loading ||
+                      processingId === b.id ||
+                      b.status === "paid_out" ||
+                      b.status === "refunded"
+                    }
+                    className={`px-3 py-1 rounded text-white ${
                       b.status === "paid_out" || b.status === "refunded"
                         ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-red-500 hover:bg-red-600"
-                    } text-white`}
+                        : "bg-red-600 hover:bg-red-700"
+                    }`}
                   >
                     Refund
                   </button>
@@ -110,7 +143,7 @@ const AdminTransactions = () => {
         </table>
 
         {bookings.length === 0 && (
-          <p className="text-gray-500 text-center mt-4">No bookings found.</p>
+          <p className="text-gray-500 text-center mt-6">No bookings found.</p>
         )}
       </div>
     </div>

@@ -39,6 +39,7 @@ import HostBookings from "./pages/host/HostBookings";
 import HostListings from "./pages/host/HostListings";
 import CreateListing from "./pages/host/CreateListing";
 import EditListing from "./pages/host/EditListing";
+import Calendar from "./pages/host/Calendar";
 
 // Components
 import Navbar from "./components/Navbar";
@@ -74,6 +75,7 @@ function App() {
                 <Route path="bookings" element={<HostBookings />} />
                 <Route path="create-listing" element={<CreateListing />} />
                 <Route path="edit-listing/:id" element={<EditListing />} />
+                <Route path="calendar" element={<Calendar />} />
               </Route>
 
               {/* Client/Host Protected Routes */}
