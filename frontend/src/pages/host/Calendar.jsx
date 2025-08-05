@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import axios from "../../api/axios";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -8,13 +8,15 @@ import { useAuth } from "../../context/AuthContext";
 import { format, isWithinInterval } from "date-fns";
 
 const Calendar = () => {
-  const { user } = useAuth();
-
+const { token } = useAuth();
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState([]);
-  const [hostEarnings, setHostEarnings] = useState(null); // host earnings state
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [payouts, setPayouts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // Fetch bookings for the host
   const fetchBookings = async () => {
     try {
       const res = await axios.get("http://localhost:5000/api/bookings/host-bookings", {
@@ -46,20 +48,7 @@ const Calendar = () => {
     }
   };
 
-  const fetchHostEarnings = async () => {
-    try {
-      const res = await axios.get("http://localhost:5000/api/payouts/host-total", {
-        headers: {
-          Authorization: `Bearer ${user?.token}`,
-        },
-      });
-
-      setHostEarnings(res.data.total_earnings || 0);
-    } catch (err) {
-      console.error("Error fetching host earnings:", err);
-    }
-  };
-
+  // Handle calendar day click
   const handleDateClick = (info) => {
     const clickedDate = new Date(info.dateStr);
     setSelectedDate(info.dateStr);
@@ -76,12 +65,38 @@ const Calendar = () => {
     setSelectedDateEvents(filtered);
   };
 
+  // Fetch Host Earnings and Payouts
   useEffect(() => {
-    if (user?.token) {
-      fetchBookings();
-      fetchHostEarnings();
-    }
-  }, [user]);
+    const fetchEarnings = async () => {
+      try {
+        const earningsRes = await axios.get("/payouts/host/earnings", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        setTotalEarnings(earningsRes.data.totalEarnings || 0);
+      } catch (error) {
+        console.error("Error fetching earnings:", error);
+      }
+    };
+
+    const fetchPayouts = async () => {
+      try {
+        const payoutsRes = await axios.get("/payouts/my-received", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        setPayouts(payoutsRes.data.payouts || []);
+      } catch (error) {
+        console.error("Error fetching received payouts:", error);
+      }
+    };
+
+    Promise.all([fetchEarnings(), fetchPayouts()]).finally(() => {
+      setLoading(false);
+    });
+  }, [token]);
 
   return (
     <div className="p-4">
@@ -123,12 +138,38 @@ const Calendar = () => {
         </div>
       )}
 
-      <div className="mt-8 bg-green-50 border border-green-300 p-4 rounded-md shadow-sm">
-        <h3 className="text-lg font-semibold text-green-800 mb-2">Total Payouts Received:</h3>
-        <p className="text-2xl font-bold text-green-900">
-          ₱ {hostEarnings?.toLocaleString("en-PH") ?? "0.00"}
-        </p>
-      </div>
+      <div className="bg-white shadow rounded-lg p-6 mb-8">
+              <h2 className="text-xl font-semibold mb-2">Total Earnings</h2>
+              <p className="text-3xl text-green-600 font-bold">₱{totalEarnings.toLocaleString()}</p>
+            </div>
+      
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Received Payouts</h2>
+              {payouts.length === 0 ? (
+                <p className="text-gray-500">No payouts received yet.</p>
+              ) : (
+                <table className="w-full text-left border">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="py-2 px-4 border">Amount</th>
+                      <th className="py-2 px-4 border">Method</th>
+                      <th className="py-2 px-4 border">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payouts.map((payout) => (
+                      <tr key={payout.id}>
+                        <td className="py-2 px-4 border">₱{payout.amount.toLocaleString()}</td>
+                        <td className="py-2 px-4 border capitalize">{payout.method || '—'}</td>
+                        <td className="py-2 px-4 border">
+                          {format(new Date(payout.created_at), "PPP p")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
     </div>
   );
 };

@@ -30,33 +30,62 @@ exports.getAllPayouts = async (req, res) => {
 
 
 // Host: view their payouts
-exports.getHostEarnings = async (req, res) => {
-  const { host_id } = req.params;
-
-  try {
-    const [rows] = await pool.query('CALL sp_get_host_earnings(?)', [host_id]);
-    res.json({ earnings: rows[0] });
-  } catch (error) {
-    console.error("Get host earnings error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
 // controllers/payoutController.js
-exports.getHostPayoutTotal = async (req, res) => {
+
+exports.getHostEarnings = async (req, res) => {
   const hostId = req.user.id;
 
   try {
-    const [rows] = await pool.query(
-      `SELECT IFNULL(SUM(amount), 0) AS totalPayout
-       FROM payouts
-       WHERE host_id = ?`,
-      [hostId]
-    );
+    const [resultSets] = await pool.query('CALL sp_get_host_earnings(?)', [hostId]);
 
-    res.status(200).json({ totalPayout: rows[0].totalPayout });
+    const summary = resultSets[0]?.[0] || { total_earnings: 0 };
+    const payouts = resultSets[1] || [];
+
+    res.json({
+      totalEarnings: summary.total_earnings,
+      payouts
+    });
   } catch (error) {
-    console.error("Error fetching host payout total:", error);
+    console.error("Error fetching host earnings:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+exports.getReceivedPayoutsByHost = async (req, res) => {
+  const hostId = req.user.id;
+
+  try {
+    const [results] = await pool.query(
+      `SELECT * FROM payouts WHERE host_id = ? ORDER BY created_at DESC`,
+      [hostId]
+    );
+
+    res.json({ payouts: results });
+  } catch (err) {
+    console.error("Error fetching received payouts:", err);
+    res.status(500).json({ message: "Error fetching payouts." });
+  }
+};
+
+
+
+// controllers/payoutController.js
+// exports.getHostPayoutTotal = async (req, res) => {
+//   try {
+//     const hostId = req.user.id; // Get from Auth Middleware
+
+//     const [rows] = await pool.query(
+//       `SELECT IFNULL(SUM(amount), 0) AS totalPayout
+//        FROM payouts
+//        WHERE host_id = ?`,
+//       [hostId]
+//     );
+
+//     res.status(200).json({ totalPayout: rows[0].totalPayout });
+//   } catch (error) {
+//     console.error("Error fetching host payout total:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
