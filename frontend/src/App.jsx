@@ -3,6 +3,10 @@ import { AuthProvider } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
 import { ToastContainer } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet-defaulticon-compatibility';
+import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
+
 
 // Pages - Public & Client/Host
 import Home from "./pages/Home";
@@ -42,6 +46,7 @@ import EditListing from "./pages/host/EditListing";
 import Calendar from "./pages/host/Calendar";
 
 // Components
+import ListingMap from "./components/MapPicker";
 import Navbar from "./components/Navbar";
 import HostLayout from "./components/host/HostLayout";
 import PrivateRoute from "./components/PrivateRoute";
@@ -67,6 +72,7 @@ function App() {
               <Route path="/favorites" element={<Favorites />} />
               <Route path="/chat/:otherUserId" element={<ChatWindow />} />
               <Route path="/inbox" element={<Inbox />} />
+              <Route path="/map" element={<ListingMap />} />
 
               {/* Host Routes with Layout */}
               <Route path="/host-dashboard" element={<PrivateRoute><HostLayout /></PrivateRoute>}>

@@ -11,5 +11,6 @@ router.get('/my-listings', auth, listingsController.getListingsByHost);
 router.get('/:id', listingsController.getListingById);
 router.put('/:id', auth, listingsController.updateListing);
 router.delete('/:id', auth, listingsController.deleteListing);
+router.get('/nearby', listingsController.getNearbyListings);
 
 module.exports = router;

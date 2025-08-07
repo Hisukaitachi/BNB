@@ -2,14 +2,20 @@ const path = require('path');
 const pool = require('../db');
 
 
-
 exports.createListing = async (req, res) => {
   const hostId = req.user.id;
   const role = req.user.role;
-  const { title, description, price_per_night, location } = req.body;
+  let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
   if (role !== 'host') {
     return res.status(403).json({ message: 'Only hosts can create listings' });
+  }
+
+  // If latitude or longitude are missing, try to geocode
+  if (!latitude || !longitude) {
+    const coords = await getCoordinatesFromLocation(location);
+    latitude = coords.latitude;
+    longitude = coords.longitude;
   }
 
   const imageUrl = req.files?.image ? `/uploads/${req.files.image[0].filename}` : null;
@@ -17,8 +23,8 @@ exports.createListing = async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?)',
-      [hostId, title, description, price_per_night, location, imageUrl, videoUrl]
+      'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
     );
 
     res.status(201).json({ message: 'Listing created successfully' });
@@ -27,8 +33,6 @@ exports.createListing = async (req, res) => {
     res.status(500).json({ message: 'Failed to create listing', error: error.message });
   }
 };
-
-
 
 exports.getAllListings = async (req, res) => {
   try {
@@ -84,12 +88,20 @@ exports.getListingsByHost = async (req, res) => {
 
 exports.updateListing = async (req, res) => {
   const listingId = req.params.id;
-  const { title, description, price_per_night, location } = req.body;
+  let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
   try {
+    // If lat/lng not provided, attempt to geocode
+    if (!latitude || !longitude) {
+      const coords = await getCoordinatesFromLocation(location);
+      latitude = coords.latitude;
+      longitude = coords.longitude;
+    }
+
+    // Call stored procedure
     const [result] = await pool.query(
-      'CALL sp_update_listing(?, ?, ?, ?, ?)',
-      [listingId, title, description, price_per_night, location]
+      'CALL sp_update_listing(?, ?, ?, ?, ?, ?, ?)',
+      [listingId, title, description, price_per_night, location, latitude, longitude]
     );
 
     res.json({ message: 'Listing updated successfully' });
@@ -220,3 +232,29 @@ exports.searchListings = async (req, res) => {
   }
 };
 
+exports.getNearbyListings = async (req, res) => {
+  const { lat, lng } = req.query;
+  const radius = 10; // 10 km radius
+
+  try {
+    const [results] = await pool.query(`
+      SELECT *, (
+        6371 * acos(
+          cos(radians(?)) *
+          cos(radians(latitude)) *
+          cos(radians(longitude) - radians(?)) +
+          sin(radians(?)) *
+          sin(radians(latitude))
+        )
+      ) AS distance
+      FROM listings
+      HAVING distance < ?
+      ORDER BY distance ASC
+    `, [lat, lng, lat, radius]);
+
+    res.json({ listings: results });
+  } catch (error) {
+    console.error("Nearby listings error:", error);
+    res.status(500).json({ message: "Failed to fetch nearby listings", error: error.message });
+  }
+};

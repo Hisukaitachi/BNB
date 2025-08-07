@@ -2,6 +2,31 @@ import { useState } from "react";
 import axios from "../../api/axios";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+// Fix Leaflet default marker icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+const LocationPicker = ({ setCoords }) => {
+  useMapEvents({
+    click(e) {
+      setCoords({
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+      });
+    },
+  });
+  return null;
+};
 
 const CreateListing = () => {
   const [form, setForm] = useState({
@@ -13,6 +38,7 @@ const CreateListing = () => {
     video: null,
   });
 
+  const [coords, setCoords] = useState(null); // No default, only set when host clicks
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -28,6 +54,12 @@ const CreateListing = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (!coords) {
+      toast.error("Please click on the map to select a location.");
+      return;
+    }
+
     setLoading(true);
 
     const formData = new FormData();
@@ -35,6 +67,8 @@ const CreateListing = () => {
     formData.append("description", form.description);
     formData.append("price_per_night", form.price_per_night);
     formData.append("location", form.location);
+    formData.append("latitude", coords.lat);
+    formData.append("longitude", coords.lng);
     if (form.image) formData.append("image", form.image);
     if (form.video) formData.append("video", form.video);
 
@@ -101,7 +135,7 @@ const CreateListing = () => {
         </div>
 
         <div>
-          <label className="block font-medium">Location</label>
+          <label className="block font-medium">Location Name (e.g. BGC, Tagaytay)</label>
           <input
             type="text"
             name="location"
@@ -111,6 +145,29 @@ const CreateListing = () => {
             className="w-full border p-2 rounded"
           />
         </div>
+
+        <div>
+  <label className="block font-medium mb-2">Pick Location on Map</label>
+  <div style={{ height: "300px", width: "100%", marginTop: "1rem", borderRadius: "0.5rem" }}>
+  <MapContainer
+    center={coords || [13.41, 122.56]} // Philippines default
+    zoom={6}
+    scrollWheelZoom={true}
+    style={{ height: "100%", width: "100%" }}
+  >
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a>'
+      />
+      <LocationPicker setCoords={setCoords} />
+      {coords && <Marker position={[coords.lat, coords.lng]} />}
+    </MapContainer>
+  </div>
+  <p className="text-sm mt-2 text-gray-600">
+    Click anywhere on the map to drop a pin for the listing location.
+  </p>
+</div>
+
 
         <div>
           <label className="block font-medium">Image</label>

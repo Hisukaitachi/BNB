@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "../../api/axios";
+import ListingMap from "../../components/ListingMap"; // ✅ Import the reusable map component
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -21,7 +22,7 @@ const ListingDetails = () => {
   const [completedBooking, setCompletedBooking] = useState(null);
 
   useEffect(() => {
-    window.scrollTo(0, 0); // Scroll to top on load
+    window.scrollTo(0, 0);
     const fetchData = async () => {
       try {
         const resListing = await axios.get(`/listings/${id}`);
@@ -192,8 +193,15 @@ const ListingDetails = () => {
       <p className="text-green-600 font-semibold mb-4">₱{listing.price_per_night} / night</p>
       <p className="mb-6">{listing.description}</p>
 
+      {/* ✅ Use reusable map component */}
+      <ListingMap
+        latitude={listing.latitude}
+        longitude={listing.longitude}
+        location={listing.location}
+      />
+
       {/* Booking Section */}
-      <div className="border rounded p-4 space-y-3 mb-10">
+      <div className="border rounded p-4 space-y-3 mb-10 mt-6">
         <h2 className="text-xl font-semibold">Book This Listing</h2>
         <div className="flex flex-col sm:flex-row gap-4">
           <input

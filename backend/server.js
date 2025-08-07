@@ -9,6 +9,9 @@ const { initializeSocket } = require('./socket');
 const app = express();
 const server = http.createServer(app);
 
+// ✅ Log OpenCage Key once (for debug – remove in prod)
+console.log('OpenCage API Key:', process.env.OPENCAGE_API_KEY);
+
 // Initialize Socket.IO + Global onlineUsers
 initializeSocket(server);
 
