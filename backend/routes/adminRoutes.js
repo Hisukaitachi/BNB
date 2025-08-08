@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const adminController = require('../controllers/adminController');
+const reportsController = require('../controllers/reportsController');
 const authenticateToken = require('../middleware/auth');
 const Admin = require('../middleware/Admin');
 
@@ -36,6 +37,10 @@ router.post('/payouts/host/:hostId', adminController.processHostPayout);
 router.post('/payout/:bookingId', adminController.processPayout);
 router.post('/refund/:transactionId', adminController.processRefund);
 router.get('/transactions', adminController.getAllTransactions);
+
+// Reports
+router.get("/reports", reportsController.getAllReports);
+router.post("/actions", reportsController.adminTakeAction);// Admin take action
 
 // Dashboard Stats
 router.get('/dashboard-stats', adminController.getDashboardStats);

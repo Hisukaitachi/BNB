@@ -10,9 +10,8 @@ const AdminSidebar = () => {
         <Link to="/admin/listings" className="block hover:underline">Listings</Link>
         <Link to="/admin/bookings" className="block hover:underline">Bookings</Link>
         <Link to="/admin/reviews" className="block hover:underline">Reviews</Link>
-        <Link to="/admin/transactions" className="block hover:underline text-green-400">
-          Transactions
-        </Link>
+        <Link to="/admin/transactions" className="block hover:underline text-green-400">Transactions</Link>
+        <Link to="/admin/reports" className="block hover:underline text-blue-400">Reports</Link>
       </nav>
     </div>
   );

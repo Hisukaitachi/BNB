@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import axios from "../../api/axios";
 import { toast } from "react-toastify";
+import ReportForm from "../../components/ReportForm";
+import { useAuth } from "../../context/AuthContext"; // Required for getting user/token
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [expandedBooking, setExpandedBooking] = useState(null);
   const [history, setHistory] = useState({});
   const [loading, setLoading] = useState(true);
+  const [showReportForm, setShowReportForm] = useState(null);
+
+  const { user, token } = useAuth();
 
   const fetchBookings = async () => {
     try {
@@ -68,7 +73,7 @@ const MyBookings = () => {
         <ul className="space-y-4">
           {bookings.map((booking) => (
             <li key={booking.id} className="border rounded p-4 shadow-sm bg-white">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
                 <div>
                   <p className="font-semibold text-lg">{booking.title}</p>
                   <p className="text-sm text-gray-500">
@@ -80,7 +85,7 @@ const MyBookings = () => {
                   </p>
                 </div>
 
-                <div className="space-x-2">
+                <div className="space-x-2 mt-2 md:mt-0">
                   {booking.status === "pending" && (
                     <button
                       onClick={() => handleCancel(booking.id)}
@@ -96,6 +101,15 @@ const MyBookings = () => {
                   >
                     {expandedBooking === booking.id ? "Hide History" : "View History"}
                   </button>
+
+                  {["completed", "cancelled"].includes(booking.status) && (
+                    <button
+                      onClick={() => setShowReportForm(showReportForm === booking.id ? null : booking.id)}
+                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-400 transition"
+                    >
+                      {showReportForm === booking.id ? "Hide Report" : "Report"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -123,6 +137,12 @@ const MyBookings = () => {
                   ) : (
                     <p>Loading history...</p>
                   )}
+                </div>
+              )}
+
+              {showReportForm === booking.id && (
+                <div className="mt-4">
+                <ReportForm reportedUserId={booking.host_id} bookingId={booking.id} />
                 </div>
               )}
             </li>

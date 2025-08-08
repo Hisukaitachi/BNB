@@ -36,6 +36,7 @@ import ListingsManagement from "./pages/admin/ListingsManagement";
 import BookingsManagement from "./pages/admin/BookingsManagement";
 import ReviewsManagement from "./pages/admin/ReviewsManagement";
 import AdminTransactions from './pages/admin/AdminTransactions';
+import AdminReports from "./pages/admin/AdminReports";
 
 // Host Pages
 import HostDashboard from "./pages/host/HostDashboard";
@@ -100,7 +101,7 @@ function App() {
               <Route path="/admin/bookings" element={<PrivateRoute adminOnly={true}><BookingsManagement /></PrivateRoute>} />
               <Route path="/admin/reviews" element={<PrivateRoute adminOnly={true}><ReviewsManagement /></PrivateRoute>} />
               <Route path="/admin/transactions" element={<PrivateRoute adminOnly={true}><AdminTransactions /></PrivateRoute>} />
-
+              <Route path="/admin/reports" element={<PrivateRoute adminOnly={true}><AdminReports /></PrivateRoute>} />
               {/* 404 Fallback */}
               <Route path="*" element={<NotFound />} />
             </Routes>

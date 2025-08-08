@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "../../api/axios";
+import ReportForm from "../../components/ReportForm"; // adjust path if needed
 import { useSocket } from "../../context/SocketContext";
 import { toast } from "react-toastify";
 import { BadgeCheck, XCircle, Home, CheckCircle } from "lucide-react";
@@ -148,6 +149,14 @@ const HostBookings = () => {
             </button>
           )}
         </div>
+        
+        {/* 🔽 Add Report Form below the actions */}
+      <div className="mt-4">
+        <ReportForm
+          reportedUserId={booking.client_id}
+          bookingId={booking.id || booking.booking_id}
+        />
+      </div>
       </div>
     );
   };
