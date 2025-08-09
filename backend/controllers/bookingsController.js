@@ -50,22 +50,73 @@ exports.getBookingsByClient = async (req, res) => {
   }
 };
 
+// Get bookings by host
 exports.getBookingsByHost = async (req, res) => {
   try {
     const hostId = req.user?.id;
-    console.log("Decoded host ID:", hostId);
-    
-    const [rows] = await pool.query('CALL sp_get_bookings_by_host(?)', [hostId]);
-    console.log("Host bookings fetched:", rows[0]);
+    if (!hostId) {
+      return res.status(401).json({ message: "Unauthorized: Host ID missing" });
+    }
 
-    res.json(rows[0]);
+    const [rows] = await pool.query(
+      "CALL sp_get_bookings_by_host(?)",
+      [hostId]
+    );
+
+    res.json(rows[0] || []);
   } catch (err) {
-    console.error('Error fetching host bookings:', err.message);
-    console.error(err); // full trace
-    res.status(500).json({ message: 'Internal server error', error: err.message });
+    console.error("Error fetching host bookings:", err);
+    res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
   }
 };
 
+// Get bookings by listing (for availability calendar)
+exports.getBookingsByListing = async (req, res) => {
+  try {
+    const { listingId } = req.params;
+    if (!listingId) {
+      return res.status(400).json({ message: "Listing ID is required" });
+    }
+
+    const [rows] = await pool.query(
+      "CALL sp_get_bookings_by_listing(?)",
+      [listingId]
+    );
+
+    res.json(rows[0] || []);
+  } catch (err) {
+    console.error("Error fetching bookings by listing:", err);
+    res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
+
+exports.getBookedDatesByListing = async (req, res) => {
+  const { listingId } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      "CALL sp_get_bookings_by_listing(?)",
+      [listingId]
+    );
+
+    // Stored procedure results are usually nested in rows[0]
+    const bookedDates = rows[0].map(b => ({
+      start_date: b.start_date,
+      end_date: b.end_date
+    }));
+
+    res.status(200).json({ bookedDates });
+  } catch (error) {
+    console.error("Error fetching booked dates:", error);
+    res.status(500).json({ message: "Error fetching booked dates" });
+  }
+};
 
 
 exports.updateBookingStatus = async (req, res) => {

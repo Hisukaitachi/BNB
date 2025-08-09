@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "../../api/axios";
-import ListingMap from "../../components/ListingMap"; // ✅ Import the reusable map component
+import ListingMap from "../../components/ListingMap";
+import BookingCalendar from "../../pages/user/BookingCalendar";
+import DatePicker from "react-datepicker"; // ✅ NEW
+import "react-datepicker/dist/react-datepicker.css"; // ✅ NEW
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -9,10 +12,12 @@ const ListingDetails = () => {
   const [isFavorited, setIsFavorited] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(null); // ✅ Changed to Date object
+  const [endDate, setEndDate] = useState(null); // ✅ Changed to Date object
   const [totalPrice, setTotalPrice] = useState(0);
   const [nights, setNights] = useState(0);
+
+  const [bookedRanges, setBookedRanges] = useState([]); // ✅ NEW
 
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(null);
@@ -21,48 +26,57 @@ const ListingDetails = () => {
 
   const [completedBooking, setCompletedBooking] = useState(null);
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    const fetchData = async () => {
-      try {
-        const resListing = await axios.get(`/listings/${id}`);
-        setListing(resListing.data);
+  // ... your imports stay exactly the same
 
-        const token = localStorage.getItem("token");
+useEffect(() => {
+  window.scrollTo(0, 0);
+  const fetchData = async () => {
+    try {
+      const resListing = await axios.get(`/listings/${id}`);
+      setListing(resListing.data);
 
-        const [resFavorites, resReviews, resBookings] = await Promise.all([
-          axios.get("/favorites", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`/reviews/listing/${id}`),
-          axios.get("/bookings/my-bookings", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+      const token = localStorage.getItem("token");
 
-        setIsFavorited(resFavorites.data.some((f) => f.listing_id === parseInt(id)));
-        setReviews(resReviews.data.reviews || []);
+      const [resFavorites, resReviews, resBookings, resBlockedDates] = await Promise.all([
+        axios.get("/favorites", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`/reviews/listing/${id}`),
+        axios.get("/bookings/my-bookings", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`/bookings/booked-dates/${id}`) // ✅ Removed extra `/api` unless needed
+      ]);
 
-        const completed = resBookings.data.find(
-          (b) => b.listing_id === parseInt(id) && b.status === "completed"
-        );
-        setCompletedBooking(completed || null);
-      } catch (err) {
-        console.error("Error loading listing details:", err);
-        alert("Failed to load listing data.");
-      } finally {
-        setLoading(false);
-      }
-    };
+      setIsFavorited(resFavorites.data.some((f) => f.listing_id === parseInt(id)));
+      setReviews(resReviews.data.reviews || []);
 
-    fetchData();
-  }, [id]);
+      // ✅ Handle both possible backend formats
+      const bookedArray = resBlockedDates.data.bookedDates || resBlockedDates.data;
+      const blocked = bookedArray.map(b => ({
+        start: new Date(b.start_date),
+        end: new Date(b.end_date)
+      }));
+      setBookedRanges(blocked);
+
+      const completed = resBookings.data.find(
+        (b) => b.listing_id === parseInt(id) && b.status === "completed"
+      );
+      setCompletedBooking(completed || null);
+    } catch (err) {
+      console.error("Error loading listing details:", err);
+      alert("Failed to load listing data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchData();
+}, [id]);
 
   useEffect(() => {
     if (startDate && endDate && listing) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      const diff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
       if (diff > 0) {
         setNights(diff);
         setTotalPrice(diff * listing.price_per_night);
@@ -107,8 +121,8 @@ const ListingDetails = () => {
         "/bookings",
         {
           listing_id: listing.id,
-          start_date: startDate,
-          end_date: endDate,
+          start_date: startDate.toISOString().split("T")[0], // ✅ Convert to YYYY-MM-DD
+          end_date: endDate.toISOString().split("T")[0],
           total_price: totalPrice,
         },
         {
@@ -179,6 +193,9 @@ const ListingDetails = () => {
           ⭐ {averageRating} average rating ({reviews.length} review{reviews.length !== 1 && "s"})
         </p>
       )}
+      <h1>{listing.title}</h1>
+      {/* Calendar Component */}
+      <BookingCalendar listingId={id} />
 
       <button
         onClick={toggleFavorite}
@@ -193,28 +210,37 @@ const ListingDetails = () => {
       <p className="text-green-600 font-semibold mb-4">₱{listing.price_per_night} / night</p>
       <p className="mb-6">{listing.description}</p>
 
-      {/* ✅ Use reusable map component */}
       <ListingMap
         latitude={listing.latitude}
         longitude={listing.longitude}
         location={listing.location}
       />
 
-      {/* Booking Section */}
+      {/* ✅ Booking Section with disabled booked dates */}
       <div className="border rounded p-4 space-y-3 mb-10 mt-6">
         <h2 className="text-xl font-semibold">Book This Listing</h2>
         <div className="flex flex-col sm:flex-row gap-4">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="border p-2 rounded"
+          <DatePicker
+            selected={startDate}
+            onChange={(date) => setStartDate(date)}
+            startDate={startDate}
+            endDate={endDate}
+            selectsStart
+            excludeDateIntervals={bookedRanges}
+            minDate={new Date()}
+            placeholderText="Check-in"
+            className="border p-2 rounded w-full"
           />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="border p-2 rounded"
+          <DatePicker
+            selected={endDate}
+            onChange={(date) => setEndDate(date)}
+            startDate={startDate}
+            endDate={endDate}
+            selectsEnd
+            excludeDateIntervals={bookedRanges}
+            minDate={startDate || new Date()}
+            placeholderText="Check-out"
+            className="border p-2 rounded w-full"
           />
         </div>
         {nights > 0 && (
@@ -231,7 +257,7 @@ const ListingDetails = () => {
         </button>
       </div>
 
-      {/* Reviews */}
+      {/* Reviews Section */}
       <div>
         <h2 className="text-2xl font-bold mb-4">Guest Reviews</h2>
         {reviews.length === 0 ? (
