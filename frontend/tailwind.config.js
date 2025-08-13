@@ -1,11 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}", // ensures admin files are scanned
+  ],
   theme: {
     extend: {},
   },
-  plugins: [
-  require('@tailwindcss/line-clamp'),
-  require('@tailwindcss/typography'),
-],
-}
+  plugins: [],
+};

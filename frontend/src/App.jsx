@@ -1,12 +1,10 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { Routes, Route } from "react-router-dom"; // ⬅️ Removed BrowserRouter
 import { SocketProvider } from "./context/SocketContext";
 import { ToastContainer } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
-
 
 // Pages - Public & Client/Host
 import Home from "./pages/Home";
@@ -16,11 +14,12 @@ import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
+import BannedAccount from "./pages/auth/BannedAccount";
 import Dashboard from "./pages/user/Dashboard";
 import Profile from "./pages/user/Profile";
 import EditProfile from "./pages/user/EditProfile";
 import ChangePassword from "./pages/auth/ChangePassword";
-import MyBookings from "./pages/user/MyBookings"; // New combined file
+import MyBookings from "./pages/user/MyBookings";
 import ListingDetails from "./pages/listings/ListingDetails";
 import Notifications from "./pages/user/Notifications";
 import NotificationsPage from "./pages/user/NotificationsPage";
@@ -55,61 +54,57 @@ import PrivateRoute from "./components/PrivateRoute";
 function App() {
   return (
     <SocketProvider>
-      <AuthProvider>
-        <Router>
-          <Navbar />
-          <main className="p-4">
-            <Routes>
+      <Navbar />
+      <main className="p-4">
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/listings" element={<Listings />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/banned" element={<BannedAccount />} />
+          <Route path="/listing/:id" element={<ListingDetails />} />
+          <Route path="/favorites" element={<Favorites />} />
+          <Route path="/chat/:otherUserId" element={<ChatWindow />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/map" element={<ListingMap />} />
 
-              {/* Public Routes */}
-              <Route path="/" element={<Home />} />
-              <Route path="/listings" element={<Listings />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/listing/:id" element={<ListingDetails />} />
-              <Route path="/favorites" element={<Favorites />} />
-              <Route path="/chat/:otherUserId" element={<ChatWindow />} />
-              <Route path="/inbox" element={<Inbox />} />
-              <Route path="/map" element={<ListingMap />} />
+          {/* Host Routes with Layout */}
+          <Route path="/host-dashboard" element={<PrivateRoute><HostLayout /></PrivateRoute>}>
+            <Route index element={<HostDashboard />} />
+            <Route path="listings" element={<HostListings />} />
+            <Route path="bookings" element={<HostBookings />} />
+            <Route path="create-listing" element={<CreateListing />} />
+            <Route path="edit-listing/:id" element={<EditListing />} />
+            <Route path="calendar" element={<Calendar />} />
+          </Route>
 
-              {/* Host Routes with Layout */}
-              <Route path="/host-dashboard" element={<PrivateRoute><HostLayout /></PrivateRoute>}>
-                <Route index element={<HostDashboard />} />
-                <Route path="listings" element={<HostListings />} />
-                <Route path="bookings" element={<HostBookings />} />
-                <Route path="create-listing" element={<CreateListing />} />
-                <Route path="edit-listing/:id" element={<EditListing />} />
-                <Route path="calendar" element={<Calendar />} />
-              </Route>
+          {/* Client/Host Protected Routes */}
+          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+          <Route path="/edit-profile" element={<PrivateRoute><EditProfile /></PrivateRoute>} />
+          <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
+          <Route path="/my-bookings" element={<PrivateRoute><MyBookings /></PrivateRoute>} />
+          <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
+          <Route path="/notifications-page" element={<PrivateRoute><NotificationsPage /></PrivateRoute>} />
 
-              {/* Client/Host Protected Routes */}
-              <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-              <Route path="/edit-profile" element={<PrivateRoute><EditProfile /></PrivateRoute>} />
-              <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
-              <Route path="/my-bookings" element={<PrivateRoute><MyBookings /></PrivateRoute>} />
-              <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
-              <Route path="/notifications-page" element={<PrivateRoute><NotificationsPage /></PrivateRoute>} />
+          {/* Admin Routes */}
+          <Route path="/admin/dashboard-stats" element={<PrivateRoute adminOnly={true}><AdminDashboard /></PrivateRoute>} />
+          <Route path="/admin/users" element={<PrivateRoute adminOnly={true}><UsersManagement /></PrivateRoute>} />
+          <Route path="/admin/listings" element={<PrivateRoute adminOnly={true}><ListingsManagement /></PrivateRoute>} />
+          <Route path="/admin/bookings" element={<PrivateRoute adminOnly={true}><BookingsManagement /></PrivateRoute>} />
+          <Route path="/admin/reviews" element={<PrivateRoute adminOnly={true}><ReviewsManagement /></PrivateRoute>} />
+          <Route path="/admin/transactions" element={<PrivateRoute adminOnly={true}><AdminTransactions /></PrivateRoute>} />
+          <Route path="/admin/reports" element={<PrivateRoute adminOnly={true}><AdminReports /></PrivateRoute>} />
 
-              {/* Admin Routes */}
-              <Route path="/admin/dashboard-stats" element={<PrivateRoute adminOnly={true}><AdminDashboard /></PrivateRoute>} />
-              <Route path="/admin/users" element={<PrivateRoute adminOnly={true}><UsersManagement /></PrivateRoute>} />
-              <Route path="/admin/listings" element={<PrivateRoute adminOnly={true}><ListingsManagement /></PrivateRoute>} />
-              <Route path="/admin/bookings" element={<PrivateRoute adminOnly={true}><BookingsManagement /></PrivateRoute>} />
-              <Route path="/admin/reviews" element={<PrivateRoute adminOnly={true}><ReviewsManagement /></PrivateRoute>} />
-              <Route path="/admin/transactions" element={<PrivateRoute adminOnly={true}><AdminTransactions /></PrivateRoute>} />
-              <Route path="/admin/reports" element={<PrivateRoute adminOnly={true}><AdminReports /></PrivateRoute>} />
-              {/* 404 Fallback */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-
-          <ToastContainer />
-        </Router>
-      </AuthProvider>
+          {/* 404 Fallback */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
+      <ToastContainer />
     </SocketProvider>
   );
 }

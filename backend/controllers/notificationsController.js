@@ -48,29 +48,46 @@ exports.markAllAsRead = async (req, res) => {
   }
 };
 
-exports.createNotification = async ({ userId, message, type }) => {
-  const [result] = await pool.query(`
-    INSERT INTO notifications (user_id, message, type)
-    VALUES (?, ?, ?)`,
-    [userId, message, type]
-  );
+exports.createNotification = async ({ userId, role, message, type }) => {
+  let targetUserIds = [];
 
-  const notification = {
-    id: result.insertId,
-    user_id: userId,
-    message,
-    type,
-    is_read: 0,
-    created_at: new Date()
-  };
-
- 
-  const io = getIo();
-  const socketId = getOnlineUsers()[userId];
-
-  if (socketId) {
-    io.to(socketId).emit('newNotification', notification);
+  if (role) {
+    const [users] = await pool.query(
+      `SELECT id FROM users WHERE role = ?`,
+      [role]
+    );
+    targetUserIds = users.map(u => u.id);
   }
 
-  return notification;
+  if (userId) {
+    targetUserIds.push(userId);
+  }
+
+  const io = getIo();
+  const results = [];
+
+  for (const uid of targetUserIds) {
+    const [result] = await pool.query(`
+      INSERT INTO notifications (user_id, message, type)
+      VALUES (?, ?, ?)
+    `, [uid, message, type]);
+
+    const notification = {
+      id: result.insertId,
+      user_id: uid,
+      message,
+      type,
+      is_read: 0,
+      created_at: new Date()
+    };
+
+    const socketId = getOnlineUsers()[uid];
+    if (socketId) {
+      io.to(socketId).emit('newNotification', notification);
+    }
+
+    results.push(notification);
+  }
+
+  return results;
 };

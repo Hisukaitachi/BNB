@@ -21,11 +21,18 @@ const Login = () => {
       const res = await axios.post("/users/login", form);
       const { token, user } = res.data;
 
+      // Check if account is banned before logging in
+      if (user.is_banned) {
+        setError("🚫 Your account has been banned. Redirecting...");
+        setTimeout(() => navigate("/banned"), 1500);
+        return;
+      }
+
       login(user, token);
 
       // 🚀 Redirect by role
       if (user.role === "admin") {
-        navigate("/admin/users"); // 🔧 Changed to /admin/users as your default admin landing page
+        navigate("/admin/users");
       } else if (user.role === "host") {
         navigate("/host-dashboard");
       } else {
@@ -33,7 +40,16 @@ const Login = () => {
       }
     } catch (err) {
       console.error("Login failed:", err);
-      setError("Invalid email or password.");
+
+      if (err.response && err.response.status === 403) {
+        // Server already says banned
+        setError("🚫 Your account has been banned. Redirecting...");
+        setTimeout(() => navigate("/banned"), 1500);
+      } else if (err.response && err.response.status === 401) {
+        setError("Invalid email or password.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     }
   };
 

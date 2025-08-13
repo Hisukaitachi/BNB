@@ -13,6 +13,7 @@ router.use(Admin);
 router.get('/users', adminController.getAllUsers);
 router.put('/users/:userId/ban', adminController.banUser);
 router.put('/users/:userId/unban', adminController.unbanUser);
+router.get("/check-ban/:id", authenticateToken, adminController.checkBanStatus);
 router.put('/users/:userId/role', adminController.updateUserRole);
 
 // Listings

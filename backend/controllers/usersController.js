@@ -105,6 +105,11 @@ exports.loginUser = async (req, res) => {
 
     const user = users[0];
 
+    // 🔹 Check if banned
+    if (user.is_banned === 1) {
+      return res.status(403).json({ message: 'Your account has been banned. Please contact support.' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -117,12 +122,16 @@ exports.loginUser = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 exports.promoteToHost = async (req, res) => {
   const { id } = req.params;

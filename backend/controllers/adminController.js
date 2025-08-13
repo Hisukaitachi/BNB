@@ -1,12 +1,14 @@
 const pool = require('../db');
+const { createNotification } = require('./notificationsController');
 
 // USERS
 exports.getAllUsers = async (req, res) => {
   try {
-    const [result] = await pool.query('CALL sp_get_all_users()');
-    res.json(result[0]);
+    const [users] = await pool.query('SELECT * FROM users');
+    res.json(users);
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching users', error: err });
+    console.error('Error fetching users:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };
 
@@ -14,6 +16,14 @@ exports.banUser = async (req, res) => {
   const { userId } = req.params;
   try {
     await pool.query('CALL sp_ban_user(?)', [userId]);
+
+    // Send notification to the banned user
+    await createNotification({
+      userId,
+      message: 'Your account has been banned by an administrator.',
+      type: 'account'
+    });
+
     res.json({ message: 'User banned successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Error banning user', error: err });
@@ -24,20 +34,72 @@ exports.unbanUser = async (req, res) => {
   const { userId } = req.params;
   try {
     await pool.query('CALL sp_unban_user(?)', [userId]);
+
+    await createNotification({
+      userId,
+      message: 'Your account has been reactivated. You may now log in.',
+      type: 'account'
+    });
+
     res.json({ message: 'User unbanned successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Error unbanning user', error: err });
   }
 };
 
+exports.checkBanStatus = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const [rows] = await pool.query(
+            "SELECT is_banned FROM users WHERE id = ?",
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (rows[0].is_banned === 1) {
+            return res.status(403).json({ message: "User is banned" });
+        }
+
+        res.status(200).json({ message: "User is active" });
+    } catch (error) {
+        console.error("Error checking ban status:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+
+
 exports.updateUserRole = async (req, res) => {
-  const { userId } = req.params;
-  const { role } = req.body;
+  const userId = req.body.userId || req.params.userId;
+  const role = req.body.role;
+
+  if (!userId || !role) {
+    return res.status(400).json({ error: 'User ID and role are required' });
+  }
+
   try {
-    await pool.query('CALL sp_update_user_role(?, ?)', [userId, role]);
+    const [result] = await pool.query(
+      'UPDATE users SET role = ? WHERE id = ?',
+      [role, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await createNotification({
+      userId,
+      message: `Your account role has been updated to "${role}" by an administrator.`,
+      type: 'role'
+    });
+
     res.json({ message: 'User role updated successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Error updating user role', error: err });
+    console.error('Error updating user role:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };
 
@@ -53,13 +115,43 @@ exports.getAllListings = async (req, res) => {
 
 exports.removeListing = async (req, res) => {
   const { listingId } = req.params;
+
   try {
-    await pool.query('CALL sp_remove_listing(?)', [listingId]);
-    res.json({ message: 'Listing removed successfully' });
+    // 1. Get the listing to check existence and grab host info
+    const [listing] = await pool.query(
+      'SELECT host_id, title FROM listings WHERE id = ?',
+      [listingId]
+    );
+
+    if (!listing.length) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+
+    const { host_id, title } = listing[0];
+
+    // 2. Delete related payouts first (since it references host_id)
+    await pool.query('DELETE FROM payouts WHERE host_id = ?', [host_id]);
+
+    // 3. Delete related bookings
+    await pool.query('DELETE FROM bookings WHERE listing_id = ?', [listingId]);
+
+    // 4. Delete the listing itself
+    await pool.query('DELETE FROM listings WHERE id = ?', [listingId]);
+
+    // 5. Send notification to host
+    await createNotification({
+      userId: host_id,
+      message: `Your listing "${title}" has been removed by an administrator.`,
+      type: 'listing'
+    });
+
+    res.json({ message: 'Listing, payouts, and bookings removed successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Error removing listing', error: err });
+    console.error('Error removing listing:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };
+
 
 // BOOKINGS
 exports.getAllBookings = async (req, res) => {
@@ -73,18 +165,47 @@ exports.getAllBookings = async (req, res) => {
 
 exports.cancelBooking = async (req, res) => {
   const { bookingId } = req.params;
+
   try {
-    await pool.query('CALL sp_cancel_booking(?)', [bookingId]);
+    const [booking] = await pool.query(
+      `SELECT b.client_id, l.host_id, l.title AS listingTitle, b.date AS bookingDate
+       FROM bookings b
+       JOIN listings l ON b.listing_id = l.id
+       WHERE b.id = ?`,
+      [bookingId]
+    );
+
+    if (!booking.length) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const { client_id, host_id, listingTitle, bookingDate } = booking[0];
+
+    await pool.query('DELETE FROM bookings WHERE id = ?', [bookingId]);
+
+    await createNotification({
+      userId: client_id,
+      message: `Your booking for "${listingTitle}" on ${bookingDate} has been cancelled by an administrator.`,
+      type: 'booking'
+    });
+
+    await createNotification({
+      userId: host_id,
+      message: `A booking for your listing "${listingTitle}" on ${bookingDate} has been cancelled by an administrator.`,
+      type: 'booking'
+    });
+
     res.json({ message: 'Booking cancelled successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Error cancelling booking', error: err });
+    console.error('Error cancelling booking:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };
 
 exports.updateBookingStatus = async (req, res) => {
   const { id: bookingId } = req.params;
   const { status } = req.body;
-  const changedBy = req.user.id; 
+  const changedBy = req.user.id;
 
   const allowedStatuses = ['approved', 'cancelled', 'pending', 'rejected'];
   if (!allowedStatuses.includes(status)) {
@@ -92,7 +213,27 @@ exports.updateBookingStatus = async (req, res) => {
   }
 
   try {
+    const [booking] = await pool.query(
+      'SELECT client_id, host_id FROM bookings WHERE id = ?',
+      [bookingId]
+    );
+
     await pool.query('CALL sp_update_booking_status(?, ?, ?)', [bookingId, status, changedBy]);
+
+    if (booking.length) {
+      const msg = `Your booking status has been updated to ${status}.`;
+      await createNotification({
+        userId: booking[0].client_id,
+        message: msg,
+        type: 'booking'
+      });
+      await createNotification({
+        userId: booking[0].host_id,
+        message: msg,
+        type: 'booking'
+      });
+    }
+
     res.json({ message: `Booking status updated to ${status}` });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update booking status', error: err.message });
@@ -122,7 +263,21 @@ exports.getAllReviews = async (req, res) => {
 exports.removeReview = async (req, res) => {
   const { reviewId } = req.params;
   try {
+    const [review] = await pool.query(
+      'SELECT user_id FROM reviews WHERE id = ?',
+      [reviewId]
+    );
+
     await pool.query('CALL sp_remove_review(?)', [reviewId]);
+
+    if (review.length) {
+      await createNotification({
+        userId: review[0].user_id,
+        message: 'Your review has been removed by an administrator.',
+        type: 'review'
+      });
+    }
+
     res.json({ message: 'Review removed successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Error removing review', error: err });
@@ -145,6 +300,7 @@ exports.getDashboardStats = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch dashboard stats', error: err.message });
   }
 };
+
 
 // PAYOUTS
 exports.processPayout = async (req, res) => {
