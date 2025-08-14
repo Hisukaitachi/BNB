@@ -25,5 +25,6 @@ router.post('/register', usersController.createUser);
 router.put('/:id/promote', usersController.promoteToHost);
 router.put('/:id/demote', usersController.demoteToClient);
 router.post('/login', usersController.loginUser);
+router.get("/check-my-ban", authenticate, usersController.checkMyBanStatus);
 
 module.exports = router;

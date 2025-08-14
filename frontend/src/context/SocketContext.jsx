@@ -1,13 +1,16 @@
-// src/context/SocketContext.jsx
 import { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./AuthContext";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const SocketContext = createContext();
 
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!user || !user.id) {
@@ -41,13 +44,27 @@ export const SocketProvider = ({ children }) => {
       console.error("Socket connection error:", err.message);
     });
 
+    // Real-time ban event
+    newSocket.on("banned", (data) => {
+      console.log(data.message);
+      toast.error(data.message); // show toast
+      logout();
+      navigate("/banned");
+    });
+
+    // Real-time unban event
+    newSocket.on("unbanned", (data) => {
+      console.log(data.message);
+      toast.success(data.message); // show friendly toast
+    });
+
     setSocket(newSocket);
 
     return () => {
       newSocket.disconnect();
       console.log("Socket disconnected on component unmount");
     };
-  }, [user]);
+  }, [user, logout, navigate]);
 
   return (
     <SocketContext.Provider value={socket}>

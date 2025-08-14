@@ -132,6 +132,26 @@ exports.loginUser = async (req, res) => {
   }
 };
 
+exports.checkMyBanStatus = async (req, res) => {
+  try {
+    const userId = req.user.id; // from token middleware
+    const [rows] = await pool.query(
+      "SELECT is_banned FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Always return 200 with banned boolean
+    res.status(200).json({ banned: rows[0].is_banned === 1 });
+  } catch (err) {
+    console.error("Error checking ban status:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 
 exports.promoteToHost = async (req, res) => {
   const { id } = req.params;

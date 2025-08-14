@@ -1,5 +1,6 @@
 const pool = require('../db');
 const { createNotification } = require('./notificationsController');
+const { getIo } = require('../socket');
 
 // USERS
 exports.getAllUsers = async (req, res) => {
@@ -15,15 +16,25 @@ exports.getAllUsers = async (req, res) => {
 exports.banUser = async (req, res) => {
   const { userId } = req.params;
   try {
+    // 1️⃣ Ban the user in the database
     await pool.query('CALL sp_ban_user(?)', [userId]);
 
-    // Send notification to the banned user
+    // 2️⃣ Send a notification to the banned user
     await createNotification({
       userId,
       message: 'Your account has been banned by an administrator.',
       type: 'account'
     });
 
+    // 3️⃣ Emit a real-time ban event via Socket.IO
+    const io = getIo();
+    if (io) {
+      io.to(`user_${userId}`).emit('banned', {
+        message: 'You have been banned. You will be logged out immediately.'
+      });
+    }
+
+    // 4️⃣ Respond to admin
     res.json({ message: 'User banned successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Error banning user', error: err });
@@ -33,14 +44,25 @@ exports.banUser = async (req, res) => {
 exports.unbanUser = async (req, res) => {
   const { userId } = req.params;
   try {
+    // 1️⃣ Unban the user in the database
     await pool.query('CALL sp_unban_user(?)', [userId]);
 
+    // 2️⃣ Send a notification to the user
     await createNotification({
       userId,
       message: 'Your account has been reactivated. You may now log in.',
       type: 'account'
     });
 
+    // 3️⃣ Emit a real-time unban event via Socket.IO
+    const io = getIo();
+    if (io) {
+      io.to(`user_${userId}`).emit('unbanned', {
+        message: 'Your account has been reactivated. You can now log in.'
+      });
+    }
+
+    // 4️⃣ Respond to admin
     res.json({ message: 'User unbanned successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Error unbanning user', error: err });
@@ -59,18 +81,13 @@ exports.checkBanStatus = async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        if (rows[0].is_banned === 1) {
-            return res.status(403).json({ message: "User is banned" });
-        }
-
-        res.status(200).json({ message: "User is active" });
+        // ✅ Always return 200, with banned boolean
+        res.status(200).json({ banned: rows[0].is_banned === 1 });
     } catch (error) {
         console.error("Error checking ban status:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };
-
-
 
 exports.updateUserRole = async (req, res) => {
   const userId = req.body.userId || req.params.userId;

@@ -104,7 +104,17 @@ function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      <ToastContainer />
+       {/* ✅ Toast notifications */}
+      <ToastContainer 
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={true}
+        closeOnClick
+        pauseOnHover
+        draggable
+        theme="light"
+      />
     </SocketProvider>
   );
 }
