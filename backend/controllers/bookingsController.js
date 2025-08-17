@@ -1,5 +1,6 @@
 const pool = require('../db');
 const { createNotification } = require('./notificationsController');
+const autoCompleteBookings = require('../utils/autoCompleteBookings');
 
 exports.createBooking = async (req, res) => {
   const clientId = req.user.id;
@@ -42,6 +43,7 @@ exports.createBooking = async (req, res) => {
 exports.getBookingsByClient = async (req, res) => {
   const clientId = req.user.id;
   try {
+    await autoCompleteBookings(); // 🔥 auto-fix statuses first
     const [rows] = await pool.query('CALL sp_get_bookings_by_client(?)', [clientId]);
     res.json(rows[0]);
   } catch (error) {
@@ -54,25 +56,17 @@ exports.getBookingsByClient = async (req, res) => {
 exports.getBookingsByHost = async (req, res) => {
   try {
     const hostId = req.user?.id;
-    if (!hostId) {
-      return res.status(401).json({ message: "Unauthorized: Host ID missing" });
-    }
+    if (!hostId) return res.status(401).json({ message: "Unauthorized: Host ID missing" });
 
-    const [rows] = await pool.query(
-      "CALL sp_get_bookings_by_host(?)",
-      [hostId]
-    );
+    await autoCompleteBookings(); // 🔥 auto-complete before fetching
+    const [rows] = await pool.query("CALL sp_get_bookings_by_host(?)", [hostId]);
 
     res.json(rows[0] || []);
   } catch (err) {
     console.error("Error fetching host bookings:", err);
-    res.status(500).json({
-      message: "Internal server error",
-      error: err.message,
-    });
+    res.status(500).json({ message: "Internal server error", error: err.message });
   }
 };
-
 // Get bookings by listing (for availability calendar)
 exports.getBookingsByListing = async (req, res) => {
   try {
@@ -150,10 +144,12 @@ exports.updateBookingStatus = async (req, res) => {
       }
 
       notificationsToSend.push({
-        userId: booking.client_id,
-        message: `Your booking for '${listing.title}' has been ${status}.`,
-        type: status === 'confirmed' ? 'booking_approved' : 'booking_declined'
-      });
+    userId: booking.client_id,
+    message: status === 'confirmed'
+      ? `✅ Your booking for '${listing.title}' has been approved by the host.`
+      : `❌ Your booking for '${listing.title}' has been declined by the host.`,
+    type: status === 'confirmed' ? 'booking_approved' : 'booking_declined'
+  });
     }
 
     if (userRole === 'admin' && !['cancelled', 'confirmed', 'rejected'].includes(status)) {
@@ -208,26 +204,26 @@ exports.getBookingHistory = async (req, res) => {
   }
 };
 
-exports.markAsCompleted = async (req, res) => {
-  const bookingId = req.params.id;
+// exports.markAsCompleted = async (req, res) => {
+//   const bookingId = req.params.id;
 
-  try {
-    await pool.query('CALL sp_update_booking_status(?, ?)', [bookingId, 'completed']);
-    res.json({ message: 'Booking marked as completed' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to mark as completed', error: err.message });
-  }
-};
+//   try {
+//     await pool.query('CALL sp_update_booking_status(?, ?)', [bookingId, 'completed']);
+//     res.json({ message: 'Booking marked as completed' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to mark as completed', error: err.message });
+//   }
+// };
 
-exports.markBookingCompleted = async (req, res) => {
-  const { bookingId } = req.params;
+// exports.markBookingCompleted = async (req, res) => {
+//   const { bookingId } = req.params;
 
-  try {
-    await pool.query('CALL sp_mark_booking_completed(?)', [bookingId]);
-    res.json({ message: 'Booking marked as completed' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to complete booking', error: err.message });
-  }
-};
+//   try {
+//     await pool.query('CALL sp_mark_booking_completed(?)', [bookingId]);
+//     res.json({ message: 'Booking marked as completed' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Failed to complete booking', error: err.message });
+//   }
+// };

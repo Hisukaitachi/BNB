@@ -12,8 +12,8 @@ router.get('/listing/:listingId', bookingsController.getBookingsByListing);
 router.get("/booked-dates/:listingId", bookingsController.getBookedDatesByListing);
 router.put('/:id/status', auth, bookingsController.updateBookingStatus);
 router.get('/:id/history', auth, bookingsController.getBookingHistory);
-router.put('/:id/complete', auth, bookingsController.markAsCompleted);
-router.put('/:bookingId/complete', auth, bookingsController.markBookingCompleted);
+// router.put('/:id/complete', auth, bookingsController.markAsCompleted);
+// router.put('/:bookingId/complete', auth, bookingsController.markBookingCompleted);
 
 module.exports = router;
 

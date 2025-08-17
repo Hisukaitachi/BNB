@@ -5,16 +5,18 @@ const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const http = require('http');
 const { initializeSocket } = require('./socket');
-
+const startCronJobs = require('./cronJobs');
 const app = express();
 const server = http.createServer(app);
 
 // ✅ Log OpenCage Key once (for debug – remove in prod)
 console.log('OpenCage API Key:', process.env.OPENCAGE_API_KEY);
 
-// Initialize Socket.IO + Global onlineUsers
+// Initialize Socket.IO + Global onlineUsers & cronJobs
 initializeSocket(server);
+startCronJobs();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());

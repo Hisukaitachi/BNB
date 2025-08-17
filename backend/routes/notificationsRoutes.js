@@ -9,4 +9,5 @@ router.patch('/read-all', auth, notificationsController.markAllAsRead);
 
 router.patch('/:id/read', auth, notificationsController.markAsRead);
 
+// router.get("/:userId/unread-count", auth, notificationsController.getUnreadCount)
 module.exports = router;
