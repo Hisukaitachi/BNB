@@ -1,47 +1,64 @@
 const db = require('../db');
+const catchAsync = require('../utils/catchAsync');
+const { AppError } = require('../middleware/errorHandler');
 
-exports.addFavorite = async (req, res) => {
+exports.addFavorite = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const listingId = req.params.listingId;
 
-  try {
-    await db.query(
-      'INSERT IGNORE INTO favorites (user_id, listing_id) VALUES (?, ?)',
-      [userId, listingId]
-    );
-    res.status(201).json({ message: 'Added to favorites' });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to add favorite', error: err.message });
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
-};
 
-exports.getFavorites = async (req, res) => {
+  await pool.query(
+    'INSERT IGNORE INTO favorites (user_id, listing_id) VALUES (?, ?)',
+    [userId, listingId]
+  );
+  
+  res.status(201).json({
+    status: 'success',
+    message: 'Added to favorites'
+  });
+});
+
+exports.getFavorites = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
 
-  try {
-    const [rows] = await db.query(
-      `SELECT l.* FROM listings l
-       JOIN favorites f ON l.id = f.listing_id
-       WHERE f.user_id = ?`,
-      [userId]
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch favorites', error: err.message });
-  }
-};
+  const [rows] = await pool.query(
+    `SELECT l.* FROM listings l
+     JOIN favorites f ON l.id = f.listing_id
+     WHERE f.user_id = ?`,
+    [userId]
+  );
+  
+  res.status(200).json({
+    status: 'success',
+    results: rows.length,
+    data: {
+      favorites: rows
+    }
+  });
+});
 
-exports.removeFavorite = async (req, res) => {
+exports.removeFavorite = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const listingId = req.params.listingId;
 
-  try {
-    await db.query(
-      'DELETE FROM favorites WHERE user_id = ? AND listing_id = ?',
-      [userId, listingId]
-    );
-    res.json({ message: 'Removed from favorites' });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to remove favorite', error: err.message });
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
-};
+
+  const [result] = await pool.query(
+    'DELETE FROM favorites WHERE user_id = ? AND listing_id = ?',
+    [userId, listingId]
+  );
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('Favorite not found', 404));
+  }
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Removed from favorites'
+  });
+});

@@ -1,92 +1,114 @@
 const pool = require('../db');
 const { getIo, getOnlineUsers } = require('../socket');
+const catchAsync = require('../utils/catchAsync');
+const { AppError } = require('../middleware/errorHandler');
 
-exports.sendMessage = async (req, res) => {
+exports.sendMessage = catchAsync(async (req, res, next) => {
   const senderId = req.user.id;
   const { receiverId, message } = req.body;
 
-  try {
-    await pool.query('CALL sp_send_message(?, ?, ?)', [senderId, receiverId, message]);
-
-    const newMessage = {
-      sender_id: senderId,
-      receiver_id: receiverId,
-      message,
-      is_read: 0,
-      created_at: new Date()
-    };
-
-    const io = getIo();
-    const onlineUsers = getOnlineUsers();
-
-    const receiverSocketId = onlineUsers[receiverId];
-    const senderSocketId = onlineUsers[senderId];
-
-    // Real-time message for the receiver's chat window
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('receiveMessage', newMessage);
-      io.to(receiverSocketId).emit('updateInbox'); // <--- Add this for inbox refresh
-    }
-
-    // Optional: Update sender's inbox too (for last message preview)
-    if (senderSocketId) {
-      io.to(senderSocketId).emit('updateInbox');
-    }
-
-    res.json({ message: 'Message sent', data: newMessage });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to send message', error: err.message });
+  if (!receiverId || !message) {
+    return next(new AppError('Receiver ID and message are required', 400));
   }
-};
 
-exports.getConversation = async (req, res) => {
+  if (!message.trim()) {
+    return next(new AppError('Message cannot be empty', 400));
+  }
+
+  await pool.query('CALL sp_send_message(?, ?, ?)', [senderId, receiverId, message]);
+
+  const newMessage = {
+    sender_id: senderId,
+    receiver_id: receiverId,
+    message,
+    is_read: 0,
+    created_at: new Date()
+  };
+
+  const io = getIo();
+  const onlineUsers = getOnlineUsers();
+
+  const receiverSocketId = onlineUsers[receiverId];
+  const senderSocketId = onlineUsers[senderId];
+
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit('receiveMessage', newMessage);
+    io.to(receiverSocketId).emit('updateInbox');
+  }
+
+  if (senderSocketId) {
+    io.to(senderSocketId).emit('updateInbox');
+  }
+
+  res.status(201).json({
+    status: 'success',
+    message: 'Message sent successfully',
+    data: {
+      message: newMessage
+    }
+  });
+});
+
+exports.getConversation = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const { otherUserId } = req.params;
 
-  try {
-    const [rows] = await pool.query('CALL sp_get_conversation(?, ?)', [userId, otherUserId]);
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to fetch conversation', error: err.message });
+  if (!otherUserId || isNaN(otherUserId)) {
+    return next(new AppError('Valid user ID is required', 400));
   }
-};
 
-exports.getInbox = async (req, res) => {
+  const [rows] = await pool.query('CALL sp_get_conversation(?, ?)', [userId, otherUserId]);
+  
+  res.status(200).json({
+    status: 'success',
+    results: rows[0].length,
+    data: {
+      messages: rows[0]
+    }
+  });
+});
+
+exports.getInbox = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
 
-  try {
-    const [rows] = await pool.query('CALL sp_get_inbox(?)', [userId]);
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to fetch inbox', error: err.message });
-  }
-};
+  const [rows] = await pool.query('CALL sp_get_inbox(?)', [userId]);
+  
+  res.status(200).json({
+    status: 'success',
+    results: rows[0].length,
+    data: {
+      conversations: rows[0]
+    }
+  });
+});
 
-exports.markAsRead = async (req, res) => {
+exports.markAsRead = catchAsync(async (req, res, next) => {
   const messageId = req.params.id;
 
-  try {
-    await pool.query('CALL sp_mark_message_as_read(?)', [messageId]);
-    res.json({ message: 'Message marked as read' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to mark as read', error: err.message });
+  if (!messageId || isNaN(messageId)) {
+    return next(new AppError('Valid message ID is required', 400));
   }
-};
 
-exports.markConversationAsRead = async (req, res) => {
+  await pool.query('CALL sp_mark_message_as_read(?)', [messageId]);
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Message marked as read'
+  });
+});
+
+exports.markConversationAsRead = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const { otherUserId } = req.params;
 
-  try {
-    await pool.query('CALL sp_mark_conversation_as_read(?, ?)', [userId, otherUserId]);
-    res.json({ message: 'Conversation marked as read' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to mark conversation as read', error: err.message });
+  if (!otherUserId || isNaN(otherUserId)) {
+    return next(new AppError('Valid user ID is required', 400));
   }
-};
+
+  await pool.query('CALL sp_mark_conversation_as_read(?, ?)', [userId, otherUserId]);
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Conversation marked as read'
+  });
+});

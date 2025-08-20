@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "../../api/axios";
 import ListingMap from "../../components/ListingMap";
-import BookingCalendar from "../../pages/user/BookingCalendar";
 import DatePicker from "react-datepicker"; // ✅ NEW
 import "react-datepicker/dist/react-datepicker.css"; // ✅ NEW
 
@@ -194,8 +193,6 @@ useEffect(() => {
         </p>
       )}
       <h1>{listing.title}</h1>
-      {/* Calendar Component */}
-      <BookingCalendar listingId={id} />
 
       <button
         onClick={toggleFavorite}

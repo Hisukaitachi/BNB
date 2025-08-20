@@ -1,236 +1,306 @@
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const {sendVerificationCode} = require('../utils/emailService');
-const {sendResetCode} = require('../utils/emailService');
+const {sendVerificationCode, sendResetCode} = require('../utils/emailService');
+const catchAsync = require('../utils/catchAsync');
+const { AppError } = require('../middleware/errorHandler');
 
-exports.createUser = async (req, res) => {
+exports.createUser = catchAsync(async (req, res, next) => {
   const { name, email, password } = req.body;
 
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-    const [rows] = await pool.query(
-      'INSERT INTO users (name, email, password, role, verification_code) VALUES (?, ?, ?, ?, ?)',
-      [name, email, hashedPassword, 'client', code]
-    );
-
-    await sendVerificationCode(email, code);
-
-    res.status(201).json({ message: 'User created. Verification code sent to email.', userId: rows.insertId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  // Basic validation (detailed validation will be in middleware later)
+  if (!name || !email || !password) {
+    return next(new AppError('Name, email, and password are required', 400));
   }
-};
 
-exports.verifyEmail = async (req, res) => {
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+  const [rows] = await pool.query(
+    'INSERT INTO users (name, email, password, role, verification_code) VALUES (?, ?, ?, ?, ?)',
+    [name, email, hashedPassword, 'client', code]
+  );
+
+  await sendVerificationCode(email, code);
+
+  res.status(201).json({
+    status: 'success',
+    message: 'User created successfully. Verification code sent to email.',
+    data: {
+      userId: rows.insertId,
+      email: email
+    }
+  });
+});
+
+exports.verifyEmail = catchAsync(async (req, res, next) => {
   const { email, code } = req.body;
 
-  try {
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (users.length === 0) return res.status(400).json({ message: 'User not found' });
-
-    const user = users[0];
-
-    if (user.verification_code !== code) {
-      return res.status(400).json({ message: 'Invalid verification code' });
-    }
-
-    await pool.query('UPDATE users SET is_verified = 1, verification_code = NULL WHERE id = ?', [user.id]);
-
-    res.json({ message: 'Email verified successfully' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (!email || !code) {
+    return next(new AppError('Email and verification code are required', 400));
   }
-};
 
-exports.sendResetPasswordCode = async (req, res) => {
+  const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+  
+  if (users.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  const user = users[0];
+
+  if (user.verification_code !== code) {
+    return next(new AppError('Invalid verification code', 400));
+  }
+
+  await pool.query('UPDATE users SET is_verified = 1, verification_code = NULL WHERE id = ?', [user.id]);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Email verified successfully'
+  });
+});
+
+exports.sendResetPasswordCode = catchAsync(async (req, res, next) => {
   const { email } = req.body;
 
-  try {
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (users.length === 0) return res.status(400).json({ message: 'Email not found' });
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await pool.query('UPDATE users SET reset_code = ? WHERE email = ?', [code, email]);
-
-    await sendResetCode(email, code);
-    res.json({ message: 'Reset code sent to your email' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  if (!email) {
+    return next(new AppError('Email is required', 400));
   }
-};
 
-exports.resetPassword = async (req, res) => {
+  const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+  
+  if (users.length === 0) {
+    return next(new AppError('No user found with that email address', 404));
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  await pool.query('UPDATE users SET reset_code = ? WHERE email = ?', [code, email]);
+
+  await sendResetCode(email, code);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Password reset code sent to your email'
+  });
+});
+
+
+exports.resetPassword = catchAsync(async (req, res, next) => {
   const { email, code, newPassword } = req.body;
 
-  try {
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (users.length === 0) return res.status(400).json({ message: 'Email not found' });
-
-    const user = users[0];
-    if (user.reset_code !== code) {
-      return res.status(400).json({ message: 'Invalid reset code' });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    await pool.query(
-      'UPDATE users SET password = ?, reset_code = NULL WHERE email = ?',
-      [hashedPassword, email]
-    );
-
-    res.json({ message: 'Password reset successful' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (!email || !code || !newPassword) {
+    return next(new AppError('Email, code, and new password are required', 400));
   }
-};
+
+  const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+  
+  if (users.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  const user = users[0];
+  if (user.reset_code !== code) {
+    return next(new AppError('Invalid reset code', 400));
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await pool.query(
+    'UPDATE users SET password = ?, reset_code = NULL WHERE email = ?',
+    [hashedPassword, email]
+  );
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Password reset successful'
+  });
+});
 
 console.log("Login route hit");
-exports.loginUser = async (req, res) => {
+exports.loginUser = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
-  try {
-    const [users] = await pool.query(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+  if (!email || !password) {
+    return next(new AppError('Email and password are required', 400));
+  }
 
-    if (users.length === 0) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+  const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
 
-    const user = users[0];
+  if (users.length === 0) {
+    return next(new AppError('Invalid email or password', 401));
+  }
 
-    // 🔹 Check if banned
-    if (user.is_banned === 1) {
-      return res.status(403).json({ message: 'Your account has been banned. Please contact support.' });
-    }
+  const user = users[0];
 
-    const isMatch = await bcrypt.compare(password, user.password);
+  // Check if banned
+  if (user.is_banned === 1) {
+    return next(new AppError('Your account has been banned. Please contact support.', 403));
+  }
 
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+  const isMatch = await bcrypt.compare(password, user.password);
 
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET || 'your_jwt_secret',
-      { expiresIn: '1d' }
-    );
+  if (!isMatch) {
+    return next(new AppError('Invalid email or password', 401));
+  }
 
-    res.json({
+  const token = jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET || 'your_jwt_secret',
+    { expiresIn: '1d' }
+  );
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Login successful',
+    data: {
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.checkMyBanStatus = async (req, res) => {
-  try {
-    const userId = req.user.id; // from token middleware
-    const [rows] = await pool.query(
-      "SELECT is_banned FROM users WHERE id = ?",
-      [userId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role 
+      }
     }
+  });
+});
 
-    // Always return 200 with banned boolean
-    res.status(200).json({ banned: rows[0].is_banned === 1 });
-  } catch (err) {
-    console.error("Error checking ban status:", err);
-    res.status(500).json({ message: "Internal server error" });
+
+exports.checkMyBanStatus = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+  
+  const [rows] = await pool.query('SELECT is_banned FROM users WHERE id = ?', [userId]);
+
+  if (rows.length === 0) {
+    return next(new AppError('User not found', 404));
   }
-};
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      banned: rows[0].is_banned === 1
+    }
+  });
+});
 
 
-exports.promoteToHost = async (req, res) => {
+exports.promoteToHost = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
-  try {
-    await pool.query(
-      'UPDATE users SET role = "host" WHERE id = ?',
-      [id]
-    );
-
-    res.json({ message: 'User promoted to host' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  if (!id) {
+    return next(new AppError('User ID is required', 400));
   }
-};
 
-exports.demoteToClient = async (req, res) => {
+  const [result] = await pool.query('UPDATE users SET role = "host" WHERE id = ?', [id]);
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'User promoted to host successfully'
+  });
+});
+
+exports.demoteToClient = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
-  try {
-    await pool.query(
-      'UPDATE users SET role = "client" WHERE id = ?',
-      [id]
-    );
-
-    res.json({ message: 'User demoted to client' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  if (!id) {
+    return next(new AppError('User ID is required', 400));
   }
-};
 
-exports.getMyProfile = async (req, res) => {
-  try {
-    const userId = req.user.id;
+  const [result] = await pool.query('UPDATE users SET role = "client" WHERE id = ?', [id]);
 
-    const [rows] = await pool.query('SELECT id, name, email, role FROM users WHERE id = ?', [userId]);
+  if (result.affectedRows === 0) {
+    return next(new AppError('User not found', 404));
+  }
 
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+  res.status(200).json({
+    status: 'success',
+    message: 'User demoted to client successfully'
+  });
+});
+
+exports.getMyProfile = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+
+  const [rows] = await pool.query('SELECT id, name, email, role FROM users WHERE id = ?', [userId]);
+
+  if (rows.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      user: rows[0]
     }
+  });
+});
 
-    res.json(rows[0]);
-  } catch (error) {
-    console.error('Error fetching profile:', error);
-    res.status(500).json({ message: 'Error fetching profile', error: error.message });
-  }
-};
-
-
-// Update profile
-exports.updateMyProfile = async (req, res) => {
+exports.updateMyProfile = catchAsync(async (req, res, next) => {
   const { name, email } = req.body;
+  const userId = req.user.id;
 
-  try {
-    await pool.query('UPDATE users SET name = ?, email = ? WHERE id = ?', [name, email, req.user.id]);
-    res.json({ message: 'Profile updated' });
-  } catch (err) {
-    res.status(500).json({ message: 'Error updating profile', error: err.message });
+  if (!name && !email) {
+    return next(new AppError('At least one field (name or email) is required', 400));
   }
-};
 
-// Change password
-exports.changePassword = async (req, res) => {
+  let updateFields = [];
+  let values = [];
+
+  if (name) {
+    updateFields.push('name = ?');
+    values.push(name);
+  }
+  if (email) {
+    updateFields.push('email = ?');
+    values.push(email);
+  }
+
+  values.push(userId);
+
+  const [result] = await pool.query(
+    `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+    values
+  );
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Profile updated successfully'
+  });
+});
+
+exports.changePassword = catchAsync(async (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
+  const userId = req.user.id;
 
-  try {
-    const [rows] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
-    const user = rows[0];
-
-    const match = await bcrypt.compare(oldPassword, user.password);
-    if (!match) return res.status(400).json({ message: 'Old password is incorrect' });
-
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id]);
-
-    res.json({ message: 'Password changed' });
-  } catch (err) {
-    res.status(500).json({ message: 'Error changing password', error: err.message });
+  if (!oldPassword || !newPassword) {
+    return next(new AppError('Old password and new password are required', 400));
   }
-};
+
+  const [rows] = await pool.query('SELECT password FROM users WHERE id = ?', [userId]);
+  
+  if (rows.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  const user = rows[0];
+  const match = await bcrypt.compare(oldPassword, user.password);
+  
+  if (!match) {
+    return next(new AppError('Current password is incorrect', 400));
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashed, userId]);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Password changed successfully'
+  });
+});

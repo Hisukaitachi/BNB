@@ -1,14 +1,21 @@
+// backend/controllers/listingsController.js - Updated with new error handling
 const path = require('path');
 const pool = require('../db');
+const catchAsync = require('../utils/catchAsync');
+const { AppError } = require('../middleware/errorHandler');
 
-
-exports.createListing = async (req, res) => {
+exports.createListing = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
   const role = req.user.role;
   let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
   if (role !== 'host') {
-    return res.status(403).json({ message: 'Only hosts can create listings' });
+    return next(new AppError('Only hosts can create listings', 403));
+  }
+
+  // Basic validation
+  if (!title || !description || !price_per_night || !location) {
+    return next(new AppError('Title, description, price per night, and location are required', 400));
   }
 
   // If latitude or longitude are missing, try to geocode
@@ -21,120 +28,135 @@ exports.createListing = async (req, res) => {
   const imageUrl = req.files?.image ? `/uploads/${req.files.image[0].filename}` : null;
   const videoUrl = req.files?.video ? `/uploads/${req.files.video[0].filename}` : null;
 
-  try {
-    const [result] = await pool.query(
-      'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
-    );
+  const [result] = await pool.query(
+    'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
+  );
 
-    res.status(201).json({ message: 'Listing created successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to create listing', error: error.message });
-  }
-};
+  res.status(201).json({
+    status: 'success',
+    message: 'Listing created successfully',
+    data: {
+      listingId: result.insertId
+    }
+  });
+});
 
-exports.getAllListings = async (req, res) => {
-  try {
-    const [results] = await pool.query('CALL sp_get_all_listings()');
-    const listings = results[0]; 
+exports.getAllListings = catchAsync(async (req, res, next) => {
+  const [results] = await pool.query('CALL sp_get_all_listings()');
+  const listings = results[0];
 
-    res.json({ listings });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to fetch listings', error: err.message });
-  }
-};
+  res.status(200).json({
+    status: 'success',
+    results: listings.length,
+    data: {
+      listings
+    }
+  });
+});
 
-exports.getListingById = async (req, res) => {
+exports.getListingById = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
 
-  try {
-    const [result] = await pool.query('CALL sp_get_listing_by_id(?)', [listingId]);
-
-    const listing = result[0][0]; 
-
-    if (!listing) {
-      return res.status(404).json({ message: 'Listing not found' });
-    }
-    console.log('SP result:', result);
-    res.json(listing);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch listing', error: error.message });
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
 
-};
+  const [result] = await pool.query('CALL sp_get_listing_by_id(?)', [listingId]);
+  const listing = result[0][0];
 
-exports.getListingsByHost = async (req, res) => {
+  if (!listing) {
+    return next(new AppError('Listing not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      listing
+    }
+  });
+});
+
+exports.getListingsByHost = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
   const role = req.user.role;
 
   if (role !== 'host') {
-    return res.status(403).json({ message: 'Only hosts can view their listings' });
+    return next(new AppError('Only hosts can view their listings', 403));
   }
 
-  try {
-    const [rows] = await pool.query('CALL sp_get_listings_by_host(?)', [hostId]);
-    res.json(rows[0]);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch host listings', error: error.message });
-  }
+  const [rows] = await pool.query('CALL sp_get_listings_by_host(?)', [hostId]);
 
-  console.log('req.user:', req.user);
+  res.status(200).json({
+    status: 'success',
+    results: rows[0].length,
+    data: {
+      listings: rows[0]
+    }
+  });
+});
 
-};
-
-exports.updateListing = async (req, res) => {
+exports.updateListing = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
   let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
-  try {
-    // If lat/lng not provided, attempt to geocode
-    if (!latitude || !longitude) {
-      const coords = await getCoordinatesFromLocation(location);
-      latitude = coords.latitude;
-      longitude = coords.longitude;
-    }
-
-    // Call stored procedure
-    const [result] = await pool.query(
-      'CALL sp_update_listing(?, ?, ?, ?, ?, ?, ?)',
-      [listingId, title, description, price_per_night, location, latitude, longitude]
-    );
-
-    res.json({ message: 'Listing updated successfully' });
-  } catch (error) {
-    console.error('Error updating listing:', error);
-    res.status(500).json({ message: 'Failed to update listing', error: error.message });
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
-};
 
-exports.deleteListing = async (req, res) => {
+  // Check if at least one field is provided
+  if (!title && !description && !price_per_night && !location && !latitude && !longitude) {
+    return next(new AppError('At least one field must be provided for update', 400));
+  }
+
+  // If lat/lng not provided, attempt to geocode
+  if (location && (!latitude || !longitude)) {
+    const coords = await getCoordinatesFromLocation(location);
+    latitude = coords.latitude;
+    longitude = coords.longitude;
+  }
+
+  const [result] = await pool.query(
+    'CALL sp_update_listing(?, ?, ?, ?, ?, ?, ?)',
+    [listingId, title, description, price_per_night, location, latitude, longitude]
+  );
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('Listing not found or no changes made', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Listing updated successfully'
+  });
+});
+
+exports.deleteListing = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
   const role = req.user.role;
   const { id } = req.params;
 
   if (role !== 'host') {
-    return res.status(403).json({ message: 'Only hosts can delete listings' });
+    return next(new AppError('Only hosts can delete listings', 403));
   }
 
-  try {
-    const [result] = await pool.query('CALL sp_delete_listing(?, ?)', [id, hostId]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Listing not found or not owned by you' });
-    }
-
-    res.json({ message: 'Listing deleted successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to delete listing', error: error.message });
+  if (!id || isNaN(id)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
-};
 
-exports.searchListings = async (req, res) => {
+  const [result] = await pool.query('CALL sp_delete_listing(?, ?)', [id, hostId]);
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('Listing not found or you do not have permission to delete it', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Listing deleted successfully'
+  });
+});
+
+exports.searchListings = catchAsync(async (req, res, next) => {
   const {
     city,
     price_min,
@@ -163,12 +185,12 @@ exports.searchListings = async (req, res) => {
   }
 
   // Price filters
-  if (price_min) {
+  if (price_min && !isNaN(price_min)) {
     baseQuery += ' AND l.price_per_night >= ?';
     queryParams.push(price_min);
     countParams.push(price_min);
   }
-  if (price_max) {
+  if (price_max && !isNaN(price_max)) {
     baseQuery += ' AND l.price_per_night <= ?';
     queryParams.push(price_max);
     countParams.push(price_max);
@@ -182,7 +204,7 @@ exports.searchListings = async (req, res) => {
   }
 
   // Rating filter
-  if (min_rating) {
+  if (min_rating && !isNaN(min_rating)) {
     baseQuery += ' AND l.average_rating >= ?';
     queryParams.push(min_rating);
     countParams.push(min_rating);
@@ -216,45 +238,52 @@ exports.searchListings = async (req, res) => {
   // Count query
   const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
 
-  try {
-    const [listings] = await pool.query(listingsQuery, queryParams);
-    const [countResult] = await pool.query(countQuery, countParams);
+  const [listings] = await pool.query(listingsQuery, queryParams);
+  const [countResult] = await pool.query(countQuery, countParams);
 
-    res.json({
+  res.status(200).json({
+    status: 'success',
+    results: listings.length,
+    data: {
       listings,
-      total: countResult[0].total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-    });
-  } catch (err) {
-    console.error('Search error:', err);
-    res.status(500).json({ message: 'Error fetching listings', error: err.message });
-  }
-};
+      pagination: {
+        total: countResult[0].total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+      }
+    }
+  });
+});
 
-exports.getNearbyListings = async (req, res) => {
+exports.getNearbyListings = catchAsync(async (req, res, next) => {
   const { lat, lng } = req.query;
   const radius = 10; // 10 km radius
 
-  try {
-    const [results] = await pool.query(`
-      SELECT *, (
-        6371 * acos(
-          cos(radians(?)) *
-          cos(radians(latitude)) *
-          cos(radians(longitude) - radians(?)) +
-          sin(radians(?)) *
-          sin(radians(latitude))
-        )
-      ) AS distance
-      FROM listings
-      HAVING distance < ?
-      ORDER BY distance ASC
-    `, [lat, lng, lat, radius]);
-
-    res.json({ listings: results });
-  } catch (error) {
-    console.error("Nearby listings error:", error);
-    res.status(500).json({ message: "Failed to fetch nearby listings", error: error.message });
+  if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+    return next(new AppError('Valid latitude and longitude are required', 400));
   }
-};
+
+  const [results] = await pool.query(`
+    SELECT *, (
+      6371 * acos(
+        cos(radians(?)) *
+        cos(radians(latitude)) *
+        cos(radians(longitude) - radians(?)) +
+        sin(radians(?)) *
+        sin(radians(latitude))
+      )
+    ) AS distance
+    FROM listings
+    HAVING distance < ?
+    ORDER BY distance ASC
+  `, [lat, lng, lat, radius]);
+
+  res.status(200).json({
+    status: 'success',
+    results: results.length,
+    data: {
+      listings: results
+    }
+  });
+});

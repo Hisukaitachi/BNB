@@ -1,92 +1,103 @@
-// reviewsController.js using Stored Procedures
 const pool = require('../db');
+const catchAsync = require('../utils/catchAsync');
+const { AppError } = require('../middleware/errorHandler');
 
-// ========== CREATE REVIEW ==========
-exports.createReview = async (req, res) => {
+exports.createReview = catchAsync(async (req, res, next) => {
   const { booking_id, reviewee_id, rating, comment, type } = req.body;
   const reviewer_id = req.user.id;
 
+  if (!booking_id || !reviewee_id || !rating || !comment || !type) {
+    return next(new AppError('All fields are required', 400));
+  }
+
   if (!rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+    return next(new AppError('Rating must be between 1 and 5', 400));
   }
 
   if (!comment || comment.length < 5 || comment.length > 300) {
-    return res.status(400).json({ message: 'Comment must be 5-300 characters long' });
+    return next(new AppError('Comment must be 5-300 characters long', 400));
   }
 
-  try {
-    const [result] = await pool.query(
-      'CALL sp_create_review_safe(?, ?, ?, ?, ?, ?)',
-      [booking_id, reviewer_id, reviewee_id, rating, comment, type]
-    );
+  await pool.query(
+    'CALL sp_create_review_safe(?, ?, ?, ?, ?, ?)',
+    [booking_id, reviewer_id, reviewee_id, rating, comment, type]
+  );
 
-    res.status(201).json({ message: 'Review created successfully' });
-  } catch (err) {
-    if (err.errno === 1644) {
-      return res.status(400).json({ message: err.sqlMessage }); // Custom SIGNAL error
+  res.status(201).json({
+    status: 'success',
+    message: 'Review created successfully'
+  });
+});
+
+exports.getAllReviews = catchAsync(async (req, res, next) => {
+  const [reviews] = await pool.query('CALL sp_get_all_reviews()');
+  
+  res.status(200).json({
+    status: 'success',
+    results: reviews[0].length,
+    data: {
+      reviews: reviews[0]
     }
-    console.error('[Create Review] Error:', err);
-    res.status(500).json({ message: 'Failed to create review', error: err.message });
-  }
-};
+  });
+});
 
-// ========== GET ALL REVIEWS (ADMIN) ==========
-exports.getAllReviews = async (req, res) => {
-  try {
-    const [reviews] = await pool.query('CALL sp_get_all_reviews()');
-    res.json(reviews[0]);
-  } catch (err) {
-    console.error('[Get All Reviews] Error:', err);
-    res.status(500).json({ message: 'Failed to fetch reviews', error: err.message });
-  }
-};
-
-// ========== GET REVIEWS FOR A LISTING ==========
-exports.getReviewsForListing = async (req, res) => {
+exports.getReviewsForListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
-  try {
-    const [rows] = await pool.query('CALL sp_get_reviews_for_listing(?)', [listingId]);
-    res.json({ reviews: rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error getting reviews" });
+  
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
   }
-};
 
+  const [rows] = await pool.query('CALL sp_get_reviews_for_listing(?)', [listingId]);
+  
+  res.status(200).json({
+    status: 'success',
+    results: rows[0].length,
+    data: {
+      reviews: rows[0]
+    }
+  });
+});
 
-
-// ========== GET MY REVIEWS ==========
-exports.getMyReviews = async (req, res) => {
+exports.getMyReviews = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
-  try {
-    const [written] = await pool.query('CALL sp_get_my_written_reviews(?)', [userId]);
-    const [received] = await pool.query('CALL sp_get_my_received_reviews(?)', [userId]);
-    res.json({ written: written[0], received: received[0] });
-  } catch (err) {
-    console.error('[Get My Reviews] Error:', err);
-    res.status(500).json({ message: 'Failed to fetch user reviews', error: err.message });
-  }
-};
+  
+  const [written] = await pool.query('CALL sp_get_my_written_reviews(?)', [userId]);
+  const [received] = await pool.query('CALL sp_get_my_received_reviews(?)', [userId]);
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      written: written[0],
+      received: received[0]
+    }
+  });
+});
 
-// ========== DELETE REVIEW ==========
-exports.deleteReview = async (req, res) => {
+exports.deleteReview = catchAsync(async (req, res, next) => {
   const reviewId = req.params.id;
   const userId = req.user.id;
   const userRole = req.user.role;
 
-  try {
-    const [rows] = await pool.query('CALL sp_get_review_by_id(?)', [reviewId]);
-    const review = rows[0][0];
-
-    if (!review) return res.status(404).json({ message: 'Review not found' });
-    if (userRole !== 'admin' && review.reviewer_id !== userId) {
-      return res.status(403).json({ message: 'Not authorized to delete this review' });
-    }
-
-    await pool.query('CALL sp_delete_review(?)', [reviewId]);
-    res.json({ message: 'Review deleted successfully' });
-  } catch (err) {
-    console.error('[Delete Review] Error:', err);
-    res.status(500).json({ message: 'Failed to delete review', error: err.message });
+  if (!reviewId || isNaN(reviewId)) {
+    return next(new AppError('Valid review ID is required', 400));
   }
-};
+
+  const [rows] = await pool.query('CALL sp_get_review_by_id(?)', [reviewId]);
+  const review = rows[0][0];
+
+  if (!review) {
+    return next(new AppError('Review not found', 404));
+  }
+
+  if (userRole !== 'admin' && review.reviewer_id !== userId) {
+    return next(new AppError('Not authorized to delete this review', 403));
+  }
+
+  await pool.query('CALL sp_delete_review(?)', [reviewId]);
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Review deleted successfully'
+  });
+});
