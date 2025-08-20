@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const notificationsController = require('../controllers/notificationsController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-router.get('/', auth, notificationsController.getMyNotifications);
+router.get('/', authenticateToken, notificationsController.getMyNotifications);
 
-router.patch('/read-all', auth, notificationsController.markAllAsRead);
+router.patch('/read-all', authenticateToken, notificationsController.markAllAsRead);
 
-router.patch('/:id/read', auth, notificationsController.markAsRead);
+router.patch('/:id/read', authenticateToken, notificationsController.markAsRead);
 
-// router.get("/:userId/unread-count", auth, notificationsController.getUnreadCount)
+// router.get("/:userId/unread-count",authenticateToken, notificationsController.getUnreadCount)
 module.exports = router;

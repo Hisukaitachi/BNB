@@ -2,12 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const reviewsController = require('../controllers/reviewsController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-router.post('/', auth, reviewsController.createReview);
-router.get('/my-reviews', auth, reviewsController.getMyReviews);
+router.post('/', authenticateToken, reviewsController.createReview);
+router.get('/my-reviews', authenticateToken, reviewsController.getMyReviews);
 router.get('/listing/:id', reviewsController.getReviewsForListing);
-router.get('/', auth, reviewsController.getAllReviews);
-router.delete('/:id', auth, reviewsController.deleteReview);
+router.get('/', authenticateToken, reviewsController.getAllReviews);
+router.delete('/:id', authenticateToken, reviewsController.deleteReview);
 
 module.exports = router;

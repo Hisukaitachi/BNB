@@ -1,9 +1,24 @@
+// backend/routes/usersRoutes.js - Updated with validation
 const express = require('express');
 const router = express.Router();
 const usersController = require('../controllers/usersController');
-const authenticate = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
+const { validate } = require('../middleware/validation');
 
-router.put('/:id/promote-admin', async (req, res) => {
+// Import validation schemas
+const {
+  registerSchema,
+  loginSchema,
+  verifyEmailSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  updateProfileSchema,
+  changePasswordSchema,
+  userRoleSchema
+} = require('../validation/userValidation');
+
+// Promote to admin route (no validation changes needed)
+router.put('/:id/promote-admin', validate(userRoleSchema), async (req, res) => {
   try {
     const [result] = await require('../db').query(
       'UPDATE users SET role = "admin" WHERE id = ?',
@@ -15,16 +30,23 @@ router.put('/:id/promote-admin', async (req, res) => {
   }
 });
 
-router.get('/me', authenticate, usersController.getMyProfile);
-router.put('/me', authenticate, usersController.updateMyProfile);
-router.put('/me/change-password', authenticate, usersController.changePassword);
-router.post('/forgot-password', usersController.sendResetPasswordCode);
-router.post('/reset-password', usersController.resetPassword);
-router.post('/verify-email', usersController.verifyEmail);
-router.post('/register', usersController.createUser);
-router.put('/:id/promote', usersController.promoteToHost);
-router.put('/:id/demote', usersController.demoteToClient);
-router.post('/login', usersController.loginUser);
-router.get("/check-my-ban", authenticate, usersController.checkMyBanStatus);
+// Protected routes
+router.get('/me', authenticateToken, usersController.getMyProfile);
+router.put('/me', authenticateToken, validate(updateProfileSchema), usersController.updateMyProfile);
+router.put('/me/change-password', authenticateToken, validate(changePasswordSchema), usersController.changePassword);
+
+// Public routes with validation
+router.post('/forgot-password', validate(forgotPasswordSchema), usersController.sendResetPasswordCode);
+router.post('/reset-password', validate(resetPasswordSchema), usersController.resetPassword);
+router.post('/verify-email', validate(verifyEmailSchema), usersController.verifyEmail);
+router.post('/register', validate(registerSchema), usersController.createUser);
+router.post('/login', validate(loginSchema), usersController.loginUser);
+
+// Admin routes with validation
+router.put('/:id/promote', validate(userRoleSchema), usersController.promoteToHost);
+router.put('/:id/demote', validate(userRoleSchema), usersController.demoteToClient);
+
+// Status check route
+router.get("/check-my-ban", authenticateToken, usersController.checkMyBanStatus);
 
 module.exports = router;

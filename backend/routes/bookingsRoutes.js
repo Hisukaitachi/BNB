@@ -1,19 +1,27 @@
+// backend/routes/bookingsRoutes.js - Updated with validation
 const express = require('express');
 const router = express.Router();
 const bookingsController = require('../controllers/bookingsController');
-const auth = require('../middleware/auth');
-const Host = require('../middleware/Host');
+const { authenticateToken } = require('../middleware/auth'); // Use specific function for auth
+const { validate } = require('../middleware/validation');
 
+// Import validation schemas
+const {
+  createBookingSchema,
+  updateBookingStatusSchema,
+  getBookingsByListingSchema,
+  getBookingHistorySchema
+} = require('../validation/bookingValidation');
 
-router.post('/', auth, bookingsController.createBooking); // Create a new booking
-router.get('/my-bookings', auth, bookingsController.getBookingsByClient);
-router.get('/host-bookings', auth, bookingsController.getBookingsByHost);
-router.get('/listing/:listingId', bookingsController.getBookingsByListing);
-router.get("/booked-dates/:listingId", bookingsController.getBookedDatesByListing);
-router.put('/:id/status', auth, bookingsController.updateBookingStatus);
-router.get('/:id/history', auth, bookingsController.getBookingHistory);
-// router.put('/:id/complete', auth, bookingsController.markAsCompleted);
-// router.put('/:bookingId/complete', auth, bookingsController.markBookingCompleted);
+// Protected routes with validation
+router.post('/', authenticateToken, validate(createBookingSchema), bookingsController.createBooking);
+router.get('/my-bookings', authenticateToken, bookingsController.getBookingsByClient);
+router.get('/host-bookings', authenticateToken, bookingsController.getBookingsByHost);
+router.put('/:id/status', authenticateToken, validate(updateBookingStatusSchema), bookingsController.updateBookingStatus);
+router.get('/:id/history', authenticateToken, validate(getBookingHistorySchema), bookingsController.getBookingHistory);
+
+// Public/semi-public routes with validation
+router.get('/listing/:listingId', validate(getBookingsByListingSchema), bookingsController.getBookingsByListing);
+router.get("/booked-dates/:listingId", validate(getBookingsByListingSchema), bookingsController.getBookedDatesByListing);
 
 module.exports = router;
-

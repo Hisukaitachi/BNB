@@ -1,4 +1,4 @@
-// backend/middleware/validation.js - Joi validation middleware
+// backend/middleware/validation.js - Fixed version based on your existing code
 const Joi = require('joi');
 const { AppError } = require('./errorHandler');
 
@@ -32,7 +32,12 @@ const validate = (schema) => {
         ? validationErrors[0].message
         : `Validation failed for ${validationErrors.length} fields`;
 
-      return next(new AppError(errorMessage, 400, 'VALIDATION_ERROR', { validationErrors }));
+      // Fixed: Use your existing AppError constructor (message, statusCode)
+      const appError = new AppError(errorMessage, 400);
+      appError.errorCode = 'VALIDATION_ERROR';
+      appError.details = { validationErrors };
+      
+      return next(appError);
     }
 
     // Replace request data with validated and sanitized data

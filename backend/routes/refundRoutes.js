@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const refundController = require('../controllers/refundController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-router.post('/', auth, refundController.refundPayment);
+router.post('/', authenticateToken, refundController.refundPayment);
 module.exports = router;

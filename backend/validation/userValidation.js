@@ -1,71 +1,32 @@
-// backend/validation/userValidation.js - User-specific validation schemas
+// backend/validation/userValidation.js - Based on your existing user controller
 const { Joi, commonSchemas } = require('../middleware/validation');
 
-// User registration validation
+// User registration validation (matches your createUser controller)
 const registerSchema = Joi.object({
-  firstName: Joi.string()
+  name: Joi.string()
     .trim()
     .min(2)
-    .max(50)
+    .max(100)
     .required()
     .messages({
-      'string.min': 'First name must be at least 2 characters',
-      'string.max': 'First name cannot exceed 50 characters',
-      'any.required': 'First name is required'
-    }),
-
-  lastName: Joi.string()
-    .trim()
-    .min(2)
-    .max(50)
-    .required()
-    .messages({
-      'string.min': 'Last name must be at least 2 characters',
-      'string.max': 'Last name cannot exceed 50 characters',
-      'any.required': 'Last name is required'
+      'string.min': 'Name must be at least 2 characters',
+      'string.max': 'Name cannot exceed 100 characters',
+      'any.required': 'Name is required'
     }),
 
   email: commonSchemas.email,
   
   password: commonSchemas.password,
 
-  confirmPassword: Joi.string()
-    .valid(Joi.ref('password'))
-    .required()
-    .messages({
-      'any.only': 'Passwords do not match',
-      'any.required': 'Password confirmation is required'
-    }),
-
-  phone: commonSchemas.phone.optional(),
-
-  dateOfBirth: Joi.date()
-    .max('now')
-    .min('1900-01-01')
-    .optional()
-    .messages({
-      'date.max': 'Date of birth cannot be in the future',
-      'date.min': 'Please provide a valid date of birth'
-    }),
-
   role: Joi.string()
-    .valid('guest', 'host')
-    .default('guest')
+    .valid('client', 'host', 'admin')
+    .default('client')
     .messages({
-      'any.only': 'Role must be either guest or host'
-    }),
-
-  // Terms acceptance
-  acceptTerms: Joi.boolean()
-    .valid(true)
-    .required()
-    .messages({
-      'any.only': 'You must accept the terms and conditions',
-      'any.required': 'Terms acceptance is required'
+      'any.only': 'Role must be client, host, or admin'
     })
 });
 
-// User login validation
+// User login validation (matches your loginUser controller)
 const loginSchema = Joi.object({
   email: commonSchemas.email,
   
@@ -73,73 +34,21 @@ const loginSchema = Joi.object({
     .required()
     .messages({
       'any.required': 'Password is required'
-    }),
-
-  rememberMe: Joi.boolean().default(false)
+    })
 });
 
-// Profile update validation
-const updateProfileSchema = Joi.object({
-  firstName: Joi.string()
-    .trim()
-    .min(2)
-    .max(50)
-    .optional(),
-
-  lastName: Joi.string()
-    .trim()
-    .min(2)
-    .max(50)
-    .optional(),
-
-  phone: commonSchemas.phone.optional(),
-
-  dateOfBirth: Joi.date()
-    .max('now')
-    .min('1900-01-01')
-    .optional(),
-
-  bio: Joi.string()
-    .max(500)
-    .optional()
-    .messages({
-      'string.max': 'Bio cannot exceed 500 characters'
-    }),
-
-  location: Joi.object({
-    city: Joi.string().trim().max(100),
-    country: Joi.string().trim().max(100),
-    coordinates: commonSchemas.coordinates.optional()
-  }).optional(),
-
-  // Profile preferences
-  preferences: Joi.object({
-    language: Joi.string().valid('en', 'es', 'fr', 'de').default('en'),
-    currency: Joi.string().valid('USD', 'EUR', 'GBP', 'PHP').default('USD'),
-    notifications: Joi.object({
-      email: Joi.boolean().default(true),
-      sms: Joi.boolean().default(false),
-      push: Joi.boolean().default(true)
-    }).default()
-  }).optional()
-});
-
-// Password change validation
-const changePasswordSchema = Joi.object({
-  currentPassword: Joi.string()
+// Email verification validation
+const verifyEmailSchema = Joi.object({
+  email: commonSchemas.email,
+  
+  code: Joi.string()
+    .length(6)
+    .pattern(/^[0-9]+$/)
     .required()
     .messages({
-      'any.required': 'Current password is required'
-    }),
-
-  newPassword: commonSchemas.password,
-
-  confirmNewPassword: Joi.string()
-    .valid(Joi.ref('newPassword'))
-    .required()
-    .messages({
-      'any.only': 'New passwords do not match',
-      'any.required': 'New password confirmation is required'
+      'string.length': 'Verification code must be 6 digits',
+      'string.pattern.base': 'Verification code must contain only numbers',
+      'any.required': 'Verification code is required'
     })
 });
 
@@ -150,68 +59,65 @@ const forgotPasswordSchema = Joi.object({
 
 // Password reset validation
 const resetPasswordSchema = Joi.object({
-  token: Joi.string()
+  email: commonSchemas.email,
+  
+  code: Joi.string()
+    .length(6)
+    .pattern(/^[0-9]+$/)
     .required()
     .messages({
-      'any.required': 'Reset token is required'
+      'string.length': 'Reset code must be 6 digits',
+      'string.pattern.base': 'Reset code must contain only numbers',
+      'any.required': 'Reset code is required'
     }),
 
-  newPassword: commonSchemas.password,
-
-  confirmNewPassword: Joi.string()
-    .valid(Joi.ref('newPassword'))
-    .required()
-    .messages({
-      'any.only': 'Passwords do not match',
-      'any.required': 'Password confirmation is required'
-    })
+  newPassword: commonSchemas.password
 });
 
-// Email verification validation
-const verifyEmailSchema = Joi.object({
-  token: Joi.string()
-    .required()
-    .messages({
-      'any.required': 'Verification token is required'
-    })
-});
-
-// User search/filter validation
-const userFilterSchema = Joi.object({
-  ...commonSchemas.pagination.extract(['page', 'limit']).describe(),
-  
-  search: Joi.string()
+// Profile update validation (matches your updateMyProfile controller)
+const updateProfileSchema = Joi.object({
+  name: Joi.string()
     .trim()
     .min(2)
-    .optional()
-    .messages({
-      'string.min': 'Search term must be at least 2 characters'
-    }),
-
-  role: Joi.string()
-    .valid('guest', 'host', 'admin')
+    .max(100)
     .optional(),
 
-  verified: Joi.boolean().optional(),
+  email: Joi.string()
+    .email({ minDomainSegments: 2 })
+    .optional()
+    .messages({
+      'string.email': 'Please provide a valid email address'
+    })
+});
 
-  active: Joi.boolean().optional(),
+// Change password validation (matches your changePassword controller)
+const changePasswordSchema = Joi.object({
+  oldPassword: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'Current password is required'
+    }),
 
-  sortBy: Joi.string()
-    .valid('createdAt', 'firstName', 'lastName', 'email', 'lastLogin')
-    .default('createdAt'),
+  newPassword: commonSchemas.password
+});
 
-  sortOrder: Joi.string()
-    .valid('asc', 'desc')
-    .default('desc')
+// Promote/demote user validation
+const userRoleSchema = Joi.object({
+  id: Joi.number().integer().positive().required()
+    .messages({
+      'number.base': 'User ID must be a number',
+      'number.positive': 'User ID must be positive',
+      'any.required': 'User ID is required'
+    })
 });
 
 module.exports = {
   registerSchema,
   loginSchema,
-  updateProfileSchema,
-  changePasswordSchema,
+  verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  verifyEmailSchema,
-  userFilterSchema
+  updateProfileSchema,
+  changePasswordSchema,
+  userRoleSchema
 };

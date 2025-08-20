@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const favoritesController = require('../controllers/favoritesController');
-const authenticate = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-router.post('/:listingId', authenticate, favoritesController.addFavorite);
-router.get('/', authenticate, favoritesController.getFavorites);
-router.delete('/:listingId', authenticate, favoritesController.removeFavorite);
+router.post('/:listingId', authenticateToken, favoritesController.addFavorite);
+router.get('/', authenticateToken, favoritesController.getFavorites);
+router.delete('/:listingId', authenticateToken, favoritesController.removeFavorite);
 
 module.exports = router;

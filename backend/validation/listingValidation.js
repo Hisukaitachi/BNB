@@ -1,217 +1,180 @@
-// backend/validation/userValidation.js - User-specific validation schemas
+// backend/validation/listingValidation.js - Based on your listing controller
 const { Joi, commonSchemas } = require('../middleware/validation');
 
-// User registration validation
-const registerSchema = Joi.object({
-  firstName: Joi.string()
+// Create listing validation (matches your createListing controller)
+const createListingSchema = Joi.object({
+  title: Joi.string()
     .trim()
-    .min(2)
-    .max(50)
+    .min(5)
+    .max(200)
     .required()
     .messages({
-      'string.min': 'First name must be at least 2 characters',
-      'string.max': 'First name cannot exceed 50 characters',
-      'any.required': 'First name is required'
+      'string.min': 'Title must be at least 5 characters',
+      'string.max': 'Title cannot exceed 200 characters',
+      'any.required': 'Title is required'
     }),
 
-  lastName: Joi.string()
+  description: Joi.string()
     .trim()
-    .min(2)
-    .max(50)
+    .min(20)
+    .max(2000)
     .required()
     .messages({
-      'string.min': 'Last name must be at least 2 characters',
-      'string.max': 'Last name cannot exceed 50 characters',
-      'any.required': 'Last name is required'
+      'string.min': 'Description must be at least 20 characters',
+      'string.max': 'Description cannot exceed 2000 characters',
+      'any.required': 'Description is required'
     }),
 
-  email: commonSchemas.email,
-  
-  password: commonSchemas.password,
+  price_per_night: commonSchemas.price.required()
+    .messages({
+      'any.required': 'Price per night is required'
+    }),
 
-  confirmPassword: Joi.string()
-    .valid(Joi.ref('password'))
+  location: Joi.string()
+    .trim()
+    .min(5)
+    .max(255)
     .required()
     .messages({
-      'any.only': 'Passwords do not match',
-      'any.required': 'Password confirmation is required'
+      'string.min': 'Location must be at least 5 characters',
+      'string.max': 'Location cannot exceed 255 characters',
+      'any.required': 'Location is required'
     }),
 
-  phone: commonSchemas.phone.optional(),
-
-  dateOfBirth: Joi.date()
-    .max('now')
-    .min('1900-01-01')
+  latitude: Joi.number()
+    .min(-90)
+    .max(90)
     .optional()
     .messages({
-      'date.max': 'Date of birth cannot be in the future',
-      'date.min': 'Please provide a valid date of birth'
+      'number.min': 'Latitude must be between -90 and 90',
+      'number.max': 'Latitude must be between -90 and 90'
     }),
 
-  role: Joi.string()
-    .valid('guest', 'host')
-    .default('guest')
-    .messages({
-      'any.only': 'Role must be either guest or host'
-    }),
-
-  // Terms acceptance
-  acceptTerms: Joi.boolean()
-    .valid(true)
-    .required()
-    .messages({
-      'any.only': 'You must accept the terms and conditions',
-      'any.required': 'Terms acceptance is required'
-    })
-});
-
-// User login validation
-const loginSchema = Joi.object({
-  email: commonSchemas.email,
-  
-  password: Joi.string()
-    .required()
-    .messages({
-      'any.required': 'Password is required'
-    }),
-
-  rememberMe: Joi.boolean().default(false)
-});
-
-// Profile update validation
-const updateProfileSchema = Joi.object({
-  firstName: Joi.string()
-    .trim()
-    .min(2)
-    .max(50)
-    .optional(),
-
-  lastName: Joi.string()
-    .trim()
-    .min(2)
-    .max(50)
-    .optional(),
-
-  phone: commonSchemas.phone.optional(),
-
-  dateOfBirth: Joi.date()
-    .max('now')
-    .min('1900-01-01')
-    .optional(),
-
-  bio: Joi.string()
-    .max(500)
+  longitude: Joi.number()
+    .min(-180)
+    .max(180)
     .optional()
     .messages({
-      'string.max': 'Bio cannot exceed 500 characters'
-    }),
-
-  location: Joi.object({
-    city: Joi.string().trim().max(100),
-    country: Joi.string().trim().max(100),
-    coordinates: commonSchemas.coordinates.optional()
-  }).optional(),
-
-  // Profile preferences
-  preferences: Joi.object({
-    language: Joi.string().valid('en', 'es', 'fr', 'de').default('en'),
-    currency: Joi.string().valid('USD', 'EUR', 'GBP', 'PHP').default('USD'),
-    notifications: Joi.object({
-      email: Joi.boolean().default(true),
-      sms: Joi.boolean().default(false),
-      push: Joi.boolean().default(true)
-    }).default()
-  }).optional()
-});
-
-// Password change validation
-const changePasswordSchema = Joi.object({
-  currentPassword: Joi.string()
-    .required()
-    .messages({
-      'any.required': 'Current password is required'
-    }),
-
-  newPassword: commonSchemas.password,
-
-  confirmNewPassword: Joi.string()
-    .valid(Joi.ref('newPassword'))
-    .required()
-    .messages({
-      'any.only': 'New passwords do not match',
-      'any.required': 'New password confirmation is required'
+      'number.min': 'Longitude must be between -180 and 180',
+      'number.max': 'Longitude must be between -180 and 180'
     })
 });
 
-// Password reset request validation
-const forgotPasswordSchema = Joi.object({
-  email: commonSchemas.email
-});
-
-// Password reset validation
-const resetPasswordSchema = Joi.object({
-  token: Joi.string()
-    .required()
-    .messages({
-      'any.required': 'Reset token is required'
-    }),
-
-  newPassword: commonSchemas.password,
-
-  confirmNewPassword: Joi.string()
-    .valid(Joi.ref('newPassword'))
-    .required()
-    .messages({
-      'any.only': 'Passwords do not match',
-      'any.required': 'Password confirmation is required'
-    })
-});
-
-// Email verification validation
-const verifyEmailSchema = Joi.object({
-  token: Joi.string()
-    .required()
-    .messages({
-      'any.required': 'Verification token is required'
-    })
-});
-
-// User search/filter validation
-const userFilterSchema = Joi.object({
-  ...commonSchemas.pagination.extract(['page', 'limit']).describe(),
+// Update listing validation (matches your updateListing controller)
+const updateListingSchema = Joi.object({
+  id: commonSchemas.id.extract('id'),
   
-  search: Joi.string()
+  title: Joi.string()
     .trim()
-    .min(2)
-    .optional()
-    .messages({
-      'string.min': 'Search term must be at least 2 characters'
-    }),
-
-  role: Joi.string()
-    .valid('guest', 'host', 'admin')
+    .min(5)
+    .max(200)
     .optional(),
 
-  verified: Joi.boolean().optional(),
+  description: Joi.string()
+    .trim()
+    .min(20)
+    .max(2000)
+    .optional(),
 
-  active: Joi.boolean().optional(),
+  price_per_night: commonSchemas.price.optional(),
+
+  location: Joi.string()
+    .trim()
+    .min(5)
+    .max(255)
+    .optional(),
+
+  latitude: Joi.number()
+    .min(-90)
+    .max(90)
+    .optional(),
+
+  longitude: Joi.number()
+    .min(-180)
+    .max(180)
+    .optional()
+});
+
+// Listing search validation (matches your searchListings controller)
+const searchListingsSchema = Joi.object({
+  city: Joi.string()
+    .trim()
+    .min(2)
+    .max(100)
+    .optional(),
+
+  price_min: commonSchemas.price.optional(),
+  
+  price_max: commonSchemas.price.optional(),
+
+  keyword: Joi.string()
+    .trim()
+    .min(2)
+    .max(100)
+    .optional(),
+
+  min_rating: Joi.number()
+    .min(1)
+    .max(5)
+    .optional(),
+
+  check_in: commonSchemas.date.optional(),
+  
+  check_out: commonSchemas.date.optional(),
+
+  page: Joi.number().integer().min(1).default(1),
+  
+  limit: Joi.number().integer().min(1).max(100).default(10),
 
   sortBy: Joi.string()
-    .valid('createdAt', 'firstName', 'lastName', 'email', 'lastLogin')
-    .default('createdAt'),
+    .valid('price_per_night', 'created_at', 'average_rating')
+    .default('created_at'),
 
-  sortOrder: Joi.string()
-    .valid('asc', 'desc')
-    .default('desc')
+  order: Joi.string()
+    .valid('ASC', 'DESC', 'asc', 'desc')
+    .default('DESC')
 });
 
+// Get nearby listings validation
+const nearbyListingsSchema = Joi.object({
+  lat: Joi.number()
+    .min(-90)
+    .max(90)
+    .required()
+    .messages({
+      'number.min': 'Latitude must be between -90 and 90',
+      'number.max': 'Latitude must be between -90 and 90',
+      'any.required': 'Latitude is required'
+    }),
+
+  lng: Joi.number()
+    .min(-180)
+    .max(180)
+    .required()
+    .messages({
+      'number.min': 'Longitude must be between -180 and 180',
+      'number.max': 'Longitude must be between -180 and 180',
+      'any.required': 'Longitude is required'
+    }),
+
+  radius: Joi.number()
+    .min(1)
+    .max(100)
+    .default(10)
+    .optional()
+});
+
+// Get listing by ID validation
+const getListingSchema = commonSchemas.id;
+
+// Delete listing validation
+const deleteListingSchema = commonSchemas.id;
+
 module.exports = {
-  registerSchema,
-  loginSchema,
-  updateProfileSchema,
-  changePasswordSchema,
-  forgotPasswordSchema,
-  resetPasswordSchema,
-  verifyEmailSchema,
-  userFilterSchema
+  createListingSchema,
+  updateListingSchema,
+  searchListingsSchema,
+  nearbyListingsSchema,
+  getListingSchema,
+  deleteListingSchema
 };

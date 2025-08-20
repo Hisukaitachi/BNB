@@ -3,7 +3,7 @@ const router = express.Router();
 
 const adminController = require('../controllers/adminController');
 const reportsController = require('../controllers/reportsController');
-const authenticateToken = require('../middleware/auth');
+const {authenticateToken} = require('../middleware/auth');
 const Admin = require('../middleware/Admin');
 
 router.use(authenticateToken);
