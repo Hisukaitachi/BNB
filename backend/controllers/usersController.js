@@ -13,24 +13,63 @@ exports.createUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Name, email, and password are required', 400));
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // Enhanced validation
+  if (name.length < 2 || name.length > 100) {
+    return next(new AppError('Name must be between 2 and 100 characters', 400));
+  }
 
-  const [rows] = await pool.query(
-    'INSERT INTO users (name, email, password, role, verification_code) VALUES (?, ?, ?, ?, ?)',
-    [name, email, hashedPassword, 'client', code]
-  );
+  // Email format validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return next(new AppError('Please provide a valid email address', 400));
+  }
 
-  await sendVerificationCode(email, code);
+  // Password strength validation
+  if (password.length < 8) {
+    return next(new AppError('Password must be at least 8 characters long', 400));
+  }
 
-  res.status(201).json({
-    status: 'success',
-    message: 'User created successfully. Verification code sent to email.',
-    data: {
-      userId: rows.insertId,
-      email: email
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+  if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+    return next(new AppError('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character', 400));
+  }
+
+  // Check for common weak passwords
+  const commonPasswords = ['12345678', 'password', 'Password123', 'qwerty123'];
+  if (commonPasswords.includes(password)) {
+    return next(new AppError('Please choose a stronger password', 400));
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 12); // Increased salt rounds
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const [rows] = await pool.query(
+      'INSERT INTO users (name, email, password, role, verification_code) VALUES (?, ?, ?, ?, ?)',
+      [name, email, hashedPassword, 'client', code]
+    );
+
+    await sendVerificationCode(email, code);
+
+    res.status(201).json({
+      status: 'success',
+      message: 'User created successfully. Verification code sent to email.',
+      data: {
+        userId: rows.insertId,
+        email: email,
+        name: name
+      }
+    });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return next(new AppError('Email address already exists', 409));
     }
-  });
+    throw error;
+  }
 });
 
 exports.verifyEmail = catchAsync(async (req, res, next) => {
@@ -124,6 +163,12 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Email and password are required', 400));
   }
 
+  // Email format validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return next(new AppError('Please provide a valid email address', 400));
+  }
+
   const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
 
   if (users.length === 0) {
@@ -137,11 +182,39 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Your account has been banned. Please contact support.', 403));
   }
 
+  // Check if account is locked
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    const unlockTime = new Date(user.locked_until).toLocaleString();
+    return next(new AppError(`Account is locked until ${unlockTime} due to multiple failed login attempts`, 423));
+  }
+
   const isMatch = await bcrypt.compare(password, user.password);
 
   if (!isMatch) {
+    // Increment failed attempts
+    await pool.query(
+      'UPDATE users SET failed_attempts = failed_attempts + 1, last_failed_login = NOW() WHERE id = ?',
+      [user.id]
+    );
+
+    // Lock account after 5 failed attempts
+    if (user.failed_attempts >= 4) { // Will be 5 after the increment
+      const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      await pool.query(
+        'UPDATE users SET locked_until = ? WHERE id = ?',
+        [lockUntil, user.id]
+      );
+      return next(new AppError('Account locked due to too many failed login attempts. Try again in 15 minutes.', 423));
+    }
+
     return next(new AppError('Invalid email or password', 401));
   }
+
+  // Reset failed attempts on successful login
+  await pool.query(
+    'UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login = NOW() WHERE id = ?',
+    [user.id]
+  );
 
   const token = jwt.sign(
     { id: user.id, role: user.role },
@@ -158,7 +231,8 @@ exports.loginUser = catchAsync(async (req, res, next) => {
         id: user.id, 
         name: user.name, 
         email: user.email, 
-        role: user.role 
+        role: user.role,
+        lastLogin: user.last_login
       }
     }
   });
@@ -246,6 +320,28 @@ exports.updateMyProfile = catchAsync(async (req, res, next) => {
     return next(new AppError('At least one field (name or email) is required', 400));
   }
 
+  // Enhanced validation
+  if (name && (name.length < 2 || name.length > 100)) {
+    return next(new AppError('Name must be between 2 and 100 characters', 400));
+  }
+
+  if (email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return next(new AppError('Please provide a valid email address', 400));
+    }
+
+    // Check if email is already taken by another user
+    const [existingUser] = await pool.query(
+      'SELECT id FROM users WHERE email = ? AND id != ?',
+      [email, userId]
+    );
+    
+    if (existingUser.length > 0) {
+      return next(new AppError('Email address is already in use', 409));
+    }
+  }
+
   let updateFields = [];
   let values = [];
 
@@ -261,7 +357,7 @@ exports.updateMyProfile = catchAsync(async (req, res, next) => {
   values.push(userId);
 
   const [result] = await pool.query(
-    `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+    `UPDATE users SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = ?`,
     values
   );
 
@@ -271,7 +367,14 @@ exports.updateMyProfile = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: 'success',
-    message: 'Profile updated successfully'
+    message: 'Profile updated successfully',
+    data: {
+      updatedFields: {
+        ...(name && { name }),
+        ...(email && { email })
+      },
+      updatedAt: new Date().toISOString()
+    }
   });
 });
 
@@ -281,6 +384,25 @@ exports.changePassword = catchAsync(async (req, res, next) => {
 
   if (!oldPassword || !newPassword) {
     return next(new AppError('Old password and new password are required', 400));
+  }
+
+  // Enhanced password validation for new password
+  if (newPassword.length < 8) {
+    return next(new AppError('New password must be at least 8 characters long', 400));
+  }
+
+  const hasUpperCase = /[A-Z]/.test(newPassword);
+  const hasLowerCase = /[a-z]/.test(newPassword);
+  const hasNumbers = /\d/.test(newPassword);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
+
+  if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+    return next(new AppError('New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character', 400));
+  }
+
+  // Check if new password is different from old password
+  if (oldPassword === newPassword) {
+    return next(new AppError('New password must be different from the current password', 400));
   }
 
   const [rows] = await pool.query('SELECT password FROM users WHERE id = ?', [userId]);
@@ -296,11 +418,17 @@ exports.changePassword = catchAsync(async (req, res, next) => {
     return next(new AppError('Current password is incorrect', 400));
   }
 
-  const hashed = await bcrypt.hash(newPassword, 10);
-  await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashed, userId]);
+  const hashed = await bcrypt.hash(newPassword, 12);
+  await pool.query(
+    'UPDATE users SET password = ?, password_changed_at = NOW(), updated_at = NOW() WHERE id = ?', 
+    [hashed, userId]
+  );
 
   res.status(200).json({
     status: 'success',
-    message: 'Password changed successfully'
+    message: 'Password changed successfully',
+    data: {
+      passwordChangedAt: new Date().toISOString()
+    }
   });
 });

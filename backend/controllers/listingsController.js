@@ -3,6 +3,7 @@ const path = require('path');
 const pool = require('../db');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
+const getCoordinatesFromLocation = require('../utils/geocode');
 
 exports.createListing = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
@@ -18,11 +19,59 @@ exports.createListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Title, description, price per night, and location are required', 400));
   }
 
+  // Enhanced business validation
+  if (price_per_night < 1 || price_per_night > 1000000) {
+    return next(new AppError('Price must be between ₱1 and ₱1,000,000 per night', 400));
+  }
+
+  if (title.length < 5 || title.length > 200) {
+    return next(new AppError('Title must be between 5 and 200 characters', 400));
+  }
+
+  if (description.length < 20 || description.length > 2000) {
+    return next(new AppError('Description must be between 20 and 2000 characters', 400));
+  }
+
+  if (location.length < 3 || location.length > 255) {
+    return next(new AppError('Location must be between 3 and 255 characters', 400));
+  }
+
+  // Check for duplicate listings by same host
+  const [duplicateCheck] = await pool.query(
+    'SELECT id FROM listings WHERE host_id = ? AND title = ? AND location = ?',
+    [hostId, title, location]
+  );
+  if (duplicateCheck.length > 0) {
+    return next(new AppError('You already have a listing with this title and location', 400));
+  }
+
+  // Check host listing limit (optional business rule)
+  const [hostListings] = await pool.query(
+    'SELECT COUNT(*) as count FROM listings WHERE host_id = ?',
+    [hostId]
+  );
+  if (hostListings[0].count >= 50) { // Limit to 50 listings per host
+    return next(new AppError('Maximum listings limit reached (50 listings per host)', 400));
+  }
+
   // If latitude or longitude are missing, try to geocode
   if (!latitude || !longitude) {
-    const coords = await getCoordinatesFromLocation(location);
-    latitude = coords.latitude;
-    longitude = coords.longitude;
+    try {
+      const coords = await getCoordinatesFromLocation(location);
+      latitude = coords.latitude;
+      longitude = coords.longitude;
+    } catch (error) {
+      console.warn('Geocoding failed:', error.message);
+      // Continue without coordinates
+    }
+  }
+
+  // Validate coordinates if provided
+  if (latitude && (latitude < -90 || latitude > 90)) {
+    return next(new AppError('Latitude must be between -90 and 90', 400));
+  }
+  if (longitude && (longitude < -180 || longitude > 180)) {
+    return next(new AppError('Longitude must be between -180 and 180', 400));
   }
 
   const imageUrl = req.files?.image ? `/uploads/${req.files.image[0].filename}` : null;
@@ -37,7 +86,11 @@ exports.createListing = catchAsync(async (req, res, next) => {
     status: 'success',
     message: 'Listing created successfully',
     data: {
-      listingId: result.insertId
+      listingId: result.insertId,
+      title,
+      location,
+      pricePerNight: price_per_night,
+      hasCoordinates: !!(latitude && longitude)
     }
   });
 });
@@ -98,6 +151,7 @@ exports.getListingsByHost = catchAsync(async (req, res, next) => {
 
 exports.updateListing = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
+  const hostId = req.user.id;
   let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
   if (!listingId || isNaN(listingId)) {
@@ -109,11 +163,69 @@ exports.updateListing = catchAsync(async (req, res, next) => {
     return next(new AppError('At least one field must be provided for update', 400));
   }
 
-  // If lat/lng not provided, attempt to geocode
+  // Verify ownership
+  const [existingListing] = await pool.query(
+    'SELECT host_id, title as currentTitle, location as currentLocation FROM listings WHERE id = ?',
+    [listingId]
+  );
+  
+  if (!existingListing.length) {
+    return next(new AppError('Listing not found', 404));
+  }
+  
+  if (existingListing[0].host_id !== hostId) {
+    return next(new AppError('You can only update your own listings', 403));
+  }
+
+  // Enhanced validation for provided fields
+  if (title && (title.length < 5 || title.length > 200)) {
+    return next(new AppError('Title must be between 5 and 200 characters', 400));
+  }
+
+  if (description && (description.length < 20 || description.length > 2000)) {
+    return next(new AppError('Description must be between 20 and 2000 characters', 400));
+  }
+
+  if (price_per_night && (price_per_night < 1 || price_per_night > 1000000)) {
+    return next(new AppError('Price must be between ₱1 and ₱1,000,000 per night', 400));
+  }
+
+  if (location && (location.length < 3 || location.length > 255)) {
+    return next(new AppError('Location must be between 3 and 255 characters', 400));
+  }
+
+  // Check for duplicate if title or location is being updated
+  if (title || location) {
+    const titleToCheck = title || existingListing[0].currentTitle;
+    const locationToCheck = location || existingListing[0].currentLocation;
+    
+    const [duplicateCheck] = await pool.query(
+      'SELECT id FROM listings WHERE host_id = ? AND title = ? AND location = ? AND id != ?',
+      [hostId, titleToCheck, locationToCheck, listingId]
+    );
+    
+    if (duplicateCheck.length > 0) {
+      return next(new AppError('You already have another listing with this title and location', 400));
+    }
+  }
+
+  // If lat/lng not provided but location is updated, attempt to geocode
   if (location && (!latitude || !longitude)) {
-    const coords = await getCoordinatesFromLocation(location);
-    latitude = coords.latitude;
-    longitude = coords.longitude;
+    try {
+      const coords = await getCoordinatesFromLocation(location);
+      latitude = coords.latitude;
+      longitude = coords.longitude;
+    } catch (error) {
+      console.warn('Geocoding failed during update:', error.message);
+    }
+  }
+
+  // Validate coordinates if provided
+  if (latitude && (latitude < -90 || latitude > 90)) {
+    return next(new AppError('Latitude must be between -90 and 90', 400));
+  }
+  if (longitude && (longitude < -180 || longitude > 180)) {
+    return next(new AppError('Longitude must be between -180 and 180', 400));
   }
 
   const [result] = await pool.query(
@@ -127,7 +239,17 @@ exports.updateListing = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: 'success',
-    message: 'Listing updated successfully'
+    message: 'Listing updated successfully',
+    data: {
+      listingId: parseInt(listingId),
+      updatedFields: {
+        ...(title && { title }),
+        ...(description && { description }),
+        ...(price_per_night && { price_per_night }),
+        ...(location && { location }),
+        ...(latitude && longitude && { coordinates: { latitude, longitude } })
+      }
+    }
   });
 });
 

@@ -4,23 +4,69 @@ const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 
 exports.getMyNotifications = catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 5 } = req.query;
-  const offset = (page - 1) * limit;
+  const { page = 1, limit = 20, unread_only = false, type } = req.query;
+  const userId = req.user.id;
+  
+  if (parseInt(limit) > 100) {
+    return next(new AppError('Limit cannot exceed 100 notifications per page', 400));
+  }
+
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+  let whereClause = 'user_id = ?';
+  const queryParams = [userId];
+
+  // Filter by read status
+  if (unread_only === 'true') {
+    whereClause += ' AND is_read = 0';
+  }
+
+  // Filter by notification type
+  const validTypes = ['booking_request', 'booking_approved', 'booking_declined', 'booking_cancelled', 'admin_notice', 'general', 'account', 'role', 'listing', 'review'];
+  if (type && validTypes.includes(type)) {
+    whereClause += ' AND type = ?';
+    queryParams.push(type);
+  }
+
+  queryParams.push(parseInt(limit), offset);
 
   const [rows] = await pool.query(
-    'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-    [req.user.id, parseInt(limit), parseInt(offset)]
+    `SELECT id, user_id, message, type, is_read, created_at 
+     FROM notifications 
+     WHERE ${whereClause} 
+     ORDER BY created_at DESC 
+     LIMIT ? OFFSET ?`,
+    queryParams
+  );
+
+  // Get total count
+  const [countResult] = await pool.query(
+    `SELECT COUNT(*) as total FROM notifications WHERE ${whereClause}`,
+    queryParams.slice(0, -2)
+  );
+
+  // Get unread count
+  const [unreadResult] = await pool.query(
+    'SELECT COUNT(*) as unread FROM notifications WHERE user_id = ? AND is_read = 0',
+    [userId]
   );
   
   res.status(200).json({
     status: 'success',
     results: rows.length,
     data: {
-      notifications: rows
+      notifications: rows,
+      statistics: {
+        totalUnread: unreadResult[0].unread
+      },
+      pagination: {
+        total: countResult[0].total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+      }
     }
   });
 });
-
 exports.markAsRead = catchAsync(async (req, res, next) => {
   const notificationId = req.params.id;
   const userId = req.user.id;
