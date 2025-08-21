@@ -133,3 +133,21 @@
 {"environment":"development","level":"info","message":"Server started successfully","port":"5000","security":"enabled","service":"stay-api","timestamp":"2025-08-21 00:53:23"}
 {"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 00:53:34","url":"/api/listings"}
 {"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 00:53:34","url":"/api/listings"}
+{"level":"info","message":"Security middleware with enhanced CORS applied successfully","service":"stay-api","timestamp":"2025-08-21 13:04:10"}
+{"environment":"development","level":"info","message":"Server started successfully","port":"5000","security":"enabled","service":"stay-api","timestamp":"2025-08-21 13:04:11"}
+{"headers":{"Access-Control-Request-Headers":"content-type","Access-Control-Request-Method":"GET"},"level":"info","message":"CORS Request","method":"OPTIONS","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:16","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:16","url":"/api/listings"}
+{"headers":{"Access-Control-Request-Headers":"content-type","Access-Control-Request-Method":"GET"},"level":"info","message":"CORS Request","method":"OPTIONS","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:16","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:16","url":"/api/listings"}
+{"headers":{"Access-Control-Request-Headers":"content-type","Access-Control-Request-Method":"POST"},"level":"info","message":"CORS Request","method":"OPTIONS","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:39","url":"/api/users/login"}
+{"headers":{},"level":"info","message":"CORS Request","method":"POST","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:39","url":"/api/users/login"}
+{"ip":"::1","level":"error","message":"Error occurred: Invalid email or password","method":"POST","service":"stay-api","stack":"Error: Invalid email or password\n    at C:\\Users\\HF\\CAPSTONE2\\backend\\controllers\\usersController.js:175:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)","statusCode":401,"timestamp":"2025-08-21 13:05:39","url":"/api/users/login"}
+{"headers":{},"level":"info","message":"CORS Request","method":"POST","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:44","url":"/api/users/login"}
+{"headers":{"Access-Control-Request-Headers":"authorization,content-type","Access-Control-Request-Method":"GET"},"level":"info","message":"CORS Request","method":"OPTIONS","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:44","url":"/api/users/me"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:44","url":"/api/users/me"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:55","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:55","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:57","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:05:57","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:06:01","url":"/api/listings"}
+{"headers":{},"level":"info","message":"CORS Request","method":"GET","origin":"http://localhost:5173","service":"stay-api","timestamp":"2025-08-21 13:06:01","url":"/api/listings"}
