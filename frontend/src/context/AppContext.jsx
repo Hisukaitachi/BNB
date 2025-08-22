@@ -1,3 +1,4 @@
+// frontend/src/context/AppContext.jsx - FIXED VERSION
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
@@ -12,7 +13,12 @@ export const useApp = () => {
 };
 
 export const useSocket = () => {
-  const { socket, connectSocket, disconnectSocket } = useApp();
+  const context = useContext(AppContext);
+  // FIX: Return empty object if context not available
+  if (!context) {
+    return { socket: null, connectSocket: () => {}, disconnectSocket: () => {} };
+  }
+  const { socket, connectSocket, disconnectSocket } = context;
   return { socket, connectSocket, disconnectSocket };
 };
 
@@ -22,50 +28,78 @@ export const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [toast, setToast] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   const connectSocket = (userId) => {
     if (socket) return;
 
-    const newSocket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
-      transports: ['websocket']
-    });
+    try {
+      setConnectionStatus('connecting');
+      
+      const newSocket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
+        transports: ['websocket', 'polling'], // FIX: Add polling fallback
+        timeout: 20000,
+        forceNew: true
+      });
 
-    newSocket.on('connect', () => {
-      console.log('Connected to socket server');
-      newSocket.emit('register', userId);
-    });
+      newSocket.on('connect', () => {
+        console.log('Connected to socket server');
+        setConnectionStatus('connected');
+        newSocket.emit('register', userId);
+      });
 
-    newSocket.on('userOnline', (userId) => {
-      setOnlineUsers(prev => [...prev, userId]);
-    });
+      newSocket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        setConnectionStatus('error');
+        // FIX: Don't show error toast immediately, maybe server is starting
+        setTimeout(() => {
+          if (connectionStatus === 'error') {
+            showToast('Real-time features unavailable', 'warning');
+          }
+        }, 5000);
+      });
 
-    newSocket.on('userOffline', (userId) => {
-      setOnlineUsers(prev => prev.filter(id => id !== userId));
-    });
+      newSocket.on('disconnect', () => {
+        console.log('Disconnected from socket server');
+        setConnectionStatus('disconnected');
+      });
 
-    newSocket.on('receiveMessage', (message) => {
-      setUnreadMessages(prev => prev + 1);
-      showToast('New message received', 'info');
-    });
+      newSocket.on('userOnline', (userId) => {
+        setOnlineUsers(prev => [...prev.filter(id => id !== userId), userId]);
+      });
 
-    newSocket.on('newNotification', (notification) => {
-      setNotifications(prev => [notification, ...prev]);
-      showToast(notification.message, 'info');
-    });
+      newSocket.on('userOffline', (userId) => {
+        setOnlineUsers(prev => prev.filter(id => id !== userId));
+      });
 
-    newSocket.on('banned', (data) => {
-      showToast(data.message, 'error');
-      // Force logout
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 2000);
-    });
+      newSocket.on('receiveMessage', (message) => {
+        setUnreadMessages(prev => prev + 1);
+        showToast('New message received', 'info');
+      });
 
-    newSocket.on('unbanned', (data) => {
-      showToast(data.message, 'success');
-    });
+      newSocket.on('newNotification', (notification) => {
+        setNotifications(prev => [notification, ...prev]);
+        showToast(notification.message, 'info');
+      });
 
-    setSocket(newSocket);
+      newSocket.on('banned', (data) => {
+        showToast(data.message, 'error');
+        // Force logout after showing message
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+        }, 3000);
+      });
+
+      newSocket.on('unbanned', (data) => {
+        showToast(data.message, 'success');
+      });
+
+      setSocket(newSocket);
+    } catch (error) {
+      console.error('Failed to connect socket:', error);
+      setConnectionStatus('error');
+    }
   };
 
   const disconnectSocket = () => {
@@ -73,6 +107,7 @@ export const AppProvider = ({ children }) => {
       socket.disconnect();
       setSocket(null);
       setOnlineUsers([]);
+      setConnectionStatus('disconnected');
     }
   };
 
@@ -81,18 +116,28 @@ export const AppProvider = ({ children }) => {
     const newToast = { id, message, type, duration };
     setToast(newToast);
     
-    setTimeout(() => {
+    // FIX: Clear previous timeout if exists
+    if (window.toastTimeout) {
+      clearTimeout(window.toastTimeout);
+    }
+    
+    window.toastTimeout = setTimeout(() => {
       setToast(null);
     }, duration);
   };
 
   const dismissToast = () => {
+    if (window.toastTimeout) {
+      clearTimeout(window.toastTimeout);
+    }
     setToast(null);
   };
 
   const sendMessage = (receiverId, message) => {
-    if (socket) {
+    if (socket && connectionStatus === 'connected') {
       socket.emit('sendMessage', { to: receiverId, message });
+    } else {
+      console.warn('Socket not connected, cannot send real-time message');
     }
   };
 
@@ -100,10 +145,23 @@ export const AppProvider = ({ children }) => {
     setUnreadMessages(0);
   };
 
+  // FIX: Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+      if (window.toastTimeout) {
+        clearTimeout(window.toastTimeout);
+      }
+    };
+  }, []);
+
   const value = {
     socket,
     connectSocket,
     disconnectSocket,
+    connectionStatus,
     onlineUsers,
     notifications,
     setNotifications,

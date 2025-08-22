@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Heart, Star, MapPin, Users, Wifi, Car, 
-  Swimming, Utensils, AirVent, PawPrint,
+  Waves, Utensils, AirVent, PawPrint,     // ✅ Use Waves instead
   Share, Flag, ArrowLeft, Calendar,
   MessageCircle, Shield, Award, Copy,
   Facebook, Twitter, Send, CheckCircle,
-  AlertTriangle, ImageIcon, Play
+  AlertTriangle, ImageIcon, Play, Clock   // ✅ Also add Clock (you're using it but not importing)
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -38,19 +38,19 @@ const ListingDetailPage = () => {
   const [submittingReport, setSubmittingReport] = useState(false);
 
   const amenityIcons = {
-    'WiFi': Wifi,
-    'Parking': Car,
-    'Swimming Pool': Swimming,
-    'Kitchen': Utensils,
-    'Air Conditioning': AirVent,
-    'Pet Friendly': PawPrint,
-    'Free WiFi': Wifi,
-    'Pool': Swimming,
-    'Gym': Users,
-    'Beach Access': Swimming,
-    'Mountain View': MapPin,
-    'City View': MapPin
-  };
+  'WiFi': Wifi,
+  'Parking': Car,
+  'Swimming Pool': Waves,     // ✅ Use Waves
+  'Kitchen': Utensils,
+  'Air Conditioning': AirVent,
+  'Pet Friendly': PawPrint,
+  'Free WiFi': Wifi,
+  'Pool': Waves,              // ✅ Use Waves
+  'Gym': Users,
+  'Beach Access': Waves,      // ✅ Use Waves
+  'Mountain View': MapPin,
+  'City View': MapPin
+};
 
   useEffect(() => {
     fetchListingData();
