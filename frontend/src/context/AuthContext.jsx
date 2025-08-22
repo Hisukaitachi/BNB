@@ -1,6 +1,7 @@
+// src/context/AuthContext.jsx - Fixed version
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
-import { useSocket } from './AppContext';
+import { useApp } from './AppContext';
 
 const AuthContext = createContext();
 
@@ -16,7 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-  const { socket, connectSocket, disconnectSocket } = useSocket();
+  const { connectSocket, disconnectSocket } = useApp();
 
   useEffect(() => {
     if (token) {
@@ -33,11 +34,11 @@ export const AuthProvider = ({ children }) => {
     } else {
       disconnectSocket();
     }
-  }, [user, token]);
+  }, [user, token, connectSocket, disconnectSocket]);
 
   const fetchUserProfile = async () => {
     try {
-      const response = await api.get('/users/me');
+      const response = await api.getUserProfile();
       if (response.status === 'success') {
         setUser(response.data.user);
       } else {
@@ -53,7 +54,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await api.post('/users/login', { email, password });
+      const response = await api.login(email, password);
       if (response.status === 'success') {
         setToken(response.data.token);
         setUser(response.data.user);
@@ -68,7 +69,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (name, email, password) => {
     try {
-      const response = await api.post('/users/register', { name, email, password });
+      const response = await api.register(name, email, password);
       if (response.status === 'success') {
         return { success: true, message: 'Registration successful! Please check your email for verification.' };
       }
@@ -80,7 +81,7 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGoogle = async (googleToken) => {
     try {
-      const response = await api.post('/auth/google', { token: googleToken });
+      const response = await api.googleAuth(googleToken);
       if (response.status === 'success') {
         setToken(response.data.token);
         setUser(response.data.user);
@@ -102,7 +103,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (profileData) => {
     try {
-      const response = await api.put('/users/me', profileData);
+      const response = await api.updateProfile(profileData);
       if (response.status === 'success') {
         setUser(prev => ({ ...prev, ...response.data.updatedFields }));
         return { success: true };
@@ -113,9 +114,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // FIXED: Added missing updateUser method
+  const updateUser = (userData) => {
+    setUser(prev => ({ ...prev, ...userData }));
+  };
+
   const changePassword = async (oldPassword, newPassword) => {
     try {
-      const response = await api.put('/users/me/change-password', { oldPassword, newPassword });
+      const response = await api.changePassword(oldPassword, newPassword);
       if (response.status === 'success') {
         return { success: true };
       }
@@ -133,6 +139,7 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     logout,
     updateProfile,
+    updateUser, // FIXED: Added missing method
     changePassword,
     loading,
     isAuthenticated: !!user,

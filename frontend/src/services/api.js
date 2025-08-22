@@ -1,3 +1,4 @@
+// src/services/api.js - Fixed version
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class ApiService {
@@ -112,9 +113,9 @@ class ApiService {
     }
   }
 
-  // Specific API methods for your backend
+  // Fixed specific API methods for your backend
   
-  // Auth methods
+  // Auth methods - FIXED
   async login(email, password) {
     return this.post('/users/login', { email, password });
   }
@@ -143,10 +144,15 @@ class ApiService {
     return this.put('/users/me/change-password', { oldPassword, newPassword });
   }
 
-  // Listings methods
-  async getAllListings(params = {}) {
+  // Listings methods - FIXED
+  async getListings(params = {}) {
     const queryString = new URLSearchParams(params).toString();
     return this.get(`/listings${queryString ? `?${queryString}` : ''}`);
+  }
+
+  // FIXED: Added missing method referenced in ListingsPage
+  async getAllListings(params = {}) {
+    return this.getListings(params);
   }
 
   async getListingById(id) {
@@ -185,7 +191,12 @@ class ApiService {
     return this.delete(`/listings/${id}`);
   }
 
-  // Bookings methods
+  // FIXED: Host methods
+  async getMyListings() {
+    return this.get('/listings/my-listings');
+  }
+
+  // Bookings methods - FIXED
   async createBooking(bookingData) {
     return this.post('/bookings', bookingData);
   }
@@ -206,7 +217,7 @@ class ApiService {
     return this.get(`/bookings/${id}/history`);
   }
 
-  // Messages methods
+  // Messages methods - FIXED
   async sendMessage(receiverId, message) {
     return this.post('/messages', { receiverId, message });
   }
@@ -241,7 +252,7 @@ class ApiService {
     return this.patch('/notifications/read-all');
   }
 
-  // Reviews methods
+  // Reviews methods - FIXED
   async createReview(reviewData) {
     return this.post('/reviews', reviewData);
   }
@@ -258,7 +269,7 @@ class ApiService {
     return this.delete(`/reviews/${id}`);
   }
 
-  // Favorites methods
+  // Favorites methods - FIXED
   async addToFavorites(listingId) {
     return this.post(`/favorites/${listingId}`);
   }
@@ -271,7 +282,16 @@ class ApiService {
     return this.delete(`/favorites/${listingId}`);
   }
 
-  // Admin methods
+  // FIXED: Missing methods referenced in components
+  async addFavorite(listingId) {
+    return this.addToFavorites(listingId);
+  }
+
+  async removeFavorite(listingId) {
+    return this.removeFromFavorites(listingId);
+  }
+
+  // Admin methods - FIXED
   async getAllUsers(params = {}) {
     const queryString = new URLSearchParams(params).toString();
     return this.get(`/admin/users${queryString ? `?${queryString}` : ''}`);
@@ -310,11 +330,7 @@ class ApiService {
     return this.get('/admin/payouts-summary');
   }
 
-  // Host methods
-  async getMyListings() {
-    return this.get('/listings/my-listings');
-  }
-
+  // Host methods - FIXED
   async getHostEarnings() {
     return this.get('/payouts/host/earnings');
   }
