@@ -1,45 +1,51 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
+import { useSocket } from './AppContext';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { socket, connectSocket, disconnectSocket } = useSocket();
 
   useEffect(() => {
-    initializeAuth();
-  }, []);
-
-  const initializeAuth = async () => {
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
+    if (token) {
+      fetchUserProfile();
+    } else {
       setLoading(false);
-      return;
     }
+  }, [token]);
 
+  // Socket connection when user logs in
+  useEffect(() => {
+    if (user && token) {
+      connectSocket(user.id);
+    } else {
+      disconnectSocket();
+    }
+  }, [user, token]);
+
+  const fetchUserProfile = async () => {
     try {
-      const result = await api.getProfile();
-      if (result.success) {
-        setUser(result.data);
+      const response = await api.get('/users/me');
+      if (response.status === 'success') {
+        setUser(response.data.user);
       } else {
-        // Invalid token, remove it
-        localStorage.removeItem('token');
+        logout();
       }
     } catch (error) {
-      console.error('Auth initialization failed:', error);
-      localStorage.removeItem('token');
+      console.error('Failed to fetch user profile:', error);
+      logout();
     } finally {
       setLoading(false);
     }
@@ -47,72 +53,92 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      setError(null);
-      const result = await api.login(email, password);
-      
-      if (result.success) {
-        setUser(result.data.user);
+      const response = await api.post('/users/login', { email, password });
+      if (response.status === 'success') {
+        setToken(response.data.token);
+        setUser(response.data.user);
+        localStorage.setItem('token', response.data.token);
         return { success: true };
       }
-      
-      setError(result.message);
-      return { success: false, message: result.message };
+      return { success: false, message: response.message };
     } catch (error) {
-      const message = error.message || 'Login failed';
-      setError(message);
-      return { success: false, message };
+      return { success: false, message: error.message || 'Login failed' };
     }
   };
 
   const register = async (name, email, password) => {
     try {
-      setError(null);
-      const result = await api.register(name, email, password);
-      return result;
+      const response = await api.post('/users/register', { name, email, password });
+      if (response.status === 'success') {
+        return { success: true, message: 'Registration successful! Please check your email for verification.' };
+      }
+      return { success: false, message: response.message };
     } catch (error) {
-      const message = error.message || 'Registration failed';
-      setError(message);
-      return { success: false, message };
+      return { success: false, message: error.message || 'Registration failed' };
     }
   };
 
-  const logout = async () => {
+  const loginWithGoogle = async (googleToken) => {
     try {
-      await api.logout();
+      const response = await api.post('/auth/google', { token: googleToken });
+      if (response.status === 'success') {
+        setToken(response.data.token);
+        setUser(response.data.user);
+        localStorage.setItem('token', response.data.token);
+        return { success: true };
+      }
+      return { success: false, message: response.message };
     } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      setUser(null);
-      setError(null);
+      return { success: false, message: error.message || 'Google login failed' };
     }
   };
 
-  const updateUser = (userData) => {
-    setUser(prevUser => ({ ...prevUser, ...userData }));
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    disconnectSocket();
   };
 
-  const clearError = () => {
-    setError(null);
+  const updateProfile = async (profileData) => {
+    try {
+      const response = await api.put('/users/me', profileData);
+      if (response.status === 'success') {
+        setUser(prev => ({ ...prev, ...response.data.updatedFields }));
+        return { success: true };
+      }
+      return { success: false, message: response.message };
+    } catch (error) {
+      return { success: false, message: error.message || 'Profile update failed' };
+    }
+  };
+
+  const changePassword = async (oldPassword, newPassword) => {
+    try {
+      const response = await api.put('/users/me/change-password', { oldPassword, newPassword });
+      if (response.status === 'success') {
+        return { success: true };
+      }
+      return { success: false, message: response.message };
+    } catch (error) {
+      return { success: false, message: error.message || 'Password change failed' };
+    }
   };
 
   const value = {
     user,
-    loading,
-    error,
+    token,
     login,
     register,
+    loginWithGoogle,
     logout,
-    updateUser,
-    clearError,
+    updateProfile,
+    changePassword,
+    loading,
     isAuthenticated: !!user,
-    isHost: user?.role === 'host',
-    isAdmin: user?.role === 'admin',
-    isClient: user?.role === 'client'
+    isHost: user?.role === 'host' || user?.role === 'admin',
+    isAdmin: user?.role === 'admin'
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
