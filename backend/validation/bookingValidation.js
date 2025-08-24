@@ -1,4 +1,4 @@
-// backend/validation/bookingValidation.js - Based on your booking controller
+// backend/validation/bookingValidation.js - FIXED with string ID support
 const { Joi, commonSchemas } = require('../middleware/validation');
 
 // Create booking validation (matches your createBooking controller)
@@ -10,7 +10,7 @@ const createBookingSchema = Joi.object({
       'any.required': 'Listing ID is required'
     }),
 
-  start_date: commonSchemas.date
+  start_date: Joi.date()
     .min('now')
     .required()
     .messages({
@@ -18,7 +18,7 @@ const createBookingSchema = Joi.object({
       'any.required': 'Start date is required'
     }),
 
-  end_date: commonSchemas.date
+  end_date: Joi.date()
     .greater(Joi.ref('start_date'))
     .required()
     .messages({
@@ -26,15 +26,19 @@ const createBookingSchema = Joi.object({
       'any.required': 'End date is required'
     }),
 
-  total_price: commonSchemas.price.required()
+  total_price: Joi.number().positive().precision(2).required()
     .messages({
-      'any.required': 'Total price is required'
+      'any.required': 'Total price is required',
+      'number.positive': 'Total price must be positive'
     })
-});
+}).unknown(true);
 
-// Update booking status validation (matches your updateBookingStatus controller)
+// Update booking status validation - FIXED to accept string ID
 const updateBookingStatusSchema = Joi.object({
-  id: commonSchemas.id.extract('id'),
+  id: Joi.string().pattern(/^\d+$/).required().messages({
+    'string.pattern.base': 'Valid booking ID is required',
+    'any.required': 'Booking ID is required'
+  }),
   
   status: Joi.string()
     .valid('pending', 'approved', 'confirmed', 'rejected', 'cancelled', 'completed')
@@ -43,27 +47,23 @@ const updateBookingStatusSchema = Joi.object({
       'any.only': 'Status must be one of: pending, approved, confirmed, rejected, cancelled, completed',
       'any.required': 'Status is required'
     })
-});
+}).unknown(true);
 
-// Get bookings by listing validation
+// FIXED: Get bookings by listing validation - accepts string listingId
 const getBookingsByListingSchema = Joi.object({
-  listingId: Joi.number().integer().positive().required()
-    .messages({
-      'number.base': 'Listing ID must be a number',
-      'number.positive': 'Listing ID must be positive',
-      'any.required': 'Listing ID is required'
-    })
-});
+  listingId: Joi.string().pattern(/^\d+$/).required().messages({
+    'string.pattern.base': 'Valid listing ID is required',
+    'any.required': 'Listing ID is required'
+  })
+}).unknown(true);
 
-// Get booking history validation
+// FIXED: Get booking history validation - accepts string ID
 const getBookingHistorySchema = Joi.object({
-  id: Joi.number().integer().positive().required()
-    .messages({
-      'number.base': 'Booking ID must be a number',
-      'number.positive': 'Booking ID must be positive',
-      'any.required': 'Booking ID is required'
-    })
-});
+  id: Joi.string().pattern(/^\d+$/).required().messages({
+    'string.pattern.base': 'Valid booking ID is required',
+    'any.required': 'Booking ID is required'
+  })
+}).unknown(true);
 
 module.exports = {
   createBookingSchema,

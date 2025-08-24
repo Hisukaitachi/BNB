@@ -203,7 +203,8 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
 });
 
 exports.getReviewsForListing = catchAsync(async (req, res, next) => {
-  const { listingId } = req.params;
+  // FIXED: Use req.params.id instead of req.params.listingId
+  const listingId = req.params.id; // Changed from req.params.listingId
   const { page = 1, limit = 10, rating } = req.query;
   
   if (!listingId || isNaN(listingId)) {

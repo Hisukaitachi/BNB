@@ -1,4 +1,6 @@
 / src/services/listingService.js
+import api from './api'; 
+
 class ListingService {
   /**
    * Get all listings with optional filters

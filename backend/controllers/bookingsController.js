@@ -33,25 +33,13 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('End date must be after start date', 400));
   }
 
-  // Enhanced business validation
+  // Check minimum and maximum booking duration
   const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
   if (daysDifference > 365) {
     return next(new AppError('Booking cannot exceed 365 days', 400));
   }
   if (daysDifference < 1) {
-    return next(new AppError('Minimum booking is 1 day', 400));
-  }
-
-  // Maximum advance booking (2 years)
-  const maxAdvanceDays = 730;
-  const advanceDays = Math.ceil((startDate - today) / (1000 * 60 * 60 * 24));
-  if (advanceDays > maxAdvanceDays) {
-    return next(new AppError('Cannot book more than 2 years in advance', 400));
-  }
-
-  // Minimum advance booking (24 hours)
-  if (advanceDays < 1) {
-    return next(new AppError('Bookings must be made at least 24 hours in advance', 400));
+    return next(new AppError('Minimum booking duration is 1 day', 400));
   }
 
   // Validate total_price
@@ -59,62 +47,115 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('Total price must be a positive number', 400));
   }
 
-  // Maximum reasonable price check
-  if (total_price > 1000000) {
-    return next(new AppError('Total price exceeds maximum allowed amount', 400));
-  }
-
   // Check if listing exists
-  const [[listing]] = await pool.query('SELECT * FROM listings WHERE id = ?', [listing_id]);
-  if (!listing) {
+  const [listings] = await pool.query('SELECT * FROM listings WHERE id = ?', [listing_id]);
+  if (!listings.length) {
     return next(new AppError('Listing not found', 404));
   }
+
+  const listing = listings[0];
 
   // Check if user is trying to book their own listing
   if (listing.host_id === clientId) {
     return next(new AppError('You cannot book your own listing', 400));
   }
 
-  // Validate pricing against listing price
-  const expectedPrice = listing.price_per_night * daysDifference;
-  const priceTolerance = expectedPrice * 0.1; // 10% tolerance
-  if (Math.abs(total_price - expectedPrice) > priceTolerance) {
-    return next(new AppError('Price calculation mismatch. Please refresh and try again.', 400));
+  // CRITICAL FIX: Check for booking conflicts with proper date logic
+  const [conflicts] = await pool.query(`
+    SELECT id, start_date, end_date, status
+    FROM bookings
+    WHERE listing_id = ?
+      AND status IN ('pending', 'approved', 'confirmed')
+      AND NOT (end_date <= ? OR start_date >= ?)
+  `, [listing_id, start_date, end_date]);
+
+  if (conflicts.length > 0) {
+    const conflictDates = conflicts.map(c => 
+      `${c.start_date.toISOString().split('T')[0]} to ${c.end_date.toISOString().split('T')[0]} (${c.status})`
+    ).join(', ');
+    
+    return next(new AppError(
+      `Selected dates conflict with existing bookings: ${conflictDates}`, 
+      409
+    ));
   }
 
-  const hostId = listing.host_id;
+  // Validate pricing against listing price (with tolerance for discounts)
+  const expectedPrice = listing.price_per_night * daysDifference;
+  const priceTolerance = expectedPrice * 0.2; // 20% tolerance for discounts
+  
+  if (total_price > expectedPrice + priceTolerance) {
+    return next(new AppError('Price exceeds maximum allowed amount', 400));
+  }
+  
+  if (total_price < expectedPrice - priceTolerance) {
+    return next(new AppError('Price is below minimum allowed amount', 400));
+  }
 
-  await pool.query('CALL sp_create_booking_safe(?,?,?,?,?)',
-    [listing_id, clientId, start_date, end_date, total_price]);
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
 
-  // Notify Host
-  await createNotification({
-    userId: hostId,
-    message: `New booking request for '${listing.title}' from ${req.user.name}`,
-    type: 'booking_request'
-  });
+    // Double-check for conflicts within transaction
+    const [finalConflictCheck] = await connection.query(`
+      SELECT id FROM bookings
+      WHERE listing_id = ?
+        AND status IN ('pending', 'approved', 'confirmed')
+        AND NOT (end_date <= ? OR start_date >= ?)
+      FOR UPDATE
+    `, [listing_id, start_date, end_date]);
 
-  // Notify Client
-  await createNotification({
-    userId: clientId,
-    message: `Your booking request for '${listing.title}' has been sent to the host.`,
-    type: 'booking_sent'
-  });
-
-  res.status(201).json({
-    status: 'success',
-    message: 'Booking request created successfully',
-    data: {
-      bookingDetails: {
-        listing: listing.title,
-        dates: `${start_date} to ${end_date}`,
-        duration: `${daysDifference} day(s)`,
-        totalPrice: total_price
-      }
+    if (finalConflictCheck.length > 0) {
+      await connection.rollback();
+      return next(new AppError('Selected dates are no longer available', 409));
     }
-  });
-});
 
+    // Create the booking
+    const [result] = await connection.query(
+      'INSERT INTO bookings (listing_id, client_id, start_date, end_date, total_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [listing_id, clientId, start_date, end_date, total_price, 'pending']
+    );
+
+    await connection.commit();
+
+    // Notify host
+    const { createNotification } = require('./notificationsController');
+    await createNotification({
+      userId: listing.host_id,
+      message: `New booking request for '${listing.title}' from ${req.user.name}`,
+      type: 'booking_request'
+    });
+
+    // Notify client
+    await createNotification({
+      userId: clientId,
+      message: `Your booking request for '${listing.title}' has been sent to the host.`,
+      type: 'booking_sent'
+    });
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Booking request created successfully',
+      data: {
+        bookingId: result.insertId,
+        booking: {
+          listing: listing.title,
+          dates: `${start_date} to ${end_date}`,
+          duration: `${daysDifference} day(s)`,
+          totalPrice: total_price,
+          status: 'pending'
+        }
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+});
 exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
 
@@ -194,18 +235,40 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  const [rows] = await pool.query("CALL sp_get_bookings_by_listing(?)", [listingId]);
+  const [bookings] = await pool.query(`
+    SELECT start_date, end_date, status
+    FROM bookings
+    WHERE listing_id = ? 
+      AND status IN ('pending', 'approved', 'confirmed')
+    ORDER BY start_date ASC
+  `, [listingId]);
 
-  // Stored procedure results are usually nested in rows[0]
-  const bookedDates = rows[0].map(b => ({
-    start_date: b.start_date,
-    end_date: b.end_date
-  }));
+  // Generate array of unavailable dates
+  const unavailableDates = [];
+  
+  bookings.forEach(booking => {
+    const start = new Date(booking.start_date);
+    const end = new Date(booking.end_date);
+    
+    // Add each date in the range
+    for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+      unavailableDates.push({
+        date: d.toISOString().split('T')[0],
+        status: booking.status
+      });
+    }
+  });
 
   res.status(200).json({
     status: 'success',
     data: {
-      bookedDates
+      listingId: parseInt(listingId),
+      unavailableDates,
+      bookingRanges: bookings.map(b => ({
+        start: b.start_date.toISOString().split('T')[0],
+        end: b.end_date.toISOString().split('T')[0],
+        status: b.status
+      }))
     }
   });
 });

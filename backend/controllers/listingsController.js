@@ -297,7 +297,11 @@ exports.searchListings = catchAsync(async (req, res, next) => {
   const queryParams = [];
   const countParams = [];
 
-  let baseQuery = 'FROM listings l WHERE 1=1';
+  let baseQuery = `
+    FROM listings l 
+    LEFT JOIN users u ON l.host_id = u.id 
+    WHERE 1=1
+  `;
 
   // City / location filter
   if (city) {
@@ -309,13 +313,13 @@ exports.searchListings = catchAsync(async (req, res, next) => {
   // Price filters
   if (price_min && !isNaN(price_min)) {
     baseQuery += ' AND l.price_per_night >= ?';
-    queryParams.push(price_min);
-    countParams.push(price_min);
+    queryParams.push(parseFloat(price_min));
+    countParams.push(parseFloat(price_min));
   }
   if (price_max && !isNaN(price_max)) {
     baseQuery += ' AND l.price_per_night <= ?';
-    queryParams.push(price_max);
-    countParams.push(price_max);
+    queryParams.push(parseFloat(price_max));
+    countParams.push(parseFloat(price_max));
   }
 
   // Keyword filter
@@ -328,54 +332,138 @@ exports.searchListings = catchAsync(async (req, res, next) => {
   // Rating filter
   if (min_rating && !isNaN(min_rating)) {
     baseQuery += ' AND l.average_rating >= ?';
-    queryParams.push(min_rating);
-    countParams.push(min_rating);
+    queryParams.push(parseFloat(min_rating));
+    countParams.push(parseFloat(min_rating));
   }
 
-  // Availability filter
+  // Availability filter - FIXED VERSION
   if (check_in && check_out) {
     baseQuery += `
       AND l.id NOT IN (
-        SELECT b.listing_id
+        SELECT DISTINCT b.listing_id
         FROM bookings b
-        WHERE 
-          (b.status = 'approved' OR b.status = 'pending')
-          AND (b.check_in < ? AND b.check_out > ?)
+        WHERE b.status IN ('pending', 'approved', 'confirmed')
+        AND NOT (b.end_date <= ? OR b.start_date >= ?)
       )
     `;
-    queryParams.push(check_out, check_in);
-    countParams.push(check_out, check_in);
+    queryParams.push(check_in, check_out);
+    countParams.push(check_in, check_out);
   }
 
   // Sorting
-  const validSortFields = ['price_per_night', 'created_at', 'average_rating'];
+  const validSortFields = ['price_per_night', 'created_at', 'average_rating', 'title'];
   const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'created_at';
   const safeOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
   const sortClause = ` ORDER BY l.${safeSortBy} ${safeOrder}`;
 
-  // Listings query
-  const listingsQuery = `SELECT l.* ${baseQuery} ${sortClause} LIMIT ? OFFSET ?`;
+  // Add pagination params
   queryParams.push(parseInt(limit), offset);
 
+  // Main listings query
+  const listingsQuery = `
+    SELECT 
+      l.id,
+      l.title,
+      l.description,
+      l.price_per_night,
+      l.location,
+      l.image_url,
+      l.video_url,
+      l.average_rating,
+      l.latitude,
+      l.longitude,
+      l.created_at,
+      u.name as host_name
+    ${baseQuery} 
+    ${sortClause} 
+    LIMIT ? OFFSET ?
+  `;
+
   // Count query
-  const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+  const countQuery = `SELECT COUNT(DISTINCT l.id) as total ${baseQuery}`;
 
-  const [listings] = await pool.query(listingsQuery, queryParams);
-  const [countResult] = await pool.query(countQuery, countParams);
+  try {
+    const [listings] = await pool.query(listingsQuery, queryParams);
+    const [countResult] = await pool.query(countQuery, countParams);
 
-  res.status(200).json({
-    status: 'success',
-    results: listings.length,
-    data: {
-      listings,
-      pagination: {
-        total: countResult[0].total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+    res.status(200).json({
+      status: 'success',
+      results: listings.length,
+      data: {
+        listings,
+        filters: {
+          city: city || null,
+          priceRange: [price_min, price_max].filter(p => p !== undefined),
+          keyword: keyword || null,
+          minRating: min_rating || null,
+          dates: check_in && check_out ? [check_in, check_out] : null
+        },
+        pagination: {
+          total: countResult[0].total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+        }
       }
-    }
-  });
+    });
+  } catch (error) {
+    console.error('Search listings error:', error);
+    return next(new AppError('Search failed', 500));
+  }
+});
+
+exports.getSearchSuggestions = catchAsync(async (req, res, next) => {
+  const { q } = req.query;
+  
+  if (!q || q.length < 2) {
+    return res.status(200).json({
+      status: 'success',
+      data: { suggestions: [] }
+    });
+  }
+
+  try {
+    // Get location suggestions
+    const [locations] = await pool.query(`
+      SELECT DISTINCT location, COUNT(*) as count
+      FROM listings 
+      WHERE location LIKE ?
+      GROUP BY location
+      ORDER BY count DESC, location ASC
+      LIMIT 5
+    `, [`%${q}%`]);
+
+    // Get title suggestions
+    const [titles] = await pool.query(`
+      SELECT title, location, price_per_night
+      FROM listings 
+      WHERE title LIKE ?
+      ORDER BY average_rating DESC
+      LIMIT 3
+    `, [`%${q}%`]);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        suggestions: {
+          locations: locations.map(l => ({
+            type: 'location',
+            text: l.location,
+            count: l.count
+          })),
+          listings: titles.map(t => ({
+            type: 'listing', 
+            text: t.title,
+            location: t.location,
+            price: t.price_per_night
+          }))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Search suggestions error:', error);
+    return next(new AppError('Failed to get suggestions', 500));
+  }
 });
 
 exports.getNearbyListings = catchAsync(async (req, res, next) => {

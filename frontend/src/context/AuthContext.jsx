@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - Fixed version
+// src/context/AuthContext.jsx - Fixed version with clearError
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 import { useApp } from './AppContext';
@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(''); // ✅ Add error state
   const { connectSocket, disconnectSocket } = useApp();
 
   useEffect(() => {
@@ -27,7 +28,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  // Socket connection when user logs in
   useEffect(() => {
     if (user && token) {
       connectSocket(user.id);
@@ -54,6 +54,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      setError(''); // Clear previous errors
       const response = await api.login(email, password);
       if (response.status === 'success') {
         setToken(response.data.token);
@@ -61,26 +62,34 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('token', response.data.token);
         return { success: true };
       }
+      setError(response.message);
       return { success: false, message: response.message };
     } catch (error) {
-      return { success: false, message: error.message || 'Login failed' };
+      const errorMessage = error.message || 'Login failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
   const register = async (name, email, password) => {
     try {
+      setError(''); // Clear previous errors
       const response = await api.register(name, email, password);
       if (response.status === 'success') {
         return { success: true, message: 'Registration successful! Please check your email for verification.' };
       }
+      setError(response.message);
       return { success: false, message: response.message };
     } catch (error) {
-      return { success: false, message: error.message || 'Registration failed' };
+      const errorMessage = error.message || 'Registration failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
   const loginWithGoogle = async (googleToken) => {
     try {
+      setError(''); // Clear previous errors
       const response = await api.googleAuth(googleToken);
       if (response.status === 'success') {
         setToken(response.data.token);
@@ -88,29 +97,37 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('token', response.data.token);
         return { success: true };
       }
+      setError(response.message);
       return { success: false, message: response.message };
     } catch (error) {
-      return { success: false, message: error.message || 'Google login failed' };
+      const errorMessage = error.message || 'Google login failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
+    setError(''); // Clear errors on logout
     localStorage.removeItem('token');
     disconnectSocket();
   };
 
   const updateProfile = async (profileData) => {
     try {
+      setError('');
       const response = await api.updateProfile(profileData);
       if (response.status === 'success') {
         setUser(prev => ({ ...prev, ...response.data.updatedFields }));
         return { success: true };
       }
+      setError(response.message);
       return { success: false, message: response.message };
     } catch (error) {
-      return { success: false, message: error.message || 'Profile update failed' };
+      const errorMessage = error.message || 'Profile update failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -120,20 +137,23 @@ export const AuthProvider = ({ children }) => {
 
   const changePassword = async (oldPassword, newPassword) => {
     try {
+      setError('');
       const response = await api.changePassword(oldPassword, newPassword);
       if (response.status === 'success') {
         return { success: true };
       }
+      setError(response.message);
       return { success: false, message: response.message };
     } catch (error) {
-      return { success: false, message: error.message || 'Password change failed' };
+      const errorMessage = error.message || 'Password change failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
-  // FIXED: Added missing clearError function
+  // ✅ Add missing clearError function
   const clearError = () => {
-    // This was being called but didn't exist
-    console.log('Error cleared');
+    setError('');
   };
 
   const value = {
@@ -146,8 +166,9 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     updateUser,
     changePassword,
-    clearError, // FIXED: Added missing function
+    clearError, // ✅ Export clearError function
     loading,
+    error, // ✅ Export error state
     isAuthenticated: !!user,
     isHost: user?.role === 'host' || user?.role === 'admin',
     isAdmin: user?.role === 'admin'

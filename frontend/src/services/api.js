@@ -1,4 +1,4 @@
-// src/services/api.js - Fixed version
+// src/services/api.js - FIXED VERSION with better error handling
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class ApiService {
@@ -22,6 +22,7 @@ class ApiService {
     }
 
     try {
+      console.log(`Making request to: ${url}`);
       const response = await fetch(url, config);
       
       // Handle different response types
@@ -29,7 +30,12 @@ class ApiService {
       let data;
       
       if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          data = null;
+        }
       } else {
         data = await response.text();
       }
@@ -42,11 +48,25 @@ class ApiService {
           throw new Error('Session expired. Please log in again.');
         }
         
-        const errorMessage = data?.message || data || `HTTP error! status: ${response.status}`;
+        // Handle different error types
+        let errorMessage = 'Unknown error occurred';
+        
+        if (response.status === 404) {
+          errorMessage = 'Resource not found';
+        } else if (response.status === 400) {
+          errorMessage = data?.message || data?.error || 'Bad request';
+        } else if (response.status === 500) {
+          errorMessage = 'Server error - please try again later';
+        } else {
+          errorMessage = data?.message || data?.error || data || `HTTP error! status: ${response.status}`;
+        }
+        
+        console.error(`API Error (${response.status}):`, errorMessage);
         throw new Error(errorMessage);
       }
 
-      return data;
+      // Return data, but handle null/undefined cases
+      return data || {};
     } catch (error) {
       console.error('API Request failed:', error);
       throw error;
@@ -152,8 +172,19 @@ class ApiService {
     return this.getListings(params);
   }
 
+  // FIXED: Better error handling for listing by ID
   async getListingById(id) {
-    return this.get(`/listings/${id}`);
+    if (!id || id === 'undefined' || id === 'null') {
+      throw new Error('Valid listing ID is required');
+    }
+    
+    try {
+      const response = await this.get(`/listings/${id}`);
+      return response || { data: null };
+    } catch (error) {
+      console.error(`Failed to fetch listing ${id}:`, error);
+      throw new Error(`Failed to fetch listing: ${error.message}`);
+    }
   }
 
   async searchListings(searchParams) {
@@ -211,9 +242,20 @@ class ApiService {
     return this.get(`/bookings/${id}/history`);
   }
 
-  // FIXED: Add missing booked dates method
+  // FIXED: Add better error handling for booked dates
   async getBookedDatesByListing(listingId) {
-    return this.get(`/bookings/booked-dates/${listingId}`);
+    if (!listingId || listingId === 'undefined' || listingId === 'null') {
+      throw new Error('Valid listing ID is required');
+    }
+    
+    try {
+      const response = await this.get(`/bookings/booked-dates/${listingId}`);
+      return response || { data: [] };
+    } catch (error) {
+      console.error(`Failed to fetch booked dates for listing ${listingId}:`, error);
+      // Return empty array instead of throwing error
+      return { data: [] };
+    }
   }
 
   // Messages methods
@@ -251,7 +293,7 @@ class ApiService {
     return this.patch('/notifications/read-all');
   }
 
-  // Reviews methods
+  // FIXED: Reviews methods with better error handling
   async createReview(reviewData) {
     return this.post('/reviews', reviewData);
   }
@@ -261,7 +303,18 @@ class ApiService {
   }
 
   async getListingReviews(listingId) {
-    return this.get(`/reviews/listing/${listingId}`);
+    if (!listingId || listingId === 'undefined' || listingId === 'null') {
+      throw new Error('Valid listing ID is required');
+    }
+    
+    try {
+      const response = await this.get(`/reviews/listing/${listingId}`);
+      return response || { data: [] };
+    } catch (error) {
+      console.error(`Failed to fetch reviews for listing ${listingId}:`, error);
+      // Return empty array instead of throwing error
+      return { data: [] };
+    }
   }
 
   async deleteReview(id) {

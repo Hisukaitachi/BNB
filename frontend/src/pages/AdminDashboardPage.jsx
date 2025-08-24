@@ -76,20 +76,41 @@ const OverviewTab = () => {
     fetchDashboardStats();
   }, []);
 
-  const fetchDashboardStats = async () => {
-    try {
-      setLoading(true);
-      const response = await api.getDashboardStats();
-      if (response.status === 'success') {
-        setStats(response.data.stats);
-      }
-    } catch (error) {
-      console.error('Failed to fetch dashboard stats:', error);
-    } finally {
-      setLoading(false);
+const fetchDashboardStats = async () => {
+  try {
+    setLoading(true);
+    const response = await api.getDashboardStats();
+    
+    if (response.status === 'success' && response.data) {
+      // Data is directly under response.data, not response.data.stats
+      setStats(response.data);
+    } else {
+      // Fallback to default stats if API structure is different
+      console.warn('Unexpected API response structure:', response);
+      setStats({
+        totalUsers: 0,
+        totalListings: 0,
+        totalBookings: 0,
+        totalRevenue: 0,
+        activeUsers: 0,
+        bannedUsers: 0
+      });
     }
-  };
-
+  } catch (error) {
+    console.error('Failed to fetch dashboard stats:', error);
+    // Set default values on error
+    setStats({
+      totalUsers: 0,
+      totalListings: 0,
+      totalBookings: 0,
+      totalRevenue: 0,
+      activeUsers: 0,
+      bannedUsers: 0
+    });
+  } finally {
+    setLoading(false);
+  }
+};
   const formatPrice = (price) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -103,69 +124,67 @@ const OverviewTab = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Users</p>
-              <p className="text-2xl font-bold">{stats.totalUsers}</p>
-            </div>
-            <Users className="w-8 h-8 text-blue-400" />
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Listings</p>
-              <p className="text-2xl font-bold">{stats.totalListings}</p>
-            </div>
-            <Building2 className="w-8 h-8 text-purple-400" />
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Bookings</p>
-              <p className="text-2xl font-bold">{stats.totalBookings}</p>
-            </div>
-            <Calendar className="w-8 h-8 text-green-400" />
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Revenue</p>
-              <p className="text-2xl font-bold">{formatPrice(stats.totalRevenue)}</p>
-            </div>
-            <DollarSign className="w-8 h-8 text-yellow-400" />
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Active Users</p>
-              <p className="text-2xl font-bold">{stats.activeUsers}</p>
-            </div>
-            <Activity className="w-8 h-8 text-green-400" />
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Banned Users</p>
-              <p className="text-2xl font-bold text-red-400">{stats.bannedUsers}</p>
-            </div>
-            <Ban className="w-8 h-8 text-red-400" />
-          </div>
-        </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Total Users</p>
+        <p className="text-2xl font-bold">{stats?.totalUsers || 0}</p>
       </div>
+      <Users className="w-8 h-8 text-blue-400" />
+    </div>
+  </div>
+
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Total Listings</p>
+        <p className="text-2xl font-bold">{stats?.totalListings || 0}</p>
+      </div>
+      <Building2 className="w-8 h-8 text-purple-400" />
+    </div>
+  </div>
+
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Total Bookings</p>
+        <p className="text-2xl font-bold">{stats?.totalBookings || 0}</p>
+      </div>
+      <Calendar className="w-8 h-8 text-green-400" />
+    </div>
+  </div>
+
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Total Revenue</p>
+        <p className="text-2xl font-bold">{formatPrice(stats?.totalRevenue || 0)}</p>
+      </div>
+      <DollarSign className="w-8 h-8 text-yellow-400" />
+    </div>
+  </div>
+
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Active Users</p>
+        <p className="text-2xl font-bold">{stats?.activeUsers || 0}</p>
+      </div>
+      <Activity className="w-8 h-8 text-green-400" />
+    </div>
+  </div>
+
+  <div className="bg-gray-800 rounded-xl p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm">Banned Users</p>
+        <p className="text-2xl font-bold text-red-400">{stats?.bannedUsers || 0}</p>
+      </div>
+      <Ban className="w-8 h-8 text-red-400" />
+    </div>
+  </div>
+
 
       {/* Quick Actions */}
       <div className="bg-gray-800 rounded-xl p-6">

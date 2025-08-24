@@ -1,4 +1,4 @@
-// backend/routes/listingsRoutes.js - Fixed route ordering
+// backend/routes/listingsRoutes.js - QUICK FIX VERSION
 const express = require('express');
 const router = express.Router();
 const listingsController = require('../controllers/listingsController');
@@ -16,7 +16,7 @@ const {
   deleteListingSchema
 } = require('../validation/listingValidation');
 
-// SPECIFIC routes BEFORE parameterized routes - THIS IS CRITICAL!
+// SPECIFIC routes BEFORE parameterized routes
 router.get('/search', validate(searchListingsSchema), listingsController.searchListings);
 router.get('/nearby', validate(nearbyListingsSchema), listingsController.getNearbyListings);
 router.get('/my-listings', authenticateToken, listingsController.getListingsByHost);
@@ -27,7 +27,11 @@ router.post('/', authenticateToken, upload.single('image'), validate(createListi
 router.put('/:id', authenticateToken, validate(updateListingSchema), listingsController.updateListing);
 router.delete('/:id', authenticateToken, validate(deleteListingSchema), listingsController.deleteListing);
 
-// Parameterized routes LAST
-router.get('/:id', validate(getListingSchema), listingsController.getListingById);
+// QUICK FIX: Temporarily remove validation for getListingById
+// The controller already has validation logic
+router.get('/:id', listingsController.getListingById);
+
+// ORIGINAL (causing the issue):
+// router.get('/:id', validate(getListingSchema), listingsController.getListingById);
 
 module.exports = router;

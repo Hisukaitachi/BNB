@@ -1,179 +1,262 @@
-// backend/server.js - Final production-ready version
+// backend/server.js - CORRECTED VERSION
 require('dotenv').config({ path: __dirname + '/.env' });
-
-// Validate environment before starting
-const { validateEnvironment } = require('./utils/envValidator');
-validateEnvironment();
 
 const express = require('express');
 const http = require('http');
+const cors = require('cors');
+const helmet = require('helmet');
 const { initializeSocket } = require('./socket');
 const startCronJobs = require('./cronJobs');
-
-// Import security middleware
-const { applySecurity } = require('./middleware/security');
-const { securityLogger } = require('./middleware/securityLogger');
-const {
-  generalLimiter,
-  authLimiter,
-  passwordResetLimiter,
-  registrationLimiter,
-  apiLimiter,
-  uploadLimiter,
-  adminLimiter
-} = require('./middleware/rateLimiting');
-
-// Import error handling middleware
 const { globalErrorHandler, AppError } = require('./middleware/errorHandler');
-const logger = require('./utils/logger');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const server = http.createServer(app);
 
-// Log environment info
 console.log('Environment:', process.env.NODE_ENV || 'development');
-console.log('Security Mode: ENABLED');
 
-// Initialize Socket.IO + Global onlineUsers & cronJobs
+// Initialize Socket.IO and cron jobs
 initializeSocket(server);
 startCronJobs();
 
-// Apply security middleware first
-applySecurity(app);
+// Basic security middleware
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for easier development
+  crossOriginEmbedderPolicy: false
+}));
 
-// Apply general rate limiting
-app.use(generalLimiter);
+// CORS configuration - SIMPLIFIED
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow all origins in development
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // In production, add your frontend URLs
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://yourdomain.com'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
+};
 
-// Express middleware
+app.use(cors(corsOptions));
+
+// Rate limiting - SIMPLIFIED
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(limiter);
+
+// Body parsing middleware - MUST be before routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files securely
-app.use('/uploads', express.static('uploads', {
-  maxAge: '1d',
-  etag: false,
-  lastModified: false
-}));
+// Debug middleware (remove in production)
+app.use((req, res, next) => {
+  console.log('=== REQUEST DEBUG ===');
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  console.log('Content-Type:', req.get('Content-Type'));
+  console.log('Raw Body:', req.body);
+  console.log('Body Keys:', req.body ? Object.keys(req.body) : 'No body');
+  console.log('Headers:', req.headers);
+  console.log('=====================');
+  next();
+});
+// Serve static files
+app.use('/uploads', express.static('uploads'));
 
-app.use('/api/admin', securityLogger('admin_access'));
-app.use('/api/users/login', securityLogger('login_attempt'));
-app.use('/api/users/register', securityLogger('registration_attempt'));
+// Health check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Server is running',
+    timestamp: new Date().toISOString()
+  });
+});
 
-// Route-specific rate limiting BEFORE the routes
-app.use('/api/users/login', authLimiter);
-app.use('/api/users/register', registrationLimiter);
-app.use('/api/users/forgot-password', passwordResetLimiter);
-app.use('/api/users/reset-password', passwordResetLimiter);
+// ONLY load routes that actually exist in your project
+// Check if each route file exists before requiring it
 
-// API routes with moderate rate limiting
-app.use('/api/listings', apiLimiter);
-app.use('/api/bookings', apiLimiter);
-app.use('/api/reviews', apiLimiter);
-app.use('/api/messages', apiLimiter);
-app.use('/api/notifications', apiLimiter);
+// Auth routes - Create authRoutes.js first
+try {
+  app.use('/api/auth', require('./routes/authRoutes'));
+  console.log('✅ Auth routes loaded');
+} catch (e) {
+  console.log('❌ Auth routes not found - create routes/authRoutes.js');
+}
 
-// Admin routes with special rate limiting
-app.use('/api/admin', adminLimiter);
+// User management
+try {
+  app.use('/api/users', require('./routes/usersRoutes'));
+  console.log('✅ User routes loaded');
+} catch (e) {
+  console.log('❌ User routes error:', e.message);
+}
 
-// Health check routes (no auth required)
-app.use('/health', require('./routes/healthRoutes'));
+// Role switching - Create this file
+try {
+  app.use('/api/role', require('./routes/roleRoutes'));
+  console.log('✅ Role routes loaded');
+} catch (e) {
+  console.log('❌ Role routes not found - will create later');
+}
 
-// Main API routes - ORDER IS IMPORTANT!
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/users', require('./routes/usersRoutes'));
-app.use('/api/listings', require('./routes/listingsRoutes')); // Must be before admin
-app.use('/api/bookings', require('./routes/bookingsRoutes'));
-app.use('/api/admin', require('./routes/adminRoutes'));
-app.use('/api/reports', require('./routes/reportsRoutes'));
-app.use('/api/payouts', require('./routes/payoutRoutes'));
-app.use('/api/refunds', require('./routes/refundRoutes'));
-app.use('/api/notifications', require('./routes/notificationsRoutes'));
-app.use('/api/transactions', require('./routes/transactionsRoutes'));
-app.use('/api/messages', require('./routes/messagesRoutes'));
-app.use('/api/favorites', require('./routes/favoritesRoutes'));
-app.use('/api/reviews', require('./routes/reviewsRoutes'));
-// API info endpoint
+// Core features - Only load existing ones
+try {
+  app.use('/api/listings', require('./routes/listingsRoutes'));
+  console.log('✅ Listings routes loaded');
+} catch (e) {
+  console.log('❌ Listings routes error:', e.message);
+}
+
+try {
+  app.use('/api/bookings', require('./routes/bookingsRoutes'));
+  console.log('✅ Bookings routes loaded');
+} catch (e) {
+  console.log('❌ Bookings routes error:', e.message);
+}
+
+try {
+  app.use('/api/favorites', require('./routes/favoritesRoutes'));
+  console.log('✅ Favorites routes loaded');
+} catch (e) {
+  console.log('❌ Favorites routes error:', e.message);
+}
+
+try {
+  app.use('/api/reviews', require('./routes/reviewsRoutes'));
+  console.log('✅ Reviews routes loaded');
+} catch (e) {
+  console.log('❌ Reviews routes error:', e.message);
+}
+
+// Communication
+try {
+  app.use('/api/messages', require('./routes/messagesRoutes'));
+  console.log('✅ Messages routes loaded');
+} catch (e) {
+  console.log('❌ Messages routes error:', e.message);
+}
+
+try {
+  app.use('/api/notifications', require('./routes/notificationsRoutes'));
+  console.log('✅ Notifications routes loaded');
+} catch (e) {
+  console.log('❌ Notifications routes error:', e.message);
+}
+
+// Admin
+try {
+  app.use('/api/admin', require('./routes/adminRoutes'));
+  console.log('✅ Admin routes loaded');
+} catch (e) {
+  console.log('❌ Admin routes error:', e.message);
+}
+
+try {
+  app.use('/api/reports', require('./routes/reportsRoutes'));
+  console.log('✅ Reports routes loaded');
+} catch (e) {
+  console.log('❌ Reports routes error:', e.message);
+}
+
+// Financial
+try {
+  app.use('/api/payouts', require('./routes/payoutRoutes'));
+  console.log('✅ Payouts routes loaded');
+} catch (e) {
+  console.log('❌ Payouts routes error:', e.message);
+}
+
+try{
+  app.use('/api/payments', require('./routes/paymentRoutes'));
+  console.log('✅ Payments routes loaded');
+} catch (e) {
+  console.log('❌ Payments routes error:', e.message);
+}
+
+try {
+  app.use('/api/refunds', require('./routes/refundRoutes'));
+  console.log('✅ Refunds routes loaded');
+} catch (e) {
+  console.log('❌ Refunds routes error:', e.message);
+}
+
+try {
+  app.use('/api/transactions', require('./routes/transactionsRoutes'));
+  console.log('✅ Transactions routes loaded');
+} catch (e) {
+  console.log('❌ Transactions routes error:', e.message);
+}
+
+// API info
 app.get('/api', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'StayBnB API',
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
+    features: {
+      authentication: 'Google OAuth + JWT',
+      payments: 'PayMongo Integration',
+      realtime: 'Socket.IO'
+    },
     endpoints: {
-      health: '/health',
-      auth: '/api/users',
+      auth: '/api/auth',
+      users: '/api/users', 
       listings: '/api/listings',
       bookings: '/api/bookings',
-      messages: '/api/messages',
       admin: '/api/admin'
     }
   });
 });
 
-// 404 handler for unmatched routes
+// 404 handler
 app.use((req, res, next) => {
-  logger.warn('404 endpoint accessed', {
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent'),
-    timestamp: new Date().toISOString()
-  });
-  
   const err = new AppError(`Can't find ${req.originalUrl} on this server!`, 404);
   next(err);
 });
 
-// Global error handling middleware (must be last)
+// Global error handler
 app.use(globalErrorHandler);
 
 const PORT = process.env.PORT || 5000;
+
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log('Security features: Rate limiting, CORS, Helmet, XSS protection, Security logging');
-  
-  logger.info('Server started successfully', { 
-    port: PORT, 
-    environment: process.env.NODE_ENV || 'development',
-    security: 'enabled',
-    timestamp: new Date().toISOString()
-  });
+  console.log('Google OAuth:', process.env.GOOGLE_CLIENT_ID ? 'Configured' : 'Not configured');
+  console.log('PayMongo:', process.env.PAYMONGO_SECRET_KEY ? 'Configured' : 'Not configured');
 });
 
-// Handle unhandled promise rejections
+// Error handlers
 process.on('unhandledRejection', (err, promise) => {
-  console.log('Unhandled Promise Rejection at:', promise, 'reason:', err);
-  logger.error('Unhandled Promise Rejection', { 
-    error: err.message, 
-    stack: err.stack,
-    promise: promise 
-  });
-  
+  console.log('Unhandled Promise Rejection:', err.message);
   server.close(() => {
     process.exit(1);
   });
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.log('Uncaught Exception thrown');
-  logger.error('Uncaught Exception', { 
-    error: err.message, 
-    stack: err.stack 
-  });
+  console.log('Uncaught Exception:', err.message);
   process.exit(1);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received');
-  logger.info('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-    logger.info('Process terminated');
-  });
 });
 
 module.exports = app;

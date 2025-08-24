@@ -1,24 +1,10 @@
-// src/pages/RegisterPage.jsx
+// src/pages/RegisterPage.jsx - Fixed version
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-
-const StayLogo = ({ size = 'normal', className = '' }) => {
-  const sizes = {
-    small: 'text-lg',
-    normal: 'text-2xl',
-    large: 'text-4xl'
-  };
-
-  return (
-    <div className={`font-bold ${sizes[size]} ${className}`}>
-      <span className="bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
-        STAY
-      </span>
-    </div>
-  );
-};
+import Logo from '../components/common/Logo';
+import Button from '../components/common/Button';
 
 const RegisterPage = () => {
   const [formData, setFormData] = useState({ 
@@ -29,13 +15,15 @@ const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [success, setSuccess] = useState('');
-  const { register, error, clearError } = useAuth();
+  
+  // ✅ Use error from AuthContext
+  const { register, error, clearError } = useAuth(); // Get error from context
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    clearError();
+    clearError(); // ✅ Clear previous errors
     setSuccess('');
 
     const result = await register(formData.name, formData.email, formData.password);
@@ -51,19 +39,20 @@ const RegisterPage = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (error) clearError();
+    if (error) clearError(); // ✅ Clear error on input change
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <StayLogo size="large" className="mx-auto mb-6" />
+          <Logo size="large" className="mx-auto mb-6" />
           <h2 className="text-3xl font-bold text-white">Join STAY</h2>
           <p className="mt-2 text-gray-400">Create your account to get started</p>
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {/* ✅ Use error from AuthContext */}
           {error && (
             <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 text-sm">
               {error}
@@ -76,6 +65,7 @@ const RegisterPage = () => {
             </div>
           )}
           
+          {/* Rest of your form... */}
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -142,13 +132,14 @@ const RegisterPage = () => {
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
-            disabled={loading}
-            className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={loading}
+            className="w-full"
+            size="lg"
           >
             {loading ? 'Creating account...' : 'Create account'}
-          </button>
+          </Button>
           
           <div className="text-center">
             <p className="text-gray-400">

@@ -1,4 +1,4 @@
-// src/pages/ListingsPage.jsx
+// src/pages/ListingsPage.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Building2, MapPin, Star, Heart, Filter, Search } from 'lucide-react';
@@ -175,6 +175,7 @@ const ListingsPage = () => {
     fetchListings();
   }, [location.state]);
 
+  // FIXED: Updated fetchListings function
   const fetchListings = async (searchFilters = {}) => {
     try {
       setLoading(true);
@@ -182,30 +183,72 @@ const ListingsPage = () => {
       
       const queryParams = { ...filters, ...searchFilters };
       
-      // Remove empty filters
+      // Clean and validate parameters
       Object.keys(queryParams).forEach(key => {
-        if (!queryParams[key]) {
+        if (!queryParams[key] || queryParams[key] === '' || queryParams[key] === null || queryParams[key] === undefined) {
           delete queryParams[key];
+        } else {
+          // Convert numeric fields to numbers and validate
+          if (['price_min', 'price_max', 'min_rating'].includes(key)) {
+            const num = parseFloat(queryParams[key]);
+            if (isNaN(num) || num < 0) {
+              delete queryParams[key];
+            } else {
+              queryParams[key] = num;
+            }
+          }
+          // Trim string values
+          if (typeof queryParams[key] === 'string') {
+            queryParams[key] = queryParams[key].trim();
+            if (queryParams[key] === '') {
+              delete queryParams[key];
+            }
+          }
         }
       });
 
+      console.log('Cleaned query params:', queryParams);
+
       let response;
       
-      // Use search endpoint if we have filters, otherwise get all listings
+      // Only use search endpoint if we actually have valid filters
       if (Object.keys(queryParams).length > 0) {
+        console.log('Using search endpoint with params:', queryParams);
         response = await api.searchListings(queryParams);
       } else {
+        console.log('Using regular listings endpoint (no filters)');
         response = await api.getListings();
       }
       
-      if (response.status === 'success') {
-        setListings(response.data.listings || []);
+      // Handle response
+      if (response && response.status === 'success') {
+        setListings(response.data?.listings || response.data || []);
+      } else if (response && response.data) {
+        // Handle case where response doesn't have status field
+        setListings(Array.isArray(response.data) ? response.data : response.data.listings || []);
+      } else if (Array.isArray(response)) {
+        // Handle direct array response
+        setListings(response);
       } else {
-        setError(response.message || 'Failed to fetch listings');
+        setError(response?.message || 'Failed to fetch listings');
       }
     } catch (error) {
       console.error('Failed to fetch listings:', error);
       setError(error.message || 'Failed to fetch listings');
+      
+      // Fallback: try to fetch all listings without filters
+      if (Object.keys(queryParams || {}).length > 0) {
+        console.log('Retrying with basic listings endpoint...');
+        try {
+          const fallbackResponse = await api.getListings();
+          if (fallbackResponse) {
+            setListings(Array.isArray(fallbackResponse) ? fallbackResponse : fallbackResponse.data?.listings || []);
+            setError(null);
+          }
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError);
+        }
+      }
     } finally {
       setLoading(false);
     }

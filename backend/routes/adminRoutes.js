@@ -6,14 +6,28 @@ const reportsController = require('../controllers/reportsController');
 const {authenticateToken} = require('../middleware/auth');
 const Admin = require('../middleware/Admin');
 
+// Apply authentication and admin check to all routes
 router.use(authenticateToken);
 router.use(Admin);
 
-// Users
+// ADD: Dashboard redirect route
+router.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Admin Dashboard',
+    data: {
+      user: req.user,
+      dashboardUrl: '/api/admin/dashboard-stats'
+    }
+  });
+});
+
+// Existing routes...
+router.get('/dashboard-stats', adminController.getDashboardStats);
 router.get('/users', adminController.getAllUsers);
 router.put('/users/:userId/ban', adminController.banUser);
 router.put('/users/:userId/unban', adminController.unbanUser);
-router.get("/check-ban/:id", authenticateToken, adminController.checkBanStatus);
+router.get("/check-ban/:id", adminController.checkBanStatus);
 router.put('/users/:userId/role', adminController.updateUserRole);
 
 // Listings
@@ -30,7 +44,7 @@ router.delete('/bookings/:bookingId', adminController.cancelBooking);
 router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.removeReview);
 
-//Payout&Refunds
+// Payouts & Refunds
 router.get('/admin/earnings/:hostId', adminController.getHostEarnings);
 router.post('/admin/mark-paid', adminController.markHostAsPaid);
 router.get('/payouts-summary', adminController.getHostsPendingPayouts);
@@ -41,9 +55,6 @@ router.get('/transactions', adminController.getAllTransactions);
 
 // Reports
 router.get("/reports", reportsController.getAllReports);
-router.post("/actions", reportsController.adminTakeAction);// Admin take action
-
-// Dashboard Stats
-router.get('/dashboard-stats', adminController.getDashboardStats);
+router.post("/actions", reportsController.adminTakeAction);
 
 module.exports = router;
