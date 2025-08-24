@@ -137,18 +137,38 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
     return next(new AppError('Host ID missing from authentication', 401));
   }
 
-  await autoCompleteBookings(); // Auto-complete before fetching
-  const [rows] = await pool.query("CALL sp_get_bookings_by_host(?)", [hostId]);
+  await autoCompleteBookings();
+  
+  // Use direct query instead of stored procedure to ensure host_name is included
+  const [rows] = await pool.query(`
+    SELECT 
+      b.id AS booking_id,
+      b.listing_id,
+      l.title,
+      b.client_id,
+      u.name AS client_name,
+      b.status,
+      b.start_date AS check_in_date,   
+      b.end_date AS check_out_date,    
+      b.total_price,
+      l.host_id,
+      h.name AS host_name
+    FROM bookings b
+    JOIN listings l ON l.id = b.listing_id
+    JOIN users u ON u.id = b.client_id
+    JOIN users h ON h.id = l.host_id
+    WHERE l.host_id = ?
+    ORDER BY b.created_at DESC
+  `, [hostId]);
 
   res.status(200).json({
     status: 'success',
-    results: rows[0].length,
+    results: rows.length,
     data: {
-      bookings: rows[0] || []
+      bookings: rows || []
     }
   });
 });
-
 exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
   

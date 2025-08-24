@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Heart, Star, MapPin, Users, Wifi, Car, 
-  Waves, Utensils, AirVent, PawPrint,     // ✅ Use Waves instead
+  Waves, Utensils, AirVent, PawPrint,  // Changed Swimming to Waves
   Share, Flag, ArrowLeft, Calendar,
   MessageCircle, Shield, Award, Copy,
   Facebook, Twitter, Send, CheckCircle,
-  AlertTriangle, ImageIcon, Play, Clock   // ✅ Also add Clock (you're using it but not importing)
+  AlertTriangle, ImageIcon, Play, Clock  // Added Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -40,14 +40,14 @@ const ListingDetailPage = () => {
   const amenityIcons = {
   'WiFi': Wifi,
   'Parking': Car,
-  'Swimming Pool': Waves,     // ✅ Use Waves
+  'Swimming Pool': Waves,     // Changed
   'Kitchen': Utensils,
   'Air Conditioning': AirVent,
   'Pet Friendly': PawPrint,
   'Free WiFi': Wifi,
-  'Pool': Waves,              // ✅ Use Waves
+  'Pool': Waves,              // Changed
   'Gym': Users,
-  'Beach Access': Waves,      // ✅ Use Waves
+  'Beach Access': Waves,      // Changed
   'Mountain View': MapPin,
   'City View': MapPin
 };

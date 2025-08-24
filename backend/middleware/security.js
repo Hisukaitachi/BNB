@@ -6,7 +6,7 @@ const compression = require('compression');
 const { AppError } = require('./errorHandler');
 const logger = require('../utils/logger');
 
-// Enhanced CORS configuration
+// Replace the corsOptions in backend/middleware/security.js
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)
@@ -14,7 +14,7 @@ const corsOptions = {
     
     const allowedOrigins = [
       'http://localhost:3000',      // React default
-      'http://localhost:5173',      // Vite default
+      'http://localhost:5173',      // Vite default - YOUR FRONTEND
       'http://localhost:8080',      // Vue default
       'http://localhost:4200',      // Angular default
       'http://127.0.0.1:3000',
@@ -23,7 +23,7 @@ const corsOptions = {
       'https://www.yourdomain.com'
     ];
     
-    // In development, allow any localhost origin
+    // In development, be more permissive
     if (process.env.NODE_ENV === 'development') {
       if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
         return callback(null, true);
@@ -38,7 +38,7 @@ const corsOptions = {
         timestamp: new Date().toISOString(),
         allowedOrigins 
       });
-      // Still allow in development, just log
+      // Still allow in development to prevent blocking during testing
       if (process.env.NODE_ENV === 'development') {
         callback(null, true);
       } else {
@@ -56,20 +56,13 @@ const corsOptions = {
     'Accept',
     'Authorization',
     'Cache-Control',
-    'Pragma',
-    'X-API-Key',
-    'X-Total-Count',
-    'X-Page-Count'
+    'Pragma'
   ],
   exposedHeaders: [
     'X-Total-Count', 
-    'X-Page-Count',
-    'Access-Control-Allow-Origin',
-    'Access-Control-Allow-Methods',
-    'Access-Control-Allow-Headers'
+    'X-Page-Count'
   ],
-  // Preflight cache time
-  maxAge: 86400 // 24 hours
+  maxAge: 86400 // 24 hours preflight cache
 };
 
 // Security headers configuration

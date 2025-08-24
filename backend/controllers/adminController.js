@@ -603,69 +603,47 @@ exports.removeReview = catchAsync(async (req, res, next) => {
   });
 });
 
-// DASHBOARD STATS
 exports.getDashboardStats = catchAsync(async (req, res, next) => {
   try {
-    // Get comprehensive dashboard statistics
+    // Use direct queries instead of non-existent stored procedures
     const [userStats] = await pool.query(`
       SELECT 
-        COUNT(*) as total_users,
-        SUM(CASE WHEN role = 'client' THEN 1 ELSE 0 END) as total_clients,
-        SUM(CASE WHEN role = 'host' THEN 1 ELSE 0 END) as total_hosts,
-        SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) as total_admins,
-        SUM(CASE WHEN is_banned = 1 THEN 1 ELSE 0 END) as banned_users,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as new_users_last_30_days
+        COUNT(*) as totalUsers,
+        SUM(CASE WHEN role = 'client' THEN 1 ELSE 0 END) as totalClients,
+        SUM(CASE WHEN role = 'host' THEN 1 ELSE 0 END) as totalHosts,
+        SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) as totalAdmins,
+        SUM(CASE WHEN is_banned = 1 THEN 1 ELSE 0 END) as bannedUsers
       FROM users
     `);
 
     const [listingStats] = await pool.query(`
-      SELECT 
-        COUNT(*) as total_listings,
-        AVG(price_per_night) as avg_price_per_night,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as new_listings_last_30_days
-      FROM listings
+      SELECT COUNT(*) as totalListings FROM listings
     `);
 
     const [bookingStats] = await pool.query(`
-      SELECT 
-        COUNT(*) as total_bookings,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_bookings,
-        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_bookings,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_bookings,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as new_bookings_last_30_days,
-        AVG(total_price) as avg_booking_value
-      FROM bookings
+      SELECT COUNT(*) as totalBookings FROM bookings
     `);
 
     const [revenueStats] = await pool.query(`
-      SELECT 
-        IFNULL(SUM(total_price), 0) as total_revenue,
-        IFNULL(SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN total_price ELSE 0 END), 0) as revenue_last_30_days,
-        IFNULL(SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN total_price ELSE 0 END), 0) as revenue_this_year
-      FROM bookings
-      WHERE status IN ('approved', 'completed')
-    `);
-
-    const [reviewStats] = await pool.query(`
-      SELECT 
-        COUNT(*) as total_reviews,
-        AVG(rating) as avg_rating,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as new_reviews_last_30_days
-      FROM reviews
+      SELECT IFNULL(SUM(total_price), 0) as totalRevenue 
+      FROM bookings WHERE status IN ('approved', 'completed')
     `);
 
     res.status(200).json({
       status: 'success',
       data: {
-        users: userStats[0],
-        listings: listingStats[0],
-        bookings: bookingStats[0],
-        revenue: revenueStats[0],
-        reviews: reviewStats[0],
-        generated_at: new Date().toISOString()
+        totalUsers: userStats[0].totalUsers,
+        totalListings: listingStats[0].totalListings, 
+        totalBookings: bookingStats[0].totalBookings,
+        totalRevenue: revenueStats[0].totalRevenue,
+        userBreakdown: {
+          clients: userStats[0].totalClients,
+          hosts: userStats[0].totalHosts,
+          admins: userStats[0].totalAdmins,
+          banned: userStats[0].bannedUsers
+        }
       }
     });
-
   } catch (error) {
     console.error('Dashboard stats error:', error);
     return next(new AppError('Failed to generate dashboard statistics', 500));

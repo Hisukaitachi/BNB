@@ -55,12 +55,11 @@ app.use('/uploads', express.static('uploads', {
   lastModified: false
 }));
 
-// Security logging for sensitive endpoints
 app.use('/api/admin', securityLogger('admin_access'));
 app.use('/api/users/login', securityLogger('login_attempt'));
 app.use('/api/users/register', securityLogger('registration_attempt'));
 
-// Route-specific rate limiting
+// Route-specific rate limiting BEFORE the routes
 app.use('/api/users/login', authLimiter);
 app.use('/api/users/register', registrationLimiter);
 app.use('/api/users/forgot-password', passwordResetLimiter);
@@ -79,8 +78,12 @@ app.use('/api/admin', adminLimiter);
 // Health check routes (no auth required)
 app.use('/health', require('./routes/healthRoutes'));
 
-// Main API routes
+// Main API routes - ORDER IS IMPORTANT!
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/usersRoutes'));
+app.use('/api/listings', require('./routes/listingsRoutes')); // Must be before admin
+app.use('/api/bookings', require('./routes/bookingsRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/reports', require('./routes/reportsRoutes'));
 app.use('/api/payouts', require('./routes/payoutRoutes'));
 app.use('/api/refunds', require('./routes/refundRoutes'));
@@ -89,11 +92,6 @@ app.use('/api/transactions', require('./routes/transactionsRoutes'));
 app.use('/api/messages', require('./routes/messagesRoutes'));
 app.use('/api/favorites', require('./routes/favoritesRoutes'));
 app.use('/api/reviews', require('./routes/reviewsRoutes'));
-app.use('/api/admin', require('./routes/adminRoutes'));
-app.use('/api/bookings', require('./routes/bookingsRoutes'));
-app.use('/api/listings', require('./routes/listingsRoutes'));
-app.use('/api/users', require('./routes/usersRoutes'));
-
 // API info endpoint
 app.get('/api', (req, res) => {
   res.status(200).json({

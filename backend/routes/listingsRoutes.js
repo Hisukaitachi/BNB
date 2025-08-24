@@ -1,4 +1,4 @@
-// backend/routes/listingsRoutes.js - Updated with validation
+// backend/routes/listingsRoutes.js - Fixed route ordering
 const express = require('express');
 const router = express.Router();
 const listingsController = require('../controllers/listingsController');
@@ -16,16 +16,18 @@ const {
   deleteListingSchema
 } = require('../validation/listingValidation');
 
-// Public routes with validation
+// SPECIFIC routes BEFORE parameterized routes - THIS IS CRITICAL!
 router.get('/search', validate(searchListingsSchema), listingsController.searchListings);
 router.get('/nearby', validate(nearbyListingsSchema), listingsController.getNearbyListings);
-router.get('/', listingsController.getAllListings);
-router.get('/:id', validate(getListingSchema), listingsController.getListingById);
-
-// Protected routes with validation
-router.post('/', authenticateToken, upload.single('image'), validate(createListingSchema), listingsController.createListing);
 router.get('/my-listings', authenticateToken, listingsController.getListingsByHost);
+router.get('/', listingsController.getAllListings);
+
+// Protected routes
+router.post('/', authenticateToken, upload.single('image'), validate(createListingSchema), listingsController.createListing);
 router.put('/:id', authenticateToken, validate(updateListingSchema), listingsController.updateListing);
 router.delete('/:id', authenticateToken, validate(deleteListingSchema), listingsController.deleteListing);
+
+// Parameterized routes LAST
+router.get('/:id', validate(getListingSchema), listingsController.getListingById);
 
 module.exports = router;

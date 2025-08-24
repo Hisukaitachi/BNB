@@ -97,7 +97,7 @@ class ApiService {
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         method: 'POST',
         headers,
-        body: formData, // Don't set Content-Type for FormData
+        body: formData,
       });
 
       const data = await response.json();
@@ -113,9 +113,7 @@ class ApiService {
     }
   }
 
-  // Fixed specific API methods for your backend
-  
-  // Auth methods - FIXED
+  // Auth methods
   async login(email, password) {
     return this.post('/users/login', { email, password });
   }
@@ -144,13 +142,12 @@ class ApiService {
     return this.put('/users/me/change-password', { oldPassword, newPassword });
   }
 
-  // Listings methods - FIXED
+  // Listings methods
   async getListings(params = {}) {
     const queryString = new URLSearchParams(params).toString();
     return this.get(`/listings${queryString ? `?${queryString}` : ''}`);
   }
 
-  // FIXED: Added missing method referenced in ListingsPage
   async getAllListings(params = {}) {
     return this.getListings(params);
   }
@@ -167,12 +164,10 @@ class ApiService {
   async createListing(listingData, files = {}) {
     const formData = new FormData();
     
-    // Append listing data
     Object.keys(listingData).forEach(key => {
       formData.append(key, listingData[key]);
     });
     
-    // Append files
     if (files.image) {
       formData.append('image', files.image);
     }
@@ -191,7 +186,6 @@ class ApiService {
     return this.delete(`/listings/${id}`);
   }
 
-  // FIXED: Host methods
   async getMyListings() {
     return this.get('/listings/my-listings');
   }
@@ -217,7 +211,12 @@ class ApiService {
     return this.get(`/bookings/${id}/history`);
   }
 
-  // Messages methods - FIXED
+  // FIXED: Add missing booked dates method
+  async getBookedDatesByListing(listingId) {
+    return this.get(`/bookings/booked-dates/${listingId}`);
+  }
+
+  // Messages methods
   async sendMessage(receiverId, message) {
     return this.post('/messages', { receiverId, message });
   }
@@ -252,7 +251,7 @@ class ApiService {
     return this.patch('/notifications/read-all');
   }
 
-  // Reviews methods - FIXED
+  // Reviews methods
   async createReview(reviewData) {
     return this.post('/reviews', reviewData);
   }
@@ -269,7 +268,7 @@ class ApiService {
     return this.delete(`/reviews/${id}`);
   }
 
-  // Favorites methods - FIXED
+  // Favorites methods
   async addToFavorites(listingId) {
     return this.post(`/favorites/${listingId}`);
   }
@@ -282,7 +281,6 @@ class ApiService {
     return this.delete(`/favorites/${listingId}`);
   }
 
-  // FIXED: Missing methods referenced in components
   async addFavorite(listingId) {
     return this.addToFavorites(listingId);
   }
@@ -291,7 +289,7 @@ class ApiService {
     return this.removeFromFavorites(listingId);
   }
 
-  // Admin methods - FIXED
+  // Admin methods
   async getAllUsers(params = {}) {
     const queryString = new URLSearchParams(params).toString();
     return this.get(`/admin/users${queryString ? `?${queryString}` : ''}`);
@@ -330,7 +328,7 @@ class ApiService {
     return this.get('/admin/payouts-summary');
   }
 
-  // Host methods - FIXED
+  // Host methods
   async getHostEarnings() {
     return this.get('/payouts/host/earnings');
   }

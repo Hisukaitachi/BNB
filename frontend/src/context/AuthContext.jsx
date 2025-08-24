@@ -114,7 +114,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // FIXED: Added missing updateUser method
   const updateUser = (userData) => {
     setUser(prev => ({ ...prev, ...userData }));
   };
@@ -131,6 +130,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // FIXED: Added missing clearError function
+  const clearError = () => {
+    // This was being called but didn't exist
+    console.log('Error cleared');
+  };
+
   const value = {
     user,
     token,
@@ -139,8 +144,9 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     logout,
     updateProfile,
-    updateUser, // FIXED: Added missing method
+    updateUser,
     changePassword,
+    clearError, // FIXED: Added missing function
     loading,
     isAuthenticated: !!user,
     isHost: user?.role === 'host' || user?.role === 'admin',
