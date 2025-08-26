@@ -1,9 +1,10 @@
-// src/components/host/ListingsTab.jsx
+// src/components/host/ListingsTab.jsx - Fixed with Full Functionality
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Building2, Eye, Heart, MapPin, Star, 
-  Edit, Trash2, MoreVertical, Copy, ExternalLink
+  Edit, Trash2, MoreVertical, Copy, ExternalLink,
+  Upload, X, Save, DollarSign, Users, Bed
 } from 'lucide-react';
 import api from '../../services/api';
 import Button from '../common/Button';
@@ -16,9 +17,51 @@ const ListingsTab = () => {
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  
   const navigate = useNavigate();
   const { showToast } = useApp();
+
+  // Form state for add/edit
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    location: '',
+    price_per_night: '',
+    max_guests: '',
+    bedrooms: '',
+    bathrooms: '',
+    amenities: [],
+    house_rules: '',
+    cancellation_policy: 'flexible',
+    property_type: 'apartment',
+    status: 'active'
+  });
+
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [imagePreview, setImagePreview] = useState(null);
+
+  // Available options
+  const amenitiesList = [
+    'WiFi', 'Kitchen', 'Washer', 'Dryer', 'Air conditioning', 'Heating',
+    'TV', 'Hot tub', 'Pool', 'Gym', 'Parking', 'Elevator', 'Balcony',
+    'Garden', 'Beach access', 'Pet friendly', 'Smoking allowed', 'Events allowed'
+  ];
+
+  const propertyTypes = [
+    'apartment', 'house', 'condo', 'villa', 'studio', 'loft', 'townhouse', 'cabin'
+  ];
+
+  const cancellationPolicies = [
+    { value: 'flexible', label: 'Flexible' },
+    { value: 'moderate', label: 'Moderate' },
+    { value: 'strict', label: 'Strict' },
+    { value: 'super_strict', label: 'Super Strict' }
+  ];
 
   useEffect(() => {
     fetchListings();
@@ -39,6 +82,33 @@ const ListingsTab = () => {
     }
   };
 
+  const handleAddListing = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  const handleEditListing = (listing) => {
+    setSelectedListing(listing);
+    setFormData({
+      title: listing.title || '',
+      description: listing.description || '',
+      location: listing.location || '',
+      price_per_night: listing.price_per_night || '',
+      max_guests: listing.max_guests || '',
+      bedrooms: listing.bedrooms || '',
+      bathrooms: listing.bathrooms || '',
+      amenities: Array.isArray(listing.amenities) 
+        ? listing.amenities 
+        : (listing.amenities ? listing.amenities.split(',') : []),
+      house_rules: listing.house_rules || '',
+      cancellation_policy: listing.cancellation_policy || 'flexible',
+      property_type: listing.property_type || 'apartment',
+      status: listing.status || 'active'
+    });
+    setImagePreview(listing.image_url);
+    setShowEditModal(true);
+  };
+
   const handleDeleteListing = async () => {
     if (!selectedListing) return;
     
@@ -55,6 +125,89 @@ const ListingsTab = () => {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleSaveListing = async () => {
+    try {
+      setSaving(true);
+      
+      // Validate required fields
+      if (!formData.title || !formData.location || !formData.price_per_night) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+      }
+
+      const listingData = {
+        ...formData,
+        price_per_night: parseFloat(formData.price_per_night),
+        max_guests: parseInt(formData.max_guests) || 1,
+        bedrooms: parseInt(formData.bedrooms) || 1,
+        bathrooms: parseInt(formData.bathrooms) || 1,
+        amenities: formData.amenities.join(',')
+      };
+
+      const files = selectedImages.length > 0 ? { image: selectedImages[0] } : {};
+
+      if (selectedListing) {
+        // Update existing listing
+        await api.updateListing(selectedListing.id, listingData);
+        showToast('Listing updated successfully', 'success');
+        setShowEditModal(false);
+      } else {
+        // Create new listing
+        await api.createListing(listingData, files);
+        showToast('Listing created successfully', 'success');
+        setShowAddModal(false);
+      }
+
+      fetchListings(); // Refresh listings
+      resetForm();
+    } catch (error) {
+      console.error('Failed to save listing:', error);
+      showToast(error.message || 'Failed to save listing', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      location: '',
+      price_per_night: '',
+      max_guests: '',
+      bedrooms: '',
+      bathrooms: '',
+      amenities: [],
+      house_rules: '',
+      cancellation_policy: 'flexible',
+      property_type: 'apartment',
+      status: 'active'
+    });
+    setSelectedImages([]);
+    setImagePreview(null);
+    setSelectedListing(null);
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    setSelectedImages(files);
+    
+    if (files[0]) {
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target.result);
+      reader.readAsDataURL(files[0]);
+    }
+  };
+
+  const handleAmenityToggle = (amenity) => {
+    setFormData(prev => ({
+      ...prev,
+      amenities: prev.amenities.includes(amenity)
+        ? prev.amenities.filter(a => a !== amenity)
+        : [...prev.amenities, amenity]
+    }));
   };
 
   const copyListingLink = (listingId) => {
@@ -89,6 +242,227 @@ const ListingsTab = () => {
     }
   };
 
+  // Render form modal
+  const renderFormModal = (isEdit = false) => (
+    <Modal
+      isOpen={isEdit ? showEditModal : showAddModal}
+      onClose={() => {
+        if (isEdit) setShowEditModal(false);
+        else setShowAddModal(false);
+        resetForm();
+      }}
+      title={isEdit ? 'Edit Listing' : 'Add New Listing'}
+      size="lg"
+    >
+      <div className="space-y-6 max-h-96 overflow-y-auto">
+        {/* Basic Information */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Title <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="Beautiful apartment in the city center"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Location <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => setFormData({...formData, location: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="Cebu City, Philippines"
+            />
+          </div>
+        </div>
+
+        {/* Property Details */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Price/Night <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="number"
+              value={formData.price_per_night}
+              onChange={(e) => setFormData({...formData, price_per_night: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="2500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Max Guests</label>
+            <input
+              type="number"
+              value={formData.max_guests}
+              onChange={(e) => setFormData({...formData, max_guests: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="4"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Bedrooms</label>
+            <input
+              type="number"
+              value={formData.bedrooms}
+              onChange={(e) => setFormData({...formData, bedrooms: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="2"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Bathrooms</label>
+            <input
+              type="number"
+              value={formData.bathrooms}
+              onChange={(e) => setFormData({...formData, bathrooms: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+              placeholder="1"
+            />
+          </div>
+        </div>
+
+        {/* Property Type and Status */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Property Type</label>
+            <select
+              value={formData.property_type}
+              onChange={(e) => setFormData({...formData, property_type: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            >
+              {propertyTypes.map(type => (
+                <option key={type} value={type}>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Cancellation Policy</label>
+            <select
+              value={formData.cancellation_policy}
+              onChange={(e) => setFormData({...formData, cancellation_policy: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            >
+              {cancellationPolicies.map(policy => (
+                <option key={policy.value} value={policy.value}>
+                  {policy.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            rows="3"
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            placeholder="Describe your property..."
+          />
+        </div>
+
+        {/* Amenities */}
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-3">Amenities</label>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {amenitiesList.map(amenity => (
+              <label key={amenity} className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.amenities.includes(amenity)}
+                  onChange={() => handleAmenityToggle(amenity)}
+                  className="rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-500"
+                />
+                <span className="text-sm text-gray-300">{amenity}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* House Rules */}
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">House Rules</label>
+          <textarea
+            value={formData.house_rules}
+            onChange={(e) => setFormData({...formData, house_rules: e.target.value})}
+            rows="2"
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            placeholder="No smoking, No pets, Quiet hours after 10 PM..."
+          />
+        </div>
+
+        {/* Image Upload */}
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">Property Images</label>
+          <div className="space-y-3">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:bg-purple-500 file:text-white hover:file:bg-purple-600"
+              multiple
+            />
+            {imagePreview && (
+              <div className="relative inline-block">
+                <img 
+                  src={imagePreview} 
+                  alt="Preview" 
+                  className="w-32 h-24 object-cover rounded-lg"
+                />
+                <button
+                  onClick={() => {
+                    setImagePreview(null);
+                    setSelectedImages([]);
+                  }}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end space-x-3 mt-6">
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (isEdit) setShowEditModal(false);
+            else setShowAddModal(false);
+            resetForm();
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSaveListing}
+          loading={saving}
+          icon={<Save className="w-4 h-4" />}
+        >
+          {isEdit ? 'Update' : 'Create'} Listing
+        </Button>
+      </div>
+    </Modal>
+  );
+
   if (loading) {
     return <Loading message="Loading your listings..." fullScreen={false} />;
   }
@@ -102,7 +476,7 @@ const ListingsTab = () => {
           <p className="text-gray-400">Manage your properties and track performance</p>
         </div>
         <Button 
-          onClick={() => navigate('/host/listings/new')}
+          onClick={handleAddListing}
           icon={<Plus className="w-4 h-4" />}
         >
           Add New Listing
@@ -141,7 +515,7 @@ const ListingsTab = () => {
           <Building2 className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-400 mb-2">No listings yet</h3>
           <p className="text-gray-500 mb-6">Create your first listing to start hosting</p>
-          <Button onClick={() => navigate('/host/listings/new')}>
+          <Button onClick={handleAddListing}>
             Create Your First Listing
           </Button>
         </div>
@@ -189,7 +563,7 @@ const ListingsTab = () => {
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => navigate(`/host/listings/${listing.id}/edit`)}
+                      onClick={() => handleEditListing(listing)}
                       icon={<Edit className="w-4 h-4" />}
                     >
                       Edit
@@ -202,16 +576,23 @@ const ListingsTab = () => {
               <div className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-lg line-clamp-2 flex-1">{listing.title}</h3>
-                  <div className="relative ml-2">
-                    <button className="p-1 hover:bg-gray-700 rounded">
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-                  </div>
                 </div>
                 
                 <div className="flex items-center text-gray-400 text-sm mb-3">
                   <MapPin className="w-4 h-4 mr-1" />
                   <span className="line-clamp-1">{listing.location}</span>
+                </div>
+
+                {/* Property Details */}
+                <div className="flex items-center space-x-4 text-sm text-gray-400 mb-3">
+                  <div className="flex items-center space-x-1">
+                    <Users className="w-4 h-4" />
+                    <span>{listing.max_guests || 1} guests</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Bed className="w-4 h-4" />
+                    <span>{listing.bedrooms || 1} beds</span>
+                  </div>
                 </div>
                 
                 {/* Stats Row */}
@@ -245,7 +626,7 @@ const ListingsTab = () => {
                   <Button 
                     size="sm" 
                     className="flex-1"
-                    onClick={() => navigate(`/host/listings/${listing.id}/edit`)}
+                    onClick={() => handleEditListing(listing)}
                     icon={<Edit className="w-3 h-3" />}
                   >
                     Edit
@@ -267,6 +648,12 @@ const ListingsTab = () => {
           ))}
         </div>
       )}
+
+      {/* Add Modal */}
+      {renderFormModal(false)}
+
+      {/* Edit Modal */}
+      {renderFormModal(true)}
 
       {/* Delete Confirmation Modal */}
       <Modal
