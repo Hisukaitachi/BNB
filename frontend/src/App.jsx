@@ -11,6 +11,7 @@ import Toast from './components/common/Toast';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import EmailVerificationPage from './pages/EmailVerificationPage';
 import ListingsPage from './pages/ListingsPage';
 import ListingDetailPage from './pages/ListingDetailPage';
 import ProfilePage from './pages/ProfilePage';
@@ -33,7 +34,8 @@ const App = () => {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/listings" element={<ListingsPage />} />
               <Route path="/listing/:id" element={<ListingDetailPage />} />
-
+              <Route path="/verify-email" element={<EmailVerificationPage />} />
+              
               {/* Protected Routes */}
               <Route 
                 path="/profile" 

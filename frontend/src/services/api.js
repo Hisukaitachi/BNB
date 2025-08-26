@@ -1,4 +1,4 @@
-// src/services/api.js - FIXED VERSION with better error handling
+// src/services/api.js - FIXED VERSION
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class ApiService {
@@ -34,10 +34,11 @@ class ApiService {
           data = await response.json();
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
-          data = null;
+          throw new Error('Invalid response format from server');
         }
       } else {
-        data = await response.text();
+        const text = await response.text();
+        throw new Error(`Server returned non-JSON response: ${text}`);
       }
 
       if (!response.ok) {
@@ -48,31 +49,20 @@ class ApiService {
           throw new Error('Session expired. Please log in again.');
         }
         
-        // Handle different error types
-        let errorMessage = 'Unknown error occurred';
-        
-        if (response.status === 404) {
-          errorMessage = 'Resource not found';
-        } else if (response.status === 400) {
-          errorMessage = data?.message || data?.error || 'Bad request';
-        } else if (response.status === 500) {
-          errorMessage = 'Server error - please try again later';
-        } else {
-          errorMessage = data?.message || data?.error || data || `HTTP error! status: ${response.status}`;
-        }
-        
-        console.error(`API Error (${response.status}):`, errorMessage);
+        // Extract error message properly
+        const errorMessage = data?.message || data?.error || `HTTP error! status: ${response.status}`;
         throw new Error(errorMessage);
       }
 
-      // Return data, but handle null/undefined cases
-      return data || {};
+      // FIXED: Always return the full response, not just data
+      return data;
     } catch (error) {
       console.error('API Request failed:', error);
       throw error;
     }
   }
 
+  // Standard HTTP methods
   async get(endpoint) {
     return this.request(endpoint);
   }
@@ -104,75 +94,48 @@ class ApiService {
     });
   }
 
-  // File upload method
-  async uploadFile(endpoint, formData) {
-    const token = localStorage.getItem('token');
-    const headers = {};
-    
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
-    try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Upload failed');
-      }
-
-      return data;
-    } catch (error) {
-      console.error('File upload failed:', error);
-      throw error;
-    }
-  }
-
-  // Auth methods
+  // Auth methods - FIXED
   async login(email, password) {
-    return this.post('/users/login', { email, password });
+    const response = await this.post('/users/login', { email, password });
+    return response; // Backend returns { status: 'success', data: { token, user } }
   }
 
   async register(name, email, password) {
-    return this.post('/users/register', { name, email, password });
+    const response = await this.post('/users/register', { name, email, password });
+    return response;
   }
 
   async googleAuth(token) {
-    return this.post('/auth/google', { token });
-  }
-
-  async logout() {
-    localStorage.removeItem('token');
+    const response = await this.post('/auth/google', { token });
+    return response;
   }
 
   async getUserProfile() {
-    return this.get('/users/me');
+    const response = await this.get('/users/me');
+    return response; // Backend returns { status: 'success', data: { user } }
   }
 
   async updateProfile(data) {
-    return this.put('/users/me', data);
+    const response = await this.put('/users/me', data);
+    return response;
   }
 
   async changePassword(oldPassword, newPassword) {
-    return this.put('/users/me/change-password', { oldPassword, newPassword });
+    const response = await this.put('/users/me/change-password', { oldPassword, newPassword });
+    return response;
   }
 
-  // Listings methods
+  // Listings methods - FIXED
   async getListings(params = {}) {
     const queryString = new URLSearchParams(params).toString();
-    return this.get(`/listings${queryString ? `?${queryString}` : ''}`);
+    const response = await this.get(`/listings${queryString ? `?${queryString}` : ''}`);
+    return response;
   }
 
   async getAllListings(params = {}) {
     return this.getListings(params);
   }
 
-  // FIXED: Better error handling for listing by ID
   async getListingById(id) {
     if (!id || id === 'undefined' || id === 'null') {
       throw new Error('Valid listing ID is required');
@@ -180,7 +143,7 @@ class ApiService {
     
     try {
       const response = await this.get(`/listings/${id}`);
-      return response || { data: null };
+      return response;
     } catch (error) {
       console.error(`Failed to fetch listing ${id}:`, error);
       throw new Error(`Failed to fetch listing: ${error.message}`);
@@ -189,14 +152,18 @@ class ApiService {
 
   async searchListings(searchParams) {
     const queryString = new URLSearchParams(searchParams).toString();
-    return this.get(`/listings/search?${queryString}`);
+    const response = await this.get(`/listings/search?${queryString}`);
+    return response;
   }
 
   async createListing(listingData, files = {}) {
+    // File upload with FormData
     const formData = new FormData();
     
     Object.keys(listingData).forEach(key => {
-      formData.append(key, listingData[key]);
+      if (listingData[key] !== null && listingData[key] !== undefined) {
+        formData.append(key, listingData[key]);
+      }
     });
     
     if (files.image) {
@@ -210,39 +177,46 @@ class ApiService {
   }
 
   async updateListing(id, data) {
-    return this.put(`/listings/${id}`, data);
+    const response = await this.put(`/listings/${id}`, data);
+    return response;
   }
 
   async deleteListing(id) {
-    return this.delete(`/listings/${id}`);
+    const response = await this.delete(`/listings/${id}`);
+    return response;
   }
 
   async getMyListings() {
-    return this.get('/listings/my-listings');
+    const response = await this.get('/listings/my-listings');
+    return response;
   }
 
   // Bookings methods - FIXED
   async createBooking(bookingData) {
-    return this.post('/bookings', bookingData);
+    const response = await this.post('/bookings', bookingData);
+    return response;
   }
 
   async getMyBookings() {
-    return this.get('/bookings/my-bookings');
+    const response = await this.get('/bookings/my-bookings');
+    return response;
   }
 
   async getHostBookings() {
-    return this.get('/bookings/host-bookings');
+    const response = await this.get('/bookings/host-bookings');
+    return response;
   }
 
   async updateBookingStatus(id, status) {
-    return this.put(`/bookings/${id}/status`, { status });
+    const response = await this.put(`/bookings/${id}/status`, { status });
+    return response;
   }
 
   async getBookingHistory(id) {
-    return this.get(`/bookings/${id}/history`);
+    const response = await this.get(`/bookings/${id}/history`);
+    return response;
   }
 
-  // FIXED: Add better error handling for booked dates
   async getBookedDatesByListing(listingId) {
     if (!listingId || listingId === 'undefined' || listingId === 'null') {
       throw new Error('Valid listing ID is required');
@@ -250,56 +224,66 @@ class ApiService {
     
     try {
       const response = await this.get(`/bookings/booked-dates/${listingId}`);
-      return response || { data: [] };
+      return response;
     } catch (error) {
       console.error(`Failed to fetch booked dates for listing ${listingId}:`, error);
-      // Return empty array instead of throwing error
-      return { data: [] };
+      // Return empty structure instead of throwing
+      return { status: 'success', data: { unavailableDates: [] } };
     }
   }
 
   // Messages methods
   async sendMessage(receiverId, message) {
-    return this.post('/messages', { receiverId, message });
+    const response = await this.post('/messages', { receiverId, message });
+    return response;
   }
 
   async getConversation(otherUserId, page = 1) {
-    return this.get(`/messages/conversation/${otherUserId}?page=${page}`);
+    const response = await this.get(`/messages/conversation/${otherUserId}?page=${page}`);
+    return response;
   }
 
   async getInbox() {
-    return this.get('/messages/inbox');
+    const response = await this.get('/messages/inbox');
+    return response;
   }
 
   async markMessageAsRead(messageId) {
-    return this.patch(`/messages/${messageId}/read`);
+    const response = await this.patch(`/messages/${messageId}/read`);
+    return response;
   }
 
   async markConversationAsRead(otherUserId) {
-    return this.patch(`/messages/conversation/${otherUserId}/read`);
+    const response = await this.patch(`/messages/conversation/${otherUserId}/read`);
+    return response;
   }
 
   // Notifications methods
   async getNotifications(params = {}) {
     const queryString = new URLSearchParams(params).toString();
-    return this.get(`/notifications${queryString ? `?${queryString}` : ''}`);
+    const response = await this.get(`/notifications${queryString ? `?${queryString}` : ''}`);
+    return response;
   }
 
   async markNotificationAsRead(id) {
-    return this.patch(`/notifications/${id}/read`);
+    const response = await this.patch(`/notifications/${id}/read`);
+    return response;
   }
 
   async markAllNotificationsAsRead() {
-    return this.patch('/notifications/read-all');
+    const response = await this.patch('/notifications/read-all');
+    return response;
   }
 
-  // FIXED: Reviews methods with better error handling
+  // Reviews methods
   async createReview(reviewData) {
-    return this.post('/reviews', reviewData);
+    const response = await this.post('/reviews', reviewData);
+    return response;
   }
 
   async getMyReviews() {
-    return this.get('/reviews/my-reviews');
+    const response = await this.get('/reviews/my-reviews');
+    return response;
   }
 
   async getListingReviews(listingId) {
@@ -309,94 +293,112 @@ class ApiService {
     
     try {
       const response = await this.get(`/reviews/listing/${listingId}`);
-      return response || { data: [] };
+      return response;
     } catch (error) {
       console.error(`Failed to fetch reviews for listing ${listingId}:`, error);
-      // Return empty array instead of throwing error
-      return { data: [] };
+      return { status: 'success', data: { reviews: [] } };
     }
   }
 
   async deleteReview(id) {
-    return this.delete(`/reviews/${id}`);
+    const response = await this.delete(`/reviews/${id}`);
+    return response;
   }
 
   // Favorites methods
   async addToFavorites(listingId) {
-    return this.post(`/favorites/${listingId}`);
+    const response = await this.post(`/favorites/${listingId}`);
+    return response;
   }
 
   async getFavorites() {
-    return this.get('/favorites');
+    const response = await this.get('/favorites');
+    return response;
   }
 
   async removeFromFavorites(listingId) {
-    return this.delete(`/favorites/${listingId}`);
+    const response = await this.delete(`/favorites/${listingId}`);
+    return response;
   }
 
-  async addFavorite(listingId) {
-    return this.addToFavorites(listingId);
-  }
+  // File upload method
+  async uploadFile(endpoint, formData) {
+    const token = localStorage.getItem('token');
+    const headers = {};
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
 
-  async removeFavorite(listingId) {
-    return this.removeFromFavorites(listingId);
+    try {
+      const response = await fetch(`${this.baseURL}${endpoint}`, {
+        method: 'POST',
+        headers, // Don't set Content-Type for FormData
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Upload failed');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('File upload failed:', error);
+      throw error;
+    }
   }
 
   // Admin methods
   async getAllUsers(params = {}) {
     const queryString = new URLSearchParams(params).toString();
-    return this.get(`/admin/users${queryString ? `?${queryString}` : ''}`);
+    const response = await this.get(`/admin/users${queryString ? `?${queryString}` : ''}`);
+    return response;
   }
 
   async banUser(userId) {
-    return this.put(`/admin/users/${userId}/ban`);
+    const response = await this.put(`/admin/users/${userId}/ban`);
+    return response;
   }
 
   async unbanUser(userId) {
-    return this.put(`/admin/users/${userId}/unban`);
+    const response = await this.put(`/admin/users/${userId}/unban`);
+    return response;
   }
 
   async updateUserRole(userId, role) {
-    return this.put(`/admin/users/${userId}/role`, { role });
+    const response = await this.put(`/admin/users/${userId}/role`, { role });
+    return response;
   }
 
   async getDashboardStats() {
-    return this.get('/admin/dashboard-stats');
-  }
-
-  async getAllBookingsAdmin(params = {}) {
-    const queryString = new URLSearchParams(params).toString();
-    return this.get(`/admin/bookings${queryString ? `?${queryString}` : ''}`);
-  }
-
-  async getAllTransactions() {
-    return this.get('/admin/transactions');
-  }
-
-  async processHostPayout(hostId) {
-    return this.post(`/admin/payouts/host/${hostId}`);
-  }
-
-  async getHostsPendingPayouts() {
-    return this.get('/admin/payouts-summary');
+    const response = await this.get('/admin/dashboard-stats');
+    return response;
   }
 
   // Host methods
   async getHostEarnings() {
-    return this.get('/payouts/host/earnings');
+    const response = await this.get('/payouts/host/earnings');
+    return response;
   }
 
   async getReceivedPayouts() {
-    return this.get('/payouts/my-received');
+    const response = await this.get('/payouts/my-received');
+    return response;
   }
 
   // Utility methods
   async checkHealth() {
-    return this.get('/health');
-  }
-
-  async getAuthProviders() {
-    return this.get('/auth/providers');
+    const response = await this.get('/health');
+    return response;
   }
 }
 

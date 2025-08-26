@@ -1,3 +1,4 @@
+// src/pages/LoginPage.jsx - Updated to work with your backend
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -10,9 +11,10 @@ import Input from '../components/common/Input';
 const LoginPage = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, loginWithGoogle, isAuthenticated } = useAuth();
+  
+  // ✅ Get error from AuthContext (matches your backend responses)
+  const { login, loginWithGoogle, isAuthenticated, error, clearError } = useAuth();
   const { showToast } = useApp();
   const navigate = useNavigate();
 
@@ -62,16 +64,15 @@ const LoginPage = () => {
   const handleGoogleResponse = async (response) => {
     setLoading(true);
     try {
+      // ✅ Uses your backend endpoint: POST /api/auth/google
       const result = await loginWithGoogle(response.credential);
       if (result.success) {
         showToast('Successfully logged in with Google!', 'success');
         navigate('/');
       } else {
-        setError(result.message);
         showToast(result.message, 'error');
       }
     } catch (error) {
-      setError('Google login failed');
       showToast('Google login failed', 'error');
     } finally {
       setLoading(false);
@@ -81,23 +82,23 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    clearError(); // Clear previous errors
 
     // Basic validation
     if (!formData.email || !formData.password) {
-      setError('Please fill in all fields');
+      showToast('Please fill in all fields', 'error');
       setLoading(false);
       return;
     }
 
+    // ✅ Uses your backend endpoint: POST /api/users/login
     const result = await login(formData.email, formData.password);
     
     if (result.success) {
       showToast('Welcome back!', 'success');
       navigate('/');
     } else {
-      setError(result.message);
-      showToast(result.message, 'error');
+      showToast(result.message || 'Login failed', 'error');
     }
     
     setLoading(false);
@@ -105,7 +106,7 @@ const LoginPage = () => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError(''); // Clear error when user starts typing
+    if (error) clearError(); // Clear error when user starts typing
   };
 
   return (
@@ -118,6 +119,7 @@ const LoginPage = () => {
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {/* ✅ Display error from AuthContext */}
           {error && (
             <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 text-sm">
               {error}

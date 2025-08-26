@@ -1,8 +1,9 @@
-// src/pages/RegisterPage.jsx - Fixed version
-import React, { useState } from 'react';
+// src/pages/RegisterPage.jsx - Updated to work with your backend
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 import Logo from '../components/common/Logo';
 import Button from '../components/common/Button';
 
@@ -14,23 +15,109 @@ const RegisterPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [success, setSuccess] = useState('');
   
-  // ✅ Use error from AuthContext
-  const { register, error, clearError } = useAuth(); // Get error from context
+  // ✅ Get error from AuthContext (matches your backend responses)
+  const { register, error, clearError, isAuthenticated } = useAuth();
+  const { showToast } = useApp();
   const navigate = useNavigate();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Load Google Sign-In API for register page too
+  useEffect(() => {
+    const loadGoogleAPI = () => {
+      if (window.google) return;
+
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = initializeGoogleSignIn;
+      document.head.appendChild(script);
+    };
+
+    const initializeGoogleSignIn = () => {
+      if (window.google) {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleResponse,
+          auto_select: false,
+        });
+
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signup-button'),
+          {
+            theme: 'filled_black',
+            size: 'large',
+            text: 'signup_with',
+            width: 350
+          }
+        );
+      }
+    };
+
+    loadGoogleAPI();
+  }, []);
+
+  const handleGoogleResponse = async (response) => {
+    setLoading(true);
+    const { loginWithGoogle } = useAuth();
+    
+    try {
+      // ✅ Uses your backend Google OAuth endpoint
+      const result = await loginWithGoogle(response.credential);
+      if (result.success) {
+        showToast('Successfully signed up with Google!', 'success');
+        navigate('/');
+      } else {
+        showToast(result.message, 'error');
+      }
+    } catch (error) {
+      showToast('Google signup failed', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    clearError(); // ✅ Clear previous errors
-    setSuccess('');
+    clearError(); // Clear previous errors
 
+    // Basic validation
+    if (!formData.name || !formData.email || !formData.password) {
+      showToast('Please fill in all fields', 'error');
+      setLoading(false);
+      return;
+    }
+
+    // Validate password strength (matches your backend validation)
+    if (formData.password.length < 8) {
+      showToast('Password must be at least 8 characters long', 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(formData.password)) {
+      showToast('Password must contain uppercase, lowercase, number and special character', 'error');
+      setLoading(false);
+      return;
+    }
+
+    // ✅ Uses your backend endpoint: POST /api/users/register
     const result = await register(formData.name, formData.email, formData.password);
     
     if (result.success) {
-      setSuccess(result.message);
-      setTimeout(() => navigate('/login'), 3000);
+      showToast('Account created! Please check your email for verification.', 'success');
+      // Navigate to email verification page with email
+      navigate('/verify-email', { state: { email: formData.email } });
+    } else {
+      showToast(result.message || 'Registration failed', 'error');
     }
     
     setLoading(false);
@@ -39,7 +126,7 @@ const RegisterPage = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (error) clearError(); // ✅ Clear error on input change
+    if (error) clearError(); // Clear error on input change
   };
 
   return (
@@ -52,20 +139,13 @@ const RegisterPage = () => {
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {/* ✅ Use error from AuthContext */}
+          {/* ✅ Display error from AuthContext */}
           {error && (
             <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 text-sm">
               {error}
             </div>
           )}
           
-          {success && (
-            <div className="bg-green-500/10 border border-green-500 text-green-500 rounded-lg p-3 text-sm">
-              {success}
-            </div>
-          )}
-          
-          {/* Rest of your form... */}
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -81,6 +161,8 @@ const RegisterPage = () => {
                   onChange={handleChange}
                   className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Enter your full name"
+                  minLength="2"
+                  maxLength="100"
                 />
               </div>
             </div>
@@ -117,6 +199,7 @@ const RegisterPage = () => {
                   onChange={handleChange}
                   className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Create a password"
+                  minLength="8"
                 />
                 <button
                   type="button"
@@ -140,6 +223,22 @@ const RegisterPage = () => {
           >
             {loading ? 'Creating account...' : 'Create account'}
           </Button>
+
+          {/* Google Sign Up */}
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-700" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-gray-900 text-gray-400">Or continue with</span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <div id="google-signup-button" className="w-full"></div>
+            </div>
+          </div>
           
           <div className="text-center">
             <p className="text-gray-400">
