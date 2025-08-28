@@ -1,5 +1,5 @@
-// src/pages/HomePage.jsx
-import React, { useState } from 'react';
+// src/pages/LandingPage.jsx
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, Calendar, Users, ArrowRight, Shield, Globe, Award } from 'lucide-react';
 
@@ -76,11 +76,18 @@ const SearchBar = ({ onSearch }) => {
   );
 };
 
-const HomePage = () => {
+const LandingPage = () => {
   const navigate = useNavigate();
 
   const handleSearch = (searchData) => {
-    navigate('/listings', { state: { searchData } });
+    const searchParams = new URLSearchParams();
+    
+    if (searchData.location) searchParams.set('city', searchData.location);
+    if (searchData.checkIn) searchParams.set('check_in', searchData.checkIn);
+    if (searchData.checkOut) searchParams.set('check_out', searchData.checkOut);
+    if (searchData.guests) searchParams.set('guests', searchData.guests);
+    
+    navigate(`/listings?${searchParams.toString()}`);
   };
 
   const features = [
@@ -137,7 +144,7 @@ const HomePage = () => {
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Why <span className="gradient-text">STAY</span>?
+              Why <span className="gradient-text">Horizon</span>?
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
               We go beyond just accommodation to craft memorable experiences that connect you with unique spaces.
@@ -174,7 +181,7 @@ const HomePage = () => {
             Ready for Your Next <span className="gradient-text">Adventure</span>?
           </h2>
           <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
-            Join thousands of travelers who've discovered unforgettable stays with STAY.
+            Join thousands of travelers who've discovered unforgettable stays with Horizon Retreats.
           </p>
           
           <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
@@ -185,7 +192,7 @@ const HomePage = () => {
               Find Your Retreat
             </button>
             <button 
-              onClick={() => navigate('/register')}
+              onClick={() => navigate('/auth/register')}
               className="btn-secondary text-lg px-8 py-4"
             >
               Become a Host
@@ -197,4 +204,4 @@ const HomePage = () => {
   );
 };
 
-export default HomePage;
+export default LandingPage;

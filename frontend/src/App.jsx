@@ -1,41 +1,112 @@
-// src/App.jsx - Updated with Toast and fixes
-import React from 'react';
+import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
-import { AuthProvider } from './context/AuthContext';
-import Navbar from './components/layout/Navbar';
-import ProtectedRoute from './components/auth/ProtectedRoute';
-import Toast from './components/common/Toast';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Header from './components/layout/Header';
+import LandingPage from './pages/LandingPage';
+import ListingsPage from './pages/listings/ListingsPage';
+import ListingDetailsPage from './pages/listings/ListingDetailsPage';
+import ProfilePage from './pages/profile/ProfilePage';
+import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import './styles/globals.css';
+// Protected Route wrapper
+const ProtectedRoute = ({ children, requireRole = null }) => {
+  const { isAuthenticated, loading, user } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
 
-// Import pages
-import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import EmailVerificationPage from './pages/EmailVerificationPage';
-import ListingsPage from './pages/ListingsPage';
-import ListingDetailPage from './pages/ListingDetailPage';
-import ProfilePage from './pages/ProfilePage';
-import BookingsPage from './pages/BookingsPage';
-import MessagesPage from './pages/MessagesPage';
-import HostDashboardPage from './pages/HostDashboardPage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/login" replace />;
+  }
 
-const App = () => {
+  if (requireRole && user?.role !== requireRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+// Public Route wrapper (redirect if authenticated)
+const PublicRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+function App() {
   return (
-    <AppProvider>
-      <AuthProvider>
-        <Router>
-          <div className="min-h-screen bg-gray-900 text-white">
-            <Navbar />
+    <AuthProvider>
+      <Router>
+        <div className="App">
+          <Header />
+          <main>
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/listings" element={<ListingsPage />} />
-              <Route path="/listing/:id" element={<ListingDetailPage />} />
-              <Route path="/verify-email" element={<EmailVerificationPage />} />
+              <Route path="/" element={<LandingPage />} />
               
+              {/* Auth Routes */}
+              <Route 
+                path="/auth/login" 
+                element={
+                  <PublicRoute>
+                    <LoginPage />
+                  </PublicRoute>
+                } 
+              />
+              <Route 
+                path="/auth/register" 
+                element={
+                  <PublicRoute>
+                    <RegisterPage />
+                  </PublicRoute>
+                } 
+              />
+              <Route 
+                path="/auth/forgot-password" 
+                element={
+                  <PublicRoute>
+                    <ForgotPasswordPage />
+                  </PublicRoute>
+                } 
+              />
+
+              {/* Listings Routes */}
+              <Route 
+                path="/listings" 
+                element={
+                  
+                    <ListingsPage />
+                 
+                } 
+              />
+              <Route 
+                path="/listings/:id" 
+                element={
+                  
+                    <ListingDetailsPage />
+                  
+                } 
+              />
+
               {/* Protected Routes */}
               <Route 
                 path="/profile" 
@@ -45,19 +116,27 @@ const App = () => {
                   </ProtectedRoute>
                 } 
               />
+              
               <Route 
-                path="/bookings" 
+                path="/favorites" 
                 element={
                   <ProtectedRoute>
-                    <BookingsPage />
+                    <div className="container mx-auto px-6 py-8">
+                      <h1 className="text-2xl font-bold">Favorites Page - Coming Soon</h1>
+                      <p>User's saved listings</p>
+                    </div>
                   </ProtectedRoute>
                 } 
               />
+              
               <Route 
                 path="/messages" 
                 element={
                   <ProtectedRoute>
-                    <MessagesPage />
+                    <div className="container mx-auto px-6 py-8">
+                      <h1 className="text-2xl font-bold">Messages Page - Coming Soon</h1>
+                      <p>Real-time messaging system</p>
+                    </div>
                   </ProtectedRoute>
                 } 
               />
@@ -66,8 +145,11 @@ const App = () => {
               <Route 
                 path="/host/*" 
                 element={
-                  <ProtectedRoute requiredRole="host">
-                    <HostDashboardPage />
+                  <ProtectedRoute requireRole="host">
+                    <div className="container mx-auto px-6 py-8">
+                      <h1 className="text-2xl font-bold">Host Dashboard - Coming Soon</h1>
+                      <p>Host management interface</p>
+                    </div>
                   </ProtectedRoute>
                 } 
               />
@@ -76,36 +158,39 @@ const App = () => {
               <Route 
                 path="/admin/*" 
                 element={
-                  <ProtectedRoute requiredRole="admin">
-                    <AdminDashboardPage />
+                  <ProtectedRoute requireRole="admin">
+                    <div className="container mx-auto px-6 py-8">
+                      <h1 className="text-2xl font-bold">Admin Dashboard - Coming Soon</h1>
+                      <p>Admin management interface</p>
+                    </div>
                   </ProtectedRoute>
                 } 
               />
 
-              {/* Experiences placeholder */}
+              {/* Catch all route */}
               <Route 
-                path="/experiences" 
+                path="*" 
                 element={
-                  <div className="min-h-screen pt-20 flex items-center justify-center">
+                  <div className="min-h-screen flex items-center justify-center">
                     <div className="text-center">
-                      <h1 className="text-3xl font-bold mb-4">Experiences</h1>
-                      <p className="text-gray-400">Coming Soon</p>
+                      <h1 className="text-4xl font-bold text-gray-900 mb-4">404 - Page Not Found</h1>
+                      <p className="text-gray-600 mb-8">The page you're looking for doesn't exist.</p>
+                      <button 
+                        onClick={() => window.history.back()}
+                        className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+                      >
+                        Go Back
+                      </button>
                     </div>
                   </div>
                 } 
               />
-
-              {/* Catch all route */}
-              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-            
-            {/* Toast Component */}
-            <Toast />
-          </div>
-        </Router>
-      </AuthProvider>
-    </AppProvider>
+          </main>
+        </div>
+      </Router>
+    </AuthProvider>
   );
-};
+}
 
 export default App;

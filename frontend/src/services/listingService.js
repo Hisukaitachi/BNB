@@ -1,124 +1,139 @@
-/ src/services/listingService.js
-import api from './api'; 
+// src/services/listingService.js
+import api from './api';
 
 class ListingService {
-  /**
-   * Get all listings with optional filters
-   * @param {object} filters - Search filters
-   * @returns {Promise<Array>} Listings
-   */
-  async getListings(filters = {}) {
+  // Get all listings
+  async getAllListings() {
     try {
-      const response = Object.keys(filters).length > 0 
-        ? await api.searchListings(filters)
-        : await api.getAllListings();
-      
-      return response.data?.listings || [];
+      const response = await api.get('/listings');
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch listings');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Get listing by ID
-   * @param {number} id - Listing ID
-   * @returns {Promise<object>} Listing details
-   */
+  // Get listing by ID
   async getListingById(id) {
     try {
-      const response = await api.getListingById(id);
-      return response.data?.listing;
+      const response = await api.get(`/listings/${id}`);
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch listing');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Search listings
-   * @param {object} searchParams - Search parameters
-   * @returns {Promise<Array>} Search results
-   */
-  async searchListings(searchParams) {
+  // Search listings
+  async searchListings(params) {
     try {
-      const response = await api.searchListings(searchParams);
-      return response.data?.listings || [];
+      const response = await api.get('/listings/search', { params });
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to search listings');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Get nearby listings
-   * @param {number} lat - Latitude
-   * @param {number} lng - Longitude
-   * @param {number} radius - Search radius in km
-   * @returns {Promise<Array>} Nearby listings
-   */
+  // Get nearby listings
   async getNearbyListings(lat, lng, radius = 10) {
     try {
-      const response = await api.get(`/listings/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
-      return response.data?.listings || [];
+      const response = await api.get('/listings/nearby', {
+        params: { lat, lng, radius }
+      });
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch nearby listings');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Create new listing (Host only)
-   * @param {object} listingData - Listing data
-   * @param {object} files - Image and video files
-   * @returns {Promise<object>} Created listing
-   */
-  async createListing(listingData, files = {}) {
+  // Get search suggestions
+  async getSearchSuggestions(query) {
     try {
-      const response = await api.createListing(listingData, files);
-      return { success: true, data: response.data };
+      const response = await api.get('/listings/suggestions', {
+        params: { q: query }
+      });
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to create listing');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Update listing (Host only)
-   * @param {number} id - Listing ID
-   * @param {object} updateData - Data to update
-   * @returns {Promise<object>} Update result
-   */
-  async updateListing(id, updateData) {
+  // Create listing (for hosts)
+  async createListing(listingData) {
     try {
-      const response = await api.updateListing(id, updateData);
-      return { success: true, data: response.data };
+      const formData = new FormData();
+      
+      // Add text fields
+      Object.keys(listingData).forEach(key => {
+        if (key !== 'image' && key !== 'video') {
+          formData.append(key, listingData[key]);
+        }
+      });
+      
+      // Add files if present
+      if (listingData.image) {
+        formData.append('image', listingData.image);
+      }
+      if (listingData.video) {
+        formData.append('video', listingData.video);
+      }
+
+      const response = await api.post('/listings', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to update listing');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Delete listing (Host only)
-   * @param {number} id - Listing ID
-   * @returns {Promise<object>} Delete result
-   */
+  // Update listing
+  async updateListing(id, data) {
+    try {
+      const response = await api.put(`/listings/${id}`, data);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  // Delete listing
   async deleteListing(id) {
     try {
-      const response = await api.deleteListing(id);
-      return { success: true, data: response.data };
+      const response = await api.delete(`/listings/${id}`);
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to delete listing');
+      throw this.handleError(error);
     }
   }
 
-  /**
-   * Get host's listings
-   * @returns {Promise<Array>} Host listings
-   */
+  // Get host's listings
   async getMyListings() {
     try {
-      const response = await api.getMyListings();
-      return response.data?.listings || [];
+      const response = await api.get('/listings/my-listings');
+      return response.data;
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch your listings');
+      throw this.handleError(error);
     }
+  }
+
+  // Get listing reviews
+  async getListingReviews(listingId, params = {}) {
+    try {
+      const response = await api.get(`/reviews/listing/${listingId}`, { params });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  // Error handler
+  handleError(error) {
+    if (error.response?.data?.message) {
+      return new Error(error.response.data.message);
+    }
+    return new Error(error.message || 'Something went wrong');
   }
 }
 
-export const listingService = new ListingService();
+export default new ListingService();

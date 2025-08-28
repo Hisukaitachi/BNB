@@ -41,11 +41,10 @@ const validate = (schema) => {
     }
 
     // Replace request data with validated and sanitized data
-    Object.assign(req.body, value);
-    Object.assign(req.params, value);
-    Object.assign(req.query, value);
-
-    next();
+  Object.assign(req.body || {}, value);
+  Object.assign(req.params || {}, value);  
+  Object.assign(req.query || {}, value);
+      next();
   };
 };
 

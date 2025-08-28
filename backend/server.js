@@ -1,4 +1,4 @@
-// backend/server.js - EXPRESS 5 COMPATIBLE VERSION
+// backend/server.js - FIXED VERSION with simplified CORS
 require('dotenv').config({ path: __dirname + '/.env' });
 
 const express = require('express');
@@ -29,48 +29,13 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',      // React default
-      'http://localhost:5173',      // Vite default
-      'http://localhost:8080',      // Vue default
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-      'https://yourdomain.com',     // Replace with your production domain
-    ];
-    
-    // In development, be more permissive
-    if (process.env.NODE_ENV === 'development') {
-      if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-        return callback(null, true);
-      }
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn('CORS blocked:', origin);
-      callback(null, process.env.NODE_ENV === 'development'); // Allow in dev, block in prod
-    }
-  },
+// SIMPLIFIED CORS - Allow everything for testing
+app.use(cors({
+  origin: '*', // Allow all origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: [
-    'Origin',
-    'X-Requested-With', 
-    'Content-Type',
-    'Accept',
-    'Authorization',
-    'Cache-Control'
-  ]
-};
-
-app.use(cors(corsOptions));
+  allowedHeaders: ['*']
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -90,8 +55,8 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files (uploads)
-app.use('/uploads', express.static('uploads'));
+// Serve static files (uploads) - FIXED with permissive CORS
+app.use('/uploads', cors({ origin: '*' }), express.static('uploads'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -179,9 +144,7 @@ app.get('/api', (req, res) => {
   });
 });
 
-// ✅ EXPRESS 5 COMPATIBLE - 404 handler for undefined routes  
-// OLD VERSION (breaks in Express 5): app.use('*', ...)
-// NEW VERSION (Express 5 compatible): app.use('/{*catchAll}', ...)
+// 404 handler for undefined routes  
 app.use('/{*catchAll}', (req, res, next) => {
   const error = new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404);
   next(error);
