@@ -15,37 +15,33 @@ class ReviewService {
    * @returns {Promise<object>} Review creation result
    */
   async createReview(reviewData) {
-    try {
-      const { booking_id, reviewee_id, rating, comment, type } = reviewData;
+  try {
+    const { booking_id, reviewee_id, rating, comment, type } = reviewData;
 
-      // Validation
-      if (!booking_id || !reviewee_id || !rating || !comment || !type) {
-        throw new Error('All fields are required for review');
-      }
-
-      if (rating < 1 || rating > 5) {
-        throw new Error('Rating must be between 1 and 5');
-      }
-
-      if (comment.length < 10 || comment.length > 500) {
-        throw new Error('Comment must be between 10 and 500 characters');
-      }
-
-      if (!Object.values(REVIEW_TYPES).includes(type)) {
-        throw new Error('Invalid review type');
-      }
-
-      const response = await reviewAPI.createReview(reviewData);
-      
-      return {
-        success: true,
-        data: response.data.data,
-        reviewId: response.data.data?.review?.id
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || 'Failed to create review');
+    // Validation
+    if (!booking_id || !reviewee_id || !rating || !comment || !type) {
+      throw new Error('All fields are required for review');
     }
+
+    if (rating < 1 || rating > 5) {
+      throw new Error('Rating must be between 1 and 5');
+    }
+
+    if (comment.length < 10 || comment.length > 500) {
+      throw new Error('Comment must be between 10 and 500 characters');
+    }
+
+    const response = await reviewAPI.createReview(reviewData);
+    
+    return {
+      success: true,
+      data: response.data.data,
+      reviewId: response.data.data?.review?.id
+    };
+  } catch (error) {
+    throw new Error(error.response?.data?.message || error.message || 'Failed to create review');
   }
+}
 
   /**
    * Get reviews for a specific listing/unit
@@ -54,25 +50,25 @@ class ReviewService {
    * @returns {Promise<object>} Reviews data
    */
   async getListingReviews(listingId, options = {}) {
-    try {
-      const { page = 1, rating, sortBy = 'newest' } = options;
-      
-      const params = { page };
-      if (rating) params.rating = rating;
-      if (sortBy) params.sortBy = sortBy;
+  try {
+    const { page = 1, rating, sortBy = 'newest' } = options;
+    
+    const params = { page };
+    if (rating) params.rating = rating;
+    if (sortBy) params.sortBy = sortBy;
 
-      const response = await reviewAPI.getListingReviews(listingId, params);
-      
-      return {
-        reviews: response.data.data?.reviews || [],
-        listing: response.data.data?.listing,
-        statistics: response.data.data?.statistics || {},
-        pagination: response.data.data?.pagination || {}
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch listing reviews');
-    }
+    const response = await reviewAPI.getListingReviews(listingId, params);
+    
+    return {
+      reviews: response.data.data?.reviews || [],
+      listing: response.data.data?.listing,
+      statistics: response.data.data?.statistics || {},
+      pagination: response.data.data?.pagination || {}
+    };
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to fetch listing reviews');
   }
+}
 
   /**
    * Get user's reviews (written and received)

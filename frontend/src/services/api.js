@@ -111,17 +111,16 @@ export const reviewAPI = {
   // Create review for unit/host
   createReview: (reviewData) => api.post('/reviews', reviewData),
   
-  // Get reviews for listing
-  getListingReviews: (listingId, page = 1) => 
-    api.get(`/reviews/listing/${listingId}?page=${page}`),
+  // Get reviews for listing - FIXED ENDPOINT
+  getListingReviews: (listingId, params = {}) => 
+    api.get(`/reviews/listing/${listingId}`, { params }),
   
-  // Get my reviews (written and received)
+  // Get my reviews (written and received)  
   getMyReviews: (type = 'all') => api.get(`/reviews/my-reviews?type=${type}`),
   
   // Delete review
   deleteReview: (reviewId) => api.delete(`/reviews/${reviewId}`)
 };
-
 // FAVORITES FUNCTIONS
 export const favoritesAPI = {
   // Add to favorites
@@ -136,10 +135,10 @@ export const favoritesAPI = {
 
 // REPORTS & DISPUTES FUNCTIONS
 export const reportsAPI = {
-  // Submit report/dispute
+  // Submit report/dispute - CONNECT TO BACKEND
   submitReport: (reportData) => api.post('/reports', reportData),
   
-  // Get my reports
+  // Get my reports - ADD MISSING ROUTE
   getMyReports: () => api.get('/reports/my-reports')
 };
 
@@ -158,6 +157,7 @@ export const notificationAPI = {
 };
 
 // REQUEST VIEW UNIT FUNCTIONS (if implemented)
+// REQUEST VIEW UNIT FUNCTIONS
 export const viewRequestAPI = {
   // Request to view unit
   requestViewUnit: (listingId, requestData) => 
@@ -168,9 +168,8 @@ export const viewRequestAPI = {
   
   // Respond to view request
   respondToViewRequest: (requestId, response) => 
-    api.put(`/listings/view-requests/${requestId}`, { response })
+    api.put(`/listings/view-requests/${requestId}`, response)
 };
-
 // LISTING FUNCTIONS
 export const listingAPI = {
   // Get all listings

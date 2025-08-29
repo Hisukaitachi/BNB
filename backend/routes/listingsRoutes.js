@@ -31,6 +31,10 @@ router.delete('/:id', authenticateToken, validate(deleteListingSchema), listings
 // The controller already has validation logic
 router.get('/:id', listingsController.getListingById);
 
+// Additional routes for requesting to view a unit
+router.post('/:listingId/view-request', authenticateToken, listingsController.requestViewUnit);
+router.get('/view-requests', authenticateToken, listingsController.getViewRequests);  
+router.put('/view-requests/:requestId', authenticateToken, listingsController.respondToViewRequest);
 // ORIGINAL (causing the issue):
 // router.get('/:id', validate(getListingSchema), listingsController.getListingById);
 

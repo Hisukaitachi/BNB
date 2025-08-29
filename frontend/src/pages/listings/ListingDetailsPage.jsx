@@ -11,6 +11,8 @@ import Input from '../../components/ui/Input';
 import BookingCalendar from '../booking/BookingCalendar';
 import { useAuth } from '../../context/AuthContext';
 import MapComponent from '../../components/common/MapComponent';
+import ViewRequestModal from '../../components/viewrequest/ViewRequestModal';
+import { viewRequestAPI } from '../../services/api';
 
 const ListingDetailPage = () => {
   const { id } = useParams();
@@ -35,6 +37,7 @@ const ListingDetailPage = () => {
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [availabilityChecking, setAvailabilityChecking] = useState(false);
   const [availabilityMessage, setAvailabilityMessage] = useState('');
+  const [showViewRequestModal, setShowViewRequestModal] = useState(false);
 
   useEffect(() => {
     loadListingData();
@@ -235,6 +238,19 @@ const ListingDetailPage = () => {
       startDate: dates.checkIn || '',
       endDate: dates.checkOut || ''
     }));
+  };
+
+  const handleViewRequest = async (requestData) => {
+    try {
+      await viewRequestAPI.requestViewUnit(requestData.listingId, {
+        message: requestData.message,
+        preferred_date: requestData.preferred_date,
+        preferred_time: requestData.preferred_time
+      });
+      alert('View request sent successfully!');
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to send view request');
+    }
   };
 
   if (loading) {
@@ -558,7 +574,7 @@ const ListingDetailPage = () => {
                     {!isAuthenticated ? 'Sign in to Book' : 'Request to Book'}
                   </Button>
                   
-                  <Button
+                  <Button 
                     onClick={handleContactHost}
                     variant="outline"
                     size="lg"
@@ -566,6 +582,15 @@ const ListingDetailPage = () => {
                   >
                     <MessageSquare className="w-4 h-4 mr-2" />
                     Contact Host
+                  </Button>
+                  
+                  <Button
+                    onClick={() => setShowViewRequestModal(true)}
+                    variant="outline"
+                    size="lg"
+                    className="w-full border-purple-500 text-purple-400"
+                  >
+                    Request Viewing
                   </Button>
                 </div>
 
@@ -592,6 +617,15 @@ const ListingDetailPage = () => {
           </div>
         )}
       </div>
+
+      {/* View Request Modal */}
+      {showViewRequestModal && (
+        <ViewRequestModal
+          listing={listing}
+          onClose={() => setShowViewRequestModal(false)}
+          onSubmit={handleViewRequest}
+        />
+      )}
     </div>
   );
 };

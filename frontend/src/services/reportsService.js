@@ -24,70 +24,61 @@ class ReportsService {
    * @param {object} reportData - Report data
    * @returns {Promise<object>} Submit result
    */
-  async submitReport(reportData) {
-    try {
-      const { 
-        reported_user_id, 
-        booking_id, 
-        reason, 
-        type = REPORT_TYPES.OTHER,
-        description,
-        evidence
-      } = reportData;
+async submitReport(reportData) {
+  try {
+    const { 
+      reported_user_id, 
+      booking_id, 
+      reason, 
+      type = REPORT_TYPES.OTHER,
+      description
+    } = reportData;
 
-      // Validation
-      if (!reported_user_id || !reason) {
-        throw new Error('Reported user and reason are required');
-      }
-
-      if (reason.length < 10 || reason.length > 1000) {
-        throw new Error('Reason must be between 10 and 1000 characters');
-      }
-
-      if (!Object.values(REPORT_TYPES).includes(type)) {
-        throw new Error('Invalid report type');
-      }
-
-      const submitData = {
-        reporter_id: this.getCurrentUserId(),
-        reported_user_id,
-        booking_id,
-        reason,
-        type,
-        description: description || reason,
-        status: REPORT_STATUS.PENDING
-      };
-
-      // Handle evidence files if provided
-      if (evidence && evidence.length > 0) {
-        submitData.evidence = evidence;
-      }
-
-      const response = await reportsAPI.submitReport(submitData);
-      
-      return {
-        success: true,
-        message: 'Report submitted successfully. Our team will review it shortly.',
-        reportId: response.data.data?.reportId,
-        data: response.data
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || 'Failed to submit report');
+    // Validation
+    if (!reported_user_id || !reason) {
+      throw new Error('Reported user and reason are required');
     }
+
+    if (reason.length < 10 || reason.length > 1000) {
+      throw new Error('Reason must be between 10 and 1000 characters');
+    }
+
+    const submitData = {
+      reporter_id: this.getCurrentUserId(),
+      reported_user_id,
+      booking_id,
+      reason,
+      type,
+      description: description || reason,
+      status: REPORT_STATUS.PENDING
+    };
+
+    const response = await reportsAPI.submitReport(submitData);
+    
+    return {
+      success: true,
+      message: 'Report submitted successfully. Our team will review it shortly.',
+      reportId: response.data.data?.reportId,
+      data: response.data
+    };
+  } catch (error) {
+    throw new Error(error.response?.data?.message || error.message || 'Failed to submit report');
   }
+}
 
   /**
    * Get user's submitted reports
    * @returns {Promise<Array>} User's reports
    */
-  async getMyReports() {
-    try {
-      const response = await reportsAPI.getMyReports();
-      return response.data.data?.reports || [];
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch reports');
-    }
+async getMyReports() {
+  try {
+    const response = await reportsAPI.getMyReports();
+    return response.data.data?.reports || [];
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to fetch reports');
   }
+}
+
 
   /**
    * Get report types with descriptions

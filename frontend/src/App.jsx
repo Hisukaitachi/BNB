@@ -1,7 +1,9 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppProvider } from './context/AppContext';
 import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
 import LandingPage from './pages/LandingPage';
 import ListingsPage from './pages/listings/ListingsPage';
 import ListingDetailsPage from './pages/listings/ListingDetailsPage';
@@ -14,8 +16,10 @@ import MyBookings from './pages/booking/MyBookings';
 import FavoritesPage from './pages/favorites/FavoritesPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import MessagesPage from './pages/messaging/MessagesPage';
+import PaymentPage from './pages/payment/PaymentPage';
 
 import './styles/globals.css';
+
 // Protected Route wrapper
 const ProtectedRoute = ({ children, requireRole = null }) => {
   const { isAuthenticated, loading, user } = useAuth();
@@ -61,123 +65,231 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="App">
-          <Header />
-          <main>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<LandingPage />} />
-              
-              {/* Auth Routes */}
-              <Route 
-                path="/auth/login" 
-                element={
-                  <PublicRoute>
-                    <LoginPage />
-                  </PublicRoute>
-                } 
-              />
-              <Route 
-                path="/auth/register" 
-                element={
-                  <PublicRoute>
-                    <RegisterPage />
-                  </PublicRoute>
-                } 
-              />
-              <Route 
-                path="/auth/forgot-password" 
-                element={
-                  <PublicRoute>
-                    <ForgotPasswordPage />
-                  </PublicRoute>
-                } 
-              />
+      <AppProvider>
+        <Router>
+          <div className="App">
+            <Header />
+            <main className="min-h-screen">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<LandingPage />} />
+                
+                {/* Auth Routes */}
+                <Route 
+                  path="/auth/login" 
+                  element={
+                    <PublicRoute>
+                      <LoginPage />
+                    </PublicRoute>
+                  } 
+                />
+                <Route 
+                  path="/auth/register" 
+                  element={
+                    <PublicRoute>
+                      <RegisterPage />
+                    </PublicRoute>
+                  } 
+                />
+                <Route 
+                  path="/auth/forgot-password" 
+                  element={
+                    <PublicRoute>
+                      <ForgotPasswordPage />
+                    </PublicRoute>
+                  } 
+                />
 
-              {/* Listings Routes */}
-              <Route 
-                path="/listings" 
-                element={
-                  
-                    <ListingsPage />
-                 
-                } 
-              />
-              <Route 
-                path="/listings/:id" 
-                element={
-                  
-                    <ListingDetailsPage />
-                  
-                } 
-              />
+                {/* Listings Routes - Public but enhanced when authenticated */}
+                <Route path="/listings" element={<ListingsPage />} />
+                <Route path="/listings/:id" element={<ListingDetailsPage />} />
 
-              {/* Protected Routes */}
-              <Route 
-                path="/profile" 
-                element={
-                  <ProtectedRoute>
-                    <ProfilePage />
-                  </ProtectedRoute>
-                } 
-              />
-              
-              <Route path="/my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
-              <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
-              <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
-              <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+                {/* Client Protected Routes */}
+                <Route 
+                  path="/profile" 
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/my-bookings" 
+                  element={
+                    <ProtectedRoute>
+                      <MyBookings />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/favorites" 
+                  element={
+                    <ProtectedRoute>
+                      <FavoritesPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/messages" 
+                  element={
+                    <ProtectedRoute>
+                      <MessagesPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/reports" 
+                  element={
+                    <ProtectedRoute>
+                      <ReportsPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/payment" 
+                  element={
+                    <ProtectedRoute>
+                      <PaymentPage />
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Host Routes */}
-              <Route 
-                path="/host/*" 
-                element={
-                  <ProtectedRoute requireRole="host">
-                    <div className="container mx-auto px-6 py-8">
-                      <h1 className="text-2xl font-bold">Host Dashboard - Coming Soon</h1>
-                      <p>Host management interface</p>
-                    </div>
-                  </ProtectedRoute>
-                } 
-              />
+                {/* Host Routes */}
+                <Route 
+                  path="/host/*" 
+                  element={
+                    <ProtectedRoute requireRole="host">
+                      <HostDashboard />
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Admin Routes */}
-              <Route 
-                path="/admin/*" 
-                element={
-                  <ProtectedRoute requireRole="admin">
-                    <div className="container mx-auto px-6 py-8">
-                      <h1 className="text-2xl font-bold">Admin Dashboard - Coming Soon</h1>
-                      <p>Admin management interface</p>
-                    </div>
-                  </ProtectedRoute>
-                } 
-              />
+                {/* Admin Routes */}
+                <Route 
+                  path="/admin/*" 
+                  element={
+                    <ProtectedRoute requireRole="admin">
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Catch all route */}
-              <Route 
-                path="*" 
-                element={
-                  <div className="min-h-screen flex items-center justify-center">
-                    <div className="text-center">
-                      <h1 className="text-4xl font-bold text-gray-900 mb-4">404 - Page Not Found</h1>
-                      <p className="text-gray-600 mb-8">The page you're looking for doesn't exist.</p>
-                      <button 
-                        onClick={() => window.history.back()}
-                        className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
-                      >
-                        Go Back
-                      </button>
-                    </div>
-                  </div>
-                } 
-              />
-            </Routes>
-          </main>
-        </div>
-      </Router>
+                {/* 404 - Catch all route */}
+                <Route 
+                  path="*" 
+                  element={<NotFoundPage />} 
+                />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        </Router>
+      </AppProvider>
     </AuthProvider>
   );
 }
+
+// Host Dashboard Component (placeholder - you can expand this)
+const HostDashboard = () => (
+  <div className="min-h-screen bg-gray-900 pt-20">
+    <div className="container mx-auto px-6 py-8">
+      <h1 className="text-3xl font-bold text-white mb-8">Host Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">My Listings</h3>
+          <p className="text-gray-400">Manage your property listings</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            View Listings →
+          </button>
+        </div>
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Bookings</h3>
+          <p className="text-gray-400">Handle booking requests</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            View Bookings →
+          </button>
+        </div>
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Earnings</h3>
+          <p className="text-gray-400">Track your earnings</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            View Earnings →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// Admin Dashboard Component (placeholder - you can expand this)  
+const AdminDashboard = () => (
+  <div className="min-h-screen bg-gray-900 pt-20">
+    <div className="container mx-auto px-6 py-8">
+      <h1 className="text-3xl font-bold text-white mb-8">Admin Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Users</h3>
+          <p className="text-gray-400">Manage all users</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            Manage Users →
+          </button>
+        </div>
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Listings</h3>
+          <p className="text-gray-400">Review all listings</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            Review Listings →
+          </button>
+        </div>
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Reports</h3>
+          <p className="text-gray-400">Handle user reports</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            View Reports →
+          </button>
+        </div>
+        <div className="bg-gray-800 p-6 rounded-xl">
+          <h3 className="text-lg font-semibold text-white mb-4">Analytics</h3>
+          <p className="text-gray-400">Platform statistics</p>
+          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
+            View Analytics →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// 404 Not Found Page
+const NotFoundPage = () => (
+  <div className="min-h-screen bg-gray-900 pt-20 flex items-center justify-center">
+    <div className="text-center">
+      <h1 className="text-6xl font-bold text-purple-400 mb-4">404</h1>
+      <h2 className="text-2xl font-bold text-white mb-4">Page Not Found</h2>
+      <p className="text-gray-400 mb-8 max-w-md">
+        The page you're looking for doesn't exist or has been moved.
+      </p>
+      <div className="space-x-4">
+        <button 
+          onClick={() => window.history.back()}
+          className="bg-gray-700 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition"
+        >
+          Go Back
+        </button>
+        <button 
+          onClick={() => window.location.href = '/'}
+          className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg hover:from-purple-600 hover:to-pink-600 transition"
+        >
+          Go Home
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 export default App;
