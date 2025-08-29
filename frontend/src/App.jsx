@@ -9,6 +9,12 @@ import ProfilePage from './pages/profile/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+
+import MyBookings from './pages/booking/MyBookings';
+import FavoritesPage from './pages/favorites/FavoritesPage';
+import ReportsPage from './pages/reports/ReportsPage';
+import MessagesPage from './pages/messaging/MessagesPage';
+
 import './styles/globals.css';
 // Protected Route wrapper
 const ProtectedRoute = ({ children, requireRole = null }) => {
@@ -117,29 +123,10 @@ function App() {
                 } 
               />
               
-              <Route 
-                path="/favorites" 
-                element={
-                  <ProtectedRoute>
-                    <div className="container mx-auto px-6 py-8">
-                      <h1 className="text-2xl font-bold">Favorites Page - Coming Soon</h1>
-                      <p>User's saved listings</p>
-                    </div>
-                  </ProtectedRoute>
-                } 
-              />
-              
-              <Route 
-                path="/messages" 
-                element={
-                  <ProtectedRoute>
-                    <div className="container mx-auto px-6 py-8">
-                      <h1 className="text-2xl font-bold">Messages Page - Coming Soon</h1>
-                      <p>Real-time messaging system</p>
-                    </div>
-                  </ProtectedRoute>
-                } 
-              />
+              <Route path="/my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+              <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
+              <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+              <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
 
               {/* Host Routes */}
               <Route 

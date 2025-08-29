@@ -1,10 +1,14 @@
-// src/pages/listings/ListingDetailPage.jsx
+// src/pages/listings/ListingDetailsPage.jsx - Enhanced with backend integration
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, MapPin, Calendar, Users, Heart, Share2, MessageSquare, User } from 'lucide-react';
+import { ArrowLeft, Star, MapPin, Calendar, Users, Heart, Share2, MessageSquare, User, AlertCircle } from 'lucide-react';
 import listingService from '../../services/listingService';
+import bookingService from '../../services/bookingService';
+import paymentService from '../../services/paymentService';
+import { favoritesService } from '../../services/favoritesService';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import BookingCalendar from '../booking/BookingCalendar';
 import { useAuth } from '../../context/AuthContext';
 import MapComponent from '../../components/common/MapComponent';
 
@@ -23,7 +27,14 @@ const ListingDetailPage = () => {
     guests: 1
   });
   const [totalPrice, setTotalPrice] = useState(0);
+  const [priceBreakdown, setPriceBreakdown] = useState(null);
   const [isBookingLoading, setIsBookingLoading] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [availabilityChecking, setAvailabilityChecking] = useState(false);
+  const [availabilityMessage, setAvailabilityMessage] = useState('');
 
   useEffect(() => {
     loadListingData();
@@ -31,49 +42,116 @@ const ListingDetailPage = () => {
 
   useEffect(() => {
     calculateTotalPrice();
+    checkAvailability();
   }, [bookingData.startDate, bookingData.endDate, listing]);
 
-  const loadListingData = async () => {
-  // Add guard clause to prevent API call with undefined ID
-  if (!id) {
-    console.log('No listing ID available yet');
-    return;
-  }
+  useEffect(() => {
+    if (isAuthenticated && listing) {
+      checkIfFavorited();
+    }
+  }, [isAuthenticated, listing]);
 
-  try {
-    setLoading(true);
-    setError(null);
-    
-    // Load listing details
-    const listingResponse = await listingService.getListingById(id);
-    setListing(listingResponse.data.listing);
-    
-    // Load reviews
-    const reviewsResponse = await listingService.getListingReviews(id);
-    setReviews(reviewsResponse.data.reviews || []);
-    
-  } catch (err) {
-    setError(err.message || 'Failed to load listing');
-    console.error('Failed to load listing:', err);
-  } finally {
-    setLoading(false);
-  }
-};
+  const loadListingData = async () => {
+    if (!id) {
+      console.log('No listing ID available yet');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Load listing details
+      const listingResponse = await listingService.getListingById(id);
+      setListing(listingResponse.data.listing);
+      
+      // Load reviews
+      const reviewsResponse = await listingService.getListingReviews(id);
+      setReviews(reviewsResponse.data.reviews || []);
+      
+      // Load unavailable dates for calendar
+      const bookedDates = await bookingService.getBookedDates(id);
+      setUnavailableDates(bookedDates);
+      
+    } catch (err) {
+      setError(err.message || 'Failed to load listing');
+      console.error('Failed to load listing:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const calculateTotalPrice = () => {
     if (!listing || !bookingData.startDate || !bookingData.endDate) {
       setTotalPrice(0);
+      setPriceBreakdown(null);
       return;
     }
 
-    const start = new Date(bookingData.startDate);
-    const end = new Date(bookingData.endDate);
-    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const breakdown = bookingService.calculateBookingPrice(
+      listing.price_per_night,
+      bookingData.startDate,
+      bookingData.endDate
+    );
     
-    if (days > 0) {
-      setTotalPrice(listing.price_per_night * days);
-    } else {
-      setTotalPrice(0);
+    setTotalPrice(breakdown.total);
+    setPriceBreakdown(breakdown);
+  };
+
+  const checkAvailability = async () => {
+    if (!listing || !bookingData.startDate || !bookingData.endDate) {
+      setAvailabilityMessage('');
+      return;
+    }
+
+    try {
+      setAvailabilityChecking(true);
+      const isAvailable = await bookingService.checkAvailability(
+        listing.id,
+        bookingData.startDate,
+        bookingData.endDate
+      );
+      
+      if (isAvailable) {
+        setAvailabilityMessage('✅ Dates are available!');
+      } else {
+        setAvailabilityMessage('❌ Selected dates are not available. Please choose different dates.');
+      }
+    } catch (error) {
+      setAvailabilityMessage('⚠️ Unable to check availability. Please try again.');
+    } finally {
+      setAvailabilityChecking(false);
+    }
+  };
+
+  const checkIfFavorited = async () => {
+    try {
+      const favorites = await favoritesService.getFavorites();
+      setIsFavorited(favoritesService.isFavorited(listing.id, favorites.favorites));
+    } catch (error) {
+      console.error('Failed to check if favorited:', error);
+    }
+  };
+
+  const handleFavoriteToggle = async () => {
+    if (!isAuthenticated) {
+      navigate('/auth/login', { state: { from: location } });
+      return;
+    }
+
+    try {
+      setFavoritesLoading(true);
+      if (isFavorited) {
+        await favoritesService.removeFromFavorites(listing.id);
+        setIsFavorited(false);
+      } else {
+        await favoritesService.addToFavorites(listing.id);
+        setIsFavorited(true);
+      }
+    } catch (error) {
+      alert('Failed to update favorites: ' + error.message);
+    } finally {
+      setFavoritesLoading(false);
     }
   };
 
@@ -93,23 +171,50 @@ const ListingDetailPage = () => {
       return;
     }
 
+    if (availabilityMessage.includes('❌')) {
+      alert('Selected dates are not available. Please choose different dates.');
+      return;
+    }
+
     try {
       setIsBookingLoading(true);
       
-      // TODO: Implement booking API call
-      console.log('Booking data:', {
-        listing_id: id,
+      // Create booking
+      const bookingResult = await bookingService.createBooking({
+        listing_id: listing.id,
         start_date: bookingData.startDate,
         end_date: bookingData.endDate,
         total_price: totalPrice
       });
-      
-      // For now, navigate to a success page or show success message
-      alert('Booking request submitted successfully!');
+
+      if (bookingResult.success) {
+        // Navigate to payment page or show success
+        alert('Booking request submitted successfully! Redirecting to payment...');
+        
+        // Create payment intent
+        try {
+          const paymentResult = await paymentService.createPaymentIntent(bookingResult.bookingId);
+          
+          if (paymentResult.success && paymentResult.paymentIntent) {
+            // Redirect to payment page (you can implement this)
+            console.log('Payment intent created:', paymentResult);
+            navigate('/payment', { 
+              state: { 
+                bookingId: bookingResult.bookingId,
+                paymentIntent: paymentResult.paymentIntent 
+              } 
+            });
+          }
+        } catch (paymentError) {
+          console.error('Payment setup failed:', paymentError);
+          // Still show booking success, payment can be done later
+          navigate('/my-bookings');
+        }
+      }
       
     } catch (error) {
       console.error('Booking failed:', error);
-      alert('Booking failed. Please try again.');
+      alert('Booking failed: ' + error.message);
     } finally {
       setIsBookingLoading(false);
     }
@@ -122,6 +227,14 @@ const ListingDetailPage = () => {
     }
     
     navigate(`/messages?host=${listing.host_id}`);
+  };
+
+  const handleDateSelect = (dates) => {
+    setBookingData(prev => ({
+      ...prev,
+      startDate: dates.checkIn || '',
+      endDate: dates.checkOut || ''
+    }));
   };
 
   if (loading) {
@@ -171,10 +284,10 @@ const ListingDetailPage = () => {
             {listing.image_url && (
               <div className="mb-8">
                 <img 
-  src={listing.image_url ? `/uploads/${listing.image_url.split('/').pop()}` : '/placeholder.jpg'} 
-  alt={listing.title}
-  className="w-full h-48 object-cover"
-/>
+                  src={listing.image_url ? `/uploads/${listing.image_url.split('/').pop()}` : '/placeholder.jpg'} 
+                  alt={listing.title}
+                  className="w-full h-96 object-cover rounded-xl"
+                />
               </div>
             )}
 
@@ -188,8 +301,16 @@ const ListingDetailPage = () => {
                   <button className="p-2 rounded-full hover:bg-gray-800 transition">
                     <Share2 className="w-5 h-5 text-gray-300" />
                   </button>
-                  <button className="p-2 rounded-full hover:bg-gray-800 transition">
-                    <Heart className="w-5 h-5 text-gray-300" />
+                  <button 
+                    onClick={handleFavoriteToggle}
+                    disabled={favoritesLoading}
+                    className="p-2 rounded-full hover:bg-gray-800 transition"
+                  >
+                    {favoritesLoading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
+                    ) : (
+                      <Heart className={`w-5 h-5 ${isFavorited ? 'text-red-500 fill-current' : 'text-gray-300'}`} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -293,7 +414,7 @@ const ListingDetailPage = () => {
             )}
           </div>
 
-          {/* Booking Sidebar */}
+          {/* Enhanced Booking Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
               <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
@@ -314,64 +435,117 @@ const ListingDetailPage = () => {
                   )}
                 </div>
 
-                {/* Booking Form */}
+                {/* Enhanced Booking Form */}
                 <div className="space-y-4 mb-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-300 mb-2">Check-in</label>
-                      <Input
-                        type="date"
-                        value={bookingData.startDate}
-                        onChange={(e) => setBookingData({...bookingData, startDate: e.target.value})}
-                        className="bg-white/10 border-gray-600 text-white"
-                        min={new Date().toISOString().split('T')[0]}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-300 mb-2">Check-out</label>
-                      <Input
-                        type="date"
-                        value={bookingData.endDate}
-                        onChange={(e) => setBookingData({...bookingData, endDate: e.target.value})}
-                        className="bg-white/10 border-gray-600 text-white"
-                        min={bookingData.startDate || new Date().toISOString().split('T')[0]}
-                      />
-                    </div>
+                  {/* Toggle between simple form and calendar */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-300">Select dates</span>
+                    <button
+                      onClick={() => setShowCalendar(!showCalendar)}
+                      className="text-purple-400 text-sm hover:text-purple-300 transition"
+                    >
+                      {showCalendar ? 'Simple view' : 'Calendar view'}
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-sm text-gray-300 mb-2">Guests</label>
-                    <select
-                      value={bookingData.guests}
-                      onChange={(e) => setBookingData({...bookingData, guests: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 bg-white/10 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
-                    >
-                      {[1,2,3,4,5,6,7,8].map(num => (
-                        <option key={num} value={num} className="bg-gray-800">
-                          {num} Guest{num > 1 ? 's' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {showCalendar ? (
+                    /* Calendar Component */
+                    <BookingCalendar
+                      listingId={listing.id}
+                      selectedDates={{
+                        checkIn: bookingData.startDate,
+                        checkOut: bookingData.endDate
+                      }}
+                      onDateSelect={handleDateSelect}
+                      pricePerNight={listing.price_per_night}
+                    />
+                  ) : (
+                    /* Simple Date Inputs (your existing form) */
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm text-gray-300 mb-2">Check-in</label>
+                          <Input
+                            type="date"
+                            value={bookingData.startDate}
+                            onChange={(e) => setBookingData({...bookingData, startDate: e.target.value})}
+                            className="bg-white/10 border-gray-600 text-white"
+                            min={new Date().toISOString().split('T')[0]}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-300 mb-2">Check-out</label>
+                          <Input
+                            type="date"
+                            value={bookingData.endDate}
+                            onChange={(e) => setBookingData({...bookingData, endDate: e.target.value})}
+                            className="bg-white/10 border-gray-600 text-white"
+                            min={bookingData.startDate || new Date().toISOString().split('T')[0]}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-2">Guests</label>
+                        <select
+                          value={bookingData.guests}
+                          onChange={(e) => setBookingData({...bookingData, guests: parseInt(e.target.value)})}
+                          className="w-full px-3 py-2 bg-white/10 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
+                        >
+                          {[1,2,3,4,5,6,7,8].map(num => (
+                            <option key={num} value={num} className="bg-gray-800">
+                              {num} Guest{num > 1 ? 's' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Availability Status */}
+                  {(bookingData.startDate && bookingData.endDate) && (
+                    <div className={`p-3 rounded-lg text-sm ${
+                      availabilityMessage.includes('✅') ? 'bg-green-900/20 text-green-400 border border-green-600' :
+                      availabilityMessage.includes('❌') ? 'bg-red-900/20 text-red-400 border border-red-600' :
+                      'bg-yellow-900/20 text-yellow-400 border border-yellow-600'
+                    }`}>
+                      {availabilityChecking ? (
+                        <div className="flex items-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                          Checking availability...
+                        </div>
+                      ) : (
+                        availabilityMessage
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Price Breakdown */}
-                {totalPrice > 0 && (
+                {priceBreakdown && priceBreakdown.total > 0 && (
                   <div className="mb-6 p-4 bg-gray-700 rounded-lg">
                     <div className="flex justify-between text-gray-300 mb-2">
-                      <span>₱{Number(listing.price_per_night).toLocaleString()} x {Math.ceil((new Date(bookingData.endDate) - new Date(bookingData.startDate)) / (1000 * 60 * 60 * 24))} nights</span>
-                      <span>₱{totalPrice.toLocaleString()}</span>
+                      <span>₱{Number(listing.price_per_night).toLocaleString()} x {priceBreakdown.nights} nights</span>
+                      <span>₱{priceBreakdown.basePrice.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-300 mb-2">
+                      <span>Service fee</span>
+                      <span>₱{priceBreakdown.serviceFee.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-300 mb-2">
+                      <span>Taxes</span>
+                      <span>₱{priceBreakdown.taxes.toLocaleString()}</span>
                     </div>
                     <div className="border-t border-gray-600 pt-2">
                       <div className="flex justify-between font-semibold text-white">
                         <span>Total</span>
-                        <span>₱{totalPrice.toLocaleString()}</span>
+                        <span>₱{priceBreakdown.total.toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Booking Button */}
+                {/* Booking Buttons */}
                 <div className="space-y-3">
                   <Button
                     onClick={handleBooking}
@@ -379,7 +553,7 @@ const ListingDetailPage = () => {
                     variant="gradient"
                     size="lg"
                     className="w-full"
-                    disabled={!bookingData.startDate || !bookingData.endDate || totalPrice <= 0}
+                    disabled={!bookingData.startDate || !bookingData.endDate || totalPrice <= 0 || availabilityMessage.includes('❌')}
                   >
                     {!isAuthenticated ? 'Sign in to Book' : 'Request to Book'}
                   </Button>
@@ -406,17 +580,17 @@ const ListingDetailPage = () => {
         </div>
 
         {/* Map Section */}
-       {listing.latitude && listing.longitude && (
-  <div className="mt-12">
-    <h2 className="text-2xl font-bold text-white mb-6">Location</h2>
-    <MapComponent 
-      center={{ lat: listing.latitude, lng: listing.longitude }}
-      zoom={15}
-      height="400px"
-      showSingleMarker={true}
-    />
-  </div>
-)}
+        {listing.latitude && listing.longitude && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold text-white mb-6">Location</h2>
+            <MapComponent 
+              center={{ lat: listing.latitude, lng: listing.longitude }}
+              zoom={15}
+              height="400px"
+              showSingleMarker={true}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

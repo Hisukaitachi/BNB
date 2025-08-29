@@ -1,17 +1,79 @@
-// src/services/messageService.js
+// src/services/messageService.js - Complete messaging with media support
+import { messageAPI } from './api';
+import { useSocket } from '../context/AppContext';
+
+export const MESSAGE_TYPES = {
+  TEXT: 'text',
+  IMAGE: 'image',
+  VIDEO: 'video',
+  DOCUMENT: 'document'
+};
+
 class MessageService {
+  constructor() {
+    this.socket = null;
+    this.messageQueue = [];
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+  }
+
   /**
-   * Send message to user
+   * Initialize socket connection for real-time messaging
+   * @param {number} userId - Current user ID
+   */
+  initializeSocket(userId) {
+    const { connectSocket } = useSocket();
+    if (connectSocket) {
+      connectSocket(userId);
+    }
+  }
+
+  /**
+   * Send message with media support (text, image, video)
    * @param {number} receiverId - Receiver user ID
    * @param {string} message - Message content
+   * @param {File|null} mediaFile - Media file (image/video)
    * @returns {Promise<object>} Send result
    */
-  async sendMessage(receiverId, message) {
+  async sendMessage(receiverId, message, mediaFile = null) {
     try {
-      const response = await api.sendMessage(receiverId, message);
-      return { success: true, data: response.data };
+      // Validate input
+      if (!receiverId || (!message?.trim() && !mediaFile)) {
+        throw new Error('Receiver ID and message content are required');
+      }
+
+      if (message && message.length > 1000) {
+        throw new Error('Message cannot exceed 1000 characters');
+      }
+
+      // Validate media file
+      if (mediaFile) {
+        const validationResult = this.validateMediaFile(mediaFile);
+        if (!validationResult.isValid) {
+          throw new Error(validationResult.error);
+        }
+      }
+
+      const response = await messageAPI.sendMessage(receiverId, message, mediaFile);
+      
+      // Send via socket for real-time delivery
+      const { socket, sendMessage: socketSend } = useSocket();
+      if (socket && socketSend) {
+        socketSend(receiverId, {
+          type: mediaFile ? this.getFileType(mediaFile) : MESSAGE_TYPES.TEXT,
+          content: message,
+          media: mediaFile ? URL.createObjectURL(mediaFile) : null,
+          timestamp: new Date()
+        });
+      }
+
+      return {
+        success: true,
+        data: response.data.data?.message,
+        messageId: response.data.data?.message?.id
+      };
     } catch (error) {
-      throw new Error(error.message || 'Failed to send message');
+      throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
     }
   }
 
@@ -23,27 +85,42 @@ class MessageService {
    */
   async getConversation(otherUserId, page = 1) {
     try {
-      const response = await api.getConversation(otherUserId, page);
+      if (!otherUserId) {
+        throw new Error('User ID is required');
+      }
+
+      const response = await messageAPI.getConversation(otherUserId, page);
+      
       return {
-        messages: response.data?.messages || [],
-        otherUser: response.data?.otherUser,
-        pagination: response.data?.pagination
+        messages: response.data.data?.messages || [],
+        otherUser: response.data.data?.otherUser,
+        pagination: response.data.data?.pagination
       };
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch conversation');
+      throw new Error(error.response?.data?.message || 'Failed to fetch conversation');
     }
   }
 
   /**
-   * Get user's inbox
+   * Get user's inbox - Messages/Chatbox list
+   * @param {number} page - Page number
    * @returns {Promise<Array>} Conversations
    */
-  async getInbox() {
+  async getInbox(page = 1) {
     try {
-      const response = await api.getInbox();
-      return response.data?.conversations || [];
+      const response = await messageAPI.getInbox();
+      
+      const conversations = response.data.data?.conversations || [];
+      
+      // Format conversations with additional data
+      return conversations.map(conv => ({
+        ...conv,
+        lastMessagePreview: this.formatMessagePreview(conv.last_message),
+        timeAgo: this.formatTimeAgo(conv.created_at),
+        isUnread: conv.unread_count > 0
+      }));
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch inbox');
+      throw new Error(error.response?.data?.message || 'Failed to fetch inbox');
     }
   }
 
@@ -54,10 +131,10 @@ class MessageService {
    */
   async markAsRead(messageId) {
     try {
-      const response = await api.markMessageAsRead(messageId);
+      const response = await messageAPI.markMessageAsRead(messageId);
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.message || 'Failed to mark message as read');
+      throw new Error(error.response?.data?.message || 'Failed to mark message as read');
     }
   }
 
@@ -68,10 +145,10 @@ class MessageService {
    */
   async markConversationAsRead(otherUserId) {
     try {
-      const response = await api.markConversationAsRead(otherUserId);
+      const response = await messageAPI.markConversationAsRead(otherUserId);
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.message || 'Failed to mark conversation as read');
+      throw new Error(error.response?.data?.message || 'Failed to mark conversation as read');
     }
   }
 
@@ -88,6 +165,221 @@ class MessageService {
       return 0;
     }
   }
+
+  /**
+   * Start video/voice call (if implemented)
+   * @param {number} receiverId - Receiver user ID
+   * @param {string} callType - 'video' or 'audio'
+   * @returns {Promise<object>} Call initiation result
+   */
+  async initiateCall(receiverId, callType = 'video') {
+    try {
+      // This would integrate with WebRTC or a calling service
+      const { socket } = useSocket();
+      
+      if (!socket) {
+        throw new Error('Real-time connection not available');
+      }
+
+      // Emit call request via socket
+      socket.emit('callRequest', {
+        to: receiverId,
+        callType,
+        timestamp: new Date()
+      });
+
+      return {
+        success: true,
+        callId: `call_${Date.now()}`,
+        type: callType
+      };
+    } catch (error) {
+      throw new Error(error.message || 'Failed to initiate call');
+    }
+  }
+
+  /**
+   * Validate media file for messaging
+   * @param {File} file - File to validate
+   * @returns {object} Validation result
+   */
+  validateMediaFile(file) {
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
+    const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
+
+    if (!file) {
+      return { isValid: false, error: 'No file provided' };
+    }
+
+    if (file.size > maxSize) {
+      return { isValid: false, error: 'File size cannot exceed 10MB' };
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      return { isValid: false, error: 'Only images (JPEG, PNG, GIF, WebP) and videos (MP4, MOV, WebM) are allowed' };
+    }
+
+    // Additional video validation
+    if (allowedVideoTypes.includes(file.type) && file.size > 50 * 1024 * 1024) {
+      return { isValid: false, error: 'Video files cannot exceed 50MB' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Get file type from file object
+   * @param {File} file - File object
+   * @returns {string} File type
+   */
+  getFileType(file) {
+    if (file.type.startsWith('image/')) {
+      return MESSAGE_TYPES.IMAGE;
+    }
+    if (file.type.startsWith('video/')) {
+      return MESSAGE_TYPES.VIDEO;
+    }
+    return MESSAGE_TYPES.DOCUMENT;
+  }
+
+  /**
+   * Format message preview for inbox
+   * @param {string} message - Raw message
+   * @param {string} type - Message type
+   * @returns {string} Formatted preview
+   */
+  formatMessagePreview(message, type = MESSAGE_TYPES.TEXT) {
+    if (!message) return '';
+
+    switch (type) {
+      case MESSAGE_TYPES.IMAGE:
+        return '📷 Image';
+      case MESSAGE_TYPES.VIDEO:
+        return '🎥 Video';
+      case MESSAGE_TYPES.DOCUMENT:
+        return '📄 Document';
+      default:
+        return message.length > 50 ? `${message.substring(0, 50)}...` : message;
+    }
+  }
+
+  /**
+   * Format time ago for messages
+   * @param {string} timestamp - Message timestamp
+   * @returns {string} Formatted time
+   */
+  formatTimeAgo(timestamp) {
+    const now = new Date();
+    const messageTime = new Date(timestamp);
+    const diffInSeconds = Math.floor((now - messageTime) / 1000);
+
+    if (diffInSeconds < 60) {
+      return 'Just now';
+    }
+
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}m ago`;
+    }
+
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    }
+
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) {
+      return `${diffInDays}d ago`;
+    }
+
+    return messageTime.toLocaleDateString();
+  }
+
+  /**
+   * Format message for display
+   * @param {object} message - Message object
+   * @param {number} currentUserId - Current user ID
+   * @returns {object} Formatted message
+   */
+  formatMessage(message, currentUserId) {
+    return {
+      ...message,
+      isSender: message.sender_id === currentUserId,
+      timeFormatted: new Date(message.created_at).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      }),
+      dateFormatted: new Date(message.created_at).toLocaleDateString(),
+      type: message.media_type || MESSAGE_TYPES.TEXT,
+      hasMedia: !!(message.media_url || message.image_url || message.video_url)
+    };
+  }
+
+  /**
+   * Search messages in conversation
+   * @param {Array} messages - Messages array
+   * @param {string} searchTerm - Search term
+   * @returns {Array} Filtered messages
+   */
+  searchMessages(messages, searchTerm) {
+    if (!searchTerm.trim()) return messages;
+
+    const term = searchTerm.toLowerCase();
+    return messages.filter(message => 
+      message.message?.toLowerCase().includes(term) ||
+      message.sender_name?.toLowerCase().includes(term)
+    );
+  }
+
+  /**
+   * Group messages by date
+   * @param {Array} messages - Messages array
+   * @returns {object} Grouped messages
+   */
+  groupMessagesByDate(messages) {
+    const grouped = {};
+    
+    messages.forEach(message => {
+      const date = new Date(message.created_at).toDateString();
+      if (!grouped[date]) {
+        grouped[date] = [];
+      }
+      grouped[date].push(message);
+    });
+
+    return grouped;
+  }
+
+  /**
+   * Handle typing indicators
+   * @param {number} receiverId - Receiver user ID
+   */
+  sendTypingIndicator(receiverId) {
+    const { socket } = useSocket();
+    if (socket) {
+      socket.emit('typing', {
+        senderId: socket.userId,
+        receiverId
+      });
+    }
+  }
+
+  /**
+   * Stop typing indicators
+   * @param {number} receiverId - Receiver user ID
+   */
+  stopTypingIndicator(receiverId) {
+    const { socket } = useSocket();
+    if (socket) {
+      socket.emit('stopTyping', {
+        senderId: socket.userId,
+        receiverId
+      });
+    }
+  }
 }
 
-export const messageService = new MessageService();
+export default new MessageService();

@@ -1,32 +1,44 @@
-// src/services/bookingService.js
-import api from './api';
-import { BOOKING_STATUS } from '../utils/constants';
+// src/services/bookingService.js - Complete booking functionality
+import { bookingAPI } from './api';
+
+export const BOOKING_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  CONFIRMED: 'confirmed',
+  REJECTED: 'rejected',
+  CANCELLED: 'cancelled',
+  COMPLETED: 'completed'
+};
 
 class BookingService {
   /**
-   * Create a new booking
+   * Create a new booking - Book a unit
    * @param {object} bookingData - Booking data
    * @returns {Promise<object>} Booking creation result
    */
   async createBooking(bookingData) {
     try {
-      const response = await api.createBooking(bookingData);
-      return { success: true, data: response.data };
+      const response = await bookingAPI.createBooking(bookingData);
+      return {
+        success: true,
+        data: response.data,
+        bookingId: response.data.data?.bookingId
+      };
     } catch (error) {
-      throw new Error(error.message || 'Failed to create booking');
+      throw new Error(error.response?.data?.message || 'Failed to create booking');
     }
   }
 
   /**
-   * Get user's bookings
+   * Get client's bookings - My Bookings
    * @returns {Promise<Array>} User bookings
    */
   async getMyBookings() {
     try {
-      const response = await api.getMyBookings();
-      return response.data?.bookings || [];
+      const response = await bookingAPI.getMyBookings();
+      return response.data.data?.bookings || [];
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch bookings');
+      throw new Error(error.response?.data?.message || 'Failed to fetch bookings');
     }
   }
 
@@ -36,15 +48,30 @@ class BookingService {
    */
   async getHostBookings() {
     try {
-      const response = await api.getHostBookings();
-      return response.data?.bookings || [];
+      const response = await bookingAPI.getHostBookings();
+      return response.data.data?.bookings || [];
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch host bookings');
+      throw new Error(error.response?.data?.message || 'Failed to fetch host bookings');
     }
   }
 
   /**
-   * Update booking status
+   * Cancel Bookings
+   * @param {number} bookingId - Booking ID
+   * @param {string} reason - Cancellation reason
+   * @returns {Promise<object>} Cancellation result
+   */
+  async cancelBooking(bookingId, reason = '') {
+    try {
+      const response = await bookingAPI.updateBookingStatus(bookingId, BOOKING_STATUS.CANCELLED);
+      return { success: true, data: response.data };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to cancel booking');
+    }
+  }
+
+  /**
+   * Update booking status (for hosts)
    * @param {number} bookingId - Booking ID
    * @param {string} status - New status
    * @returns {Promise<object>} Update result
@@ -55,25 +82,10 @@ class BookingService {
         throw new Error('Invalid booking status');
       }
 
-      const response = await api.updateBookingStatus(bookingId, status);
+      const response = await bookingAPI.updateBookingStatus(bookingId, status);
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.message || 'Failed to update booking status');
-    }
-  }
-
-  /**
-   * Cancel booking
-   * @param {number} bookingId - Booking ID
-   * @param {string} reason - Cancellation reason
-   * @returns {Promise<object>} Cancellation result
-   */
-  async cancelBooking(bookingId, reason = '') {
-    try {
-      const response = await api.updateBookingStatus(bookingId, BOOKING_STATUS.CANCELLED);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.message || 'Failed to cancel booking');
+      throw new Error(error.response?.data?.message || 'Failed to update booking status');
     }
   }
 
@@ -84,24 +96,24 @@ class BookingService {
    */
   async getBookingHistory(bookingId) {
     try {
-      const response = await api.getBookingHistory(bookingId);
-      return response.data?.history || [];
+      const response = await bookingAPI.getBookingHistory(bookingId);
+      return response.data.data?.history || [];
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch booking history');
+      throw new Error(error.response?.data?.message || 'Failed to fetch booking history');
     }
   }
 
   /**
-   * Get booked dates for a listing
+   * Bookings Calendar Conflict - Check for conflicts
    * @param {number} listingId - Listing ID
    * @returns {Promise<Array>} Booked dates
    */
   async getBookedDates(listingId) {
     try {
-      const response = await api.get(`/bookings/booked-dates/${listingId}`);
-      return response.data?.bookedDates || [];
+      const response = await bookingAPI.getBookedDates(listingId);
+      return response.data.data?.unavailableDates || [];
     } catch (error) {
-      throw new Error(error.message || 'Failed to fetch booked dates');
+      throw new Error(error.response?.data?.message || 'Failed to fetch booked dates');
     }
   }
 
@@ -114,20 +126,33 @@ class BookingService {
    */
   async checkAvailability(listingId, checkIn, checkOut) {
     try {
-      const bookedDates = await this.getBookedDates(listingId);
+      const bookedData = await this.getBookedDates(listingId);
       const startDate = new Date(checkIn);
       const endDate = new Date(checkOut);
 
-      // Check for conflicts
-      const hasConflict = bookedDates.some(booking => {
-        const bookingStart = new Date(booking.start_date);
-        const bookingEnd = new Date(booking.end_date);
+      // Check for conflicts with unavailable dates
+      const hasConflict = bookedData.some(booking => {
+        const bookingStart = new Date(booking.date);
+        const bookingEnd = new Date(booking.date);
+        bookingEnd.setDate(bookingEnd.getDate() + 1); // Add one day for single date entries
+        
         return (startDate < bookingEnd && endDate > bookingStart);
       });
 
+      // Also check booking ranges if available
+      if (bookedData.bookingRanges) {
+        const rangeConflict = bookedData.bookingRanges.some(range => {
+          const rangeStart = new Date(range.start);
+          const rangeEnd = new Date(range.end);
+          return (startDate < rangeEnd && endDate > rangeStart);
+        });
+        return !hasConflict && !rangeConflict;
+      }
+
       return !hasConflict;
     } catch (error) {
-      throw new Error(error.message || 'Failed to check availability');
+      console.error('Availability check failed:', error);
+      return false; // Assume not available if check fails
     }
   }
 
@@ -143,6 +168,10 @@ class BookingService {
     const endDate = new Date(checkOut);
     const nights = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
     
+    if (nights <= 0) {
+      return { nights: 0, basePrice: 0, serviceFee: 0, taxes: 0, total: 0 };
+    }
+    
     const basePrice = pricePerNight * nights;
     const serviceFee = Math.round(basePrice * 0.1); // 10% service fee
     const taxes = Math.round(basePrice * 0.05); // 5% taxes
@@ -153,9 +182,39 @@ class BookingService {
       basePrice,
       serviceFee,
       taxes,
-      total
+      total,
+      breakdown: {
+        [`₱${pricePerNight.toLocaleString()} x ${nights} night${nights > 1 ? 's' : ''}`]: basePrice,
+        'Service fee': serviceFee,
+        'Taxes': taxes
+      }
+    };
+  }
+
+  /**
+   * Get booking summary with status formatting
+   * @param {object} booking - Booking object
+   * @returns {object} Formatted booking summary
+   */
+  formatBookingSummary(booking) {
+    const statusColors = {
+      [BOOKING_STATUS.PENDING]: 'text-yellow-500',
+      [BOOKING_STATUS.APPROVED]: 'text-green-500',
+      [BOOKING_STATUS.CONFIRMED]: 'text-blue-500',
+      [BOOKING_STATUS.REJECTED]: 'text-red-500',
+      [BOOKING_STATUS.CANCELLED]: 'text-red-500',
+      [BOOKING_STATUS.COMPLETED]: 'text-gray-500'
+    };
+
+    return {
+      ...booking,
+      statusColor: statusColors[booking.status] || 'text-gray-500',
+      formattedDates: `${new Date(booking.start_date).toLocaleDateString()} - ${new Date(booking.end_date).toLocaleDateString()}`,
+      formattedPrice: `₱${Number(booking.total_price).toLocaleString()}`,
+      canCancel: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED].includes(booking.status),
+      canReview: booking.status === BOOKING_STATUS.COMPLETED
     };
   }
 }
 
-export const bookingService = new BookingService();
+export default new BookingService();
