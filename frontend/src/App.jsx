@@ -18,6 +18,8 @@ import ReportsPage from './pages/reports/ReportsPage';
 import MessagesPage from './pages/messaging/MessagesPage';
 import PaymentPage from './pages/payment/PaymentPage';
 
+import HostDashboard from './pages/host/HostDashboard';
+
 import './styles/globals.css';
 
 // Protected Route wrapper
@@ -194,37 +196,6 @@ function App() {
   );
 }
 
-// Host Dashboard Component (placeholder - you can expand this)
-const HostDashboard = () => (
-  <div className="min-h-screen bg-gray-900 pt-20">
-    <div className="container mx-auto px-6 py-8">
-      <h1 className="text-3xl font-bold text-white mb-8">Host Dashboard</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">My Listings</h3>
-          <p className="text-gray-400">Manage your property listings</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            View Listings →
-          </button>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Bookings</h3>
-          <p className="text-gray-400">Handle booking requests</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            View Bookings →
-          </button>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Earnings</h3>
-          <p className="text-gray-400">Track your earnings</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            View Earnings →
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-);
 
 // Admin Dashboard Component (placeholder - you can expand this)  
 const AdminDashboard = () => (

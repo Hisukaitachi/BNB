@@ -25,6 +25,7 @@ import HostReports from '../../components/host/HostReports';
 import CreateListing from '../../components/host/CreateListing';
 import EditListing from '../../components/host/EditListing';
 import HostNotifications from '../../components/host/HostNotifications';
+import ViewRequests from '../../components/host/ViewRequest';
 import hostService from '../../services/hostService';
 
 const HostDashboard = () => {
@@ -96,6 +97,12 @@ const HostDashboard = () => {
       icon: Bell,
       label: 'Notifications',
       badge: dashboardData?.unreadNotifications
+    },
+    {
+        path: '/host/view-requests',
+        icon: Users,
+        label: 'View Requests',
+        badge: dashboardData?.viewRequests
     }
   ];
 
@@ -193,6 +200,7 @@ const HostDashboard = () => {
             <Route path="/earnings" element={<HostEarnings />} />
             <Route path="/reports" element={<HostReports />} />
             <Route path="/notifications" element={<HostNotifications />} />
+            <Route path="/view-requests" element={<ViewRequests />} />
             <Route path="*" element={<Navigate to="/host/dashboard" replace />} />
           </Routes>
         </main>
