@@ -1,4 +1,4 @@
-// src/services/api.js - Updated with all your backend endpoints
+// frontend/src/services/api.js - Updated with Admin Endpoints
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
@@ -38,6 +38,48 @@ api.interceptors.response.use(
   }
 );
 
+// ADMIN FUNCTIONS - NEW SECTION
+export const adminAPI = {
+  // Dashboard
+  getDashboardStats: () => api.get('/admin/dashboard-stats'),
+  
+  // User Management
+  getAllUsers: (params) => api.get('/admin/users', { params }),
+  banUser: (userId) => api.put(`/admin/users/${userId}/ban`),
+  unbanUser: (userId) => api.put(`/admin/users/${userId}/unban`),
+  updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role`, { role }),
+  checkBanStatus: (userId) => api.get(`/admin/check-ban/${userId}`),
+  
+  // Listing Management
+  getAllListings: (params) => api.get('/admin/listings', { params }),
+  removeListing: (listingId, reason) => api.delete(`/admin/listings/${listingId}`, { data: { reason } }),
+  
+  // Booking Management
+  getAllBookings: (params) => api.get('/admin/bookings', { params }),
+  updateBookingStatus: (bookingId, status) => api.put(`/admin/bookings/${bookingId}/status`, { status }),
+  cancelBooking: (bookingId) => api.delete(`/admin/bookings/${bookingId}`),
+  getBookingHistory: (bookingId) => api.get(`/admin/bookings/${bookingId}/history`),
+  
+  // Review Management
+  getAllReviews: () => api.get('/admin/reviews'),
+  removeReview: (reviewId) => api.delete(`/admin/reviews/${reviewId}`),
+  
+  // Financial Management - Payouts
+  getHostEarnings: (hostId) => api.get(`/admin/earnings/${hostId}`),
+  getHostsPendingPayouts: () => api.get('/admin/payouts-summary'),
+  processHostPayout: (hostId) => api.post(`/admin/payouts/host/${hostId}`),
+  processBookingPayout: (bookingId) => api.post(`/admin/payout/${bookingId}`),
+  markHostAsPaid: (hostId) => api.post('/admin/mark-paid', { hostId }),
+  
+  // Financial Management - Refunds & Transactions
+  processRefund: (transactionId) => api.post(`/admin/refund/${transactionId}`),
+  getAllTransactions: () => api.get('/admin/transactions'),
+  
+  // Reports & User Safety
+  getAllReports: () => api.get('/admin/reports'),
+  takeAction: (actionData) => api.post('/admin/actions', actionData)
+};
+
 // BOOKING FUNCTIONS
 export const bookingAPI = {
   // Book a unit
@@ -73,7 +115,10 @@ export const paymentAPI = {
   getPaymentStatus: (bookingId) => api.get(`/payments/booking/${bookingId}`),
   
   // Get payment history
-  getMyPayments: () => api.get('/payments/my-payments')
+  getMyPayments: () => api.get('/payments/my-payments'),
+  
+  // Test payment config
+  testConfig: () => api.get('/payments/test-config')
 };
 
 // MESSAGING FUNCTIONS
@@ -121,6 +166,7 @@ export const reviewAPI = {
   // Delete review
   deleteReview: (reviewId) => api.delete(`/reviews/${reviewId}`)
 };
+
 // FAVORITES FUNCTIONS
 export const favoritesAPI = {
   // Add to favorites
@@ -156,7 +202,6 @@ export const notificationAPI = {
   markAllNotificationsRead: () => api.patch('/notifications/read-all')
 };
 
-// REQUEST VIEW UNIT FUNCTIONS (if implemented)
 // REQUEST VIEW UNIT FUNCTIONS
 export const viewRequestAPI = {
   // Request to view unit
@@ -170,6 +215,7 @@ export const viewRequestAPI = {
   respondToViewRequest: (requestId, response) => 
     api.put(`/listings/view-requests/${requestId}`, response)
 };
+
 // LISTING FUNCTIONS
 export const listingAPI = {
   // Get all listings
@@ -183,7 +229,56 @@ export const listingAPI = {
   
   // Get nearby listings
   getNearbyListings: (lat, lng, radius = 10) => 
-    api.get(`/listings/nearby?lat=${lat}&lng=${lng}&radius=${radius}`)
+    api.get(`/listings/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
+    
+  // Host listing management
+  createListing: (formData) => api.post('/listings', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  
+  updateListing: (id, data) => api.put(`/listings/${id}`, data),
+  deleteListing: (id) => api.delete(`/listings/${id}`),
+  getMyListings: () => api.get('/listings/my-listings')
+};
+
+// ROLE MANAGEMENT FUNCTIONS
+export const roleAPI = {
+  // Switch role
+  switchRole: (newRole) => api.post('/role/switch', { newRole }),
+  
+  // Get role info
+  getRoleInfo: () => api.get('/role/info')
+};
+
+// USER FUNCTIONS
+export const userAPI = {
+  // Authentication
+  register: (userData) => api.post('/users/register', userData),
+  login: (credentials) => api.post('/users/login', credentials),
+  verifyEmail: (email, code) => api.post('/users/verify-email', { email, code }),
+  forgotPassword: (email) => api.post('/users/forgot-password', { email }),
+  resetPassword: (data) => api.post('/users/reset-password', data),
+  
+  // Google OAuth
+  googleLogin: (token) => api.post('/users/google-login', { token }),
+  getGoogleConfig: () => api.get('/users/google-config'),
+  
+  // Profile management
+  getProfile: () => api.get('/users/me'),
+  updateProfile: (data) => api.put('/users/me', data),
+  changePassword: (data) => api.put('/users/me/change-password', data),
+  
+  // Status checks
+  checkMyBanStatus: () => api.get('/users/check-my-ban')
+};
+
+// HEALTH CHECK FUNCTIONS
+export const healthAPI = {
+  // Basic health check
+  getHealth: () => api.get('/health'),
+  
+  // Detailed health check
+  getDetailedHealth: () => api.get('/health/detailed')
 };
 
 export default api;

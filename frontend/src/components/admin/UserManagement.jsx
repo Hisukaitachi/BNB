@@ -1,0 +1,595 @@
+// frontend/src/components/admin/UserManagement.jsx
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, 
+  Search, 
+  Filter, 
+  Eye, 
+  Ban, 
+  UserX,
+  Shield,
+  RefreshCw,
+  MoreHorizontal,
+  Calendar,
+  Mail,
+  Phone
+} from 'lucide-react';
+import adminService from '../../services/adminService';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
+
+const UserManagement = () => {
+  const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [users, searchTerm, roleFilter, statusFilter]);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await adminService.getAllUsers();
+      setUsers(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...users];
+
+    // Search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(user => 
+        user.name.toLowerCase().includes(term) ||
+        user.email.toLowerCase().includes(term) ||
+        user.id.toString().includes(term)
+      );
+    }
+
+    // Role filter
+    if (roleFilter !== 'all') {
+      filtered = filtered.filter(user => user.role === roleFilter);
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active') {
+        filtered = filtered.filter(user => user.status === 'active' && !user.is_banned && !user.is_suspended);
+      } else if (statusFilter === 'banned') {
+        filtered = filtered.filter(user => user.is_banned);
+      } else if (statusFilter === 'suspended') {
+        filtered = filtered.filter(user => user.is_suspended);
+      } else if (statusFilter === 'inactive') {
+        filtered = filtered.filter(user => user.status === 'inactive');
+      }
+    }
+
+    setFilteredUsers(filtered);
+  };
+
+  const handleUserAction = async (userId, action) => {
+    try {
+      setActionLoading(prev => ({ ...prev, [userId]: action }));
+      
+      let result;
+      switch (action) {
+        case 'ban':
+          result = await adminService.banUser(userId);
+          break;
+        case 'unban':
+          result = await adminService.unbanUser(userId);
+          break;
+        case 'suspend':
+          const reason = prompt('Reason for suspension:');
+          if (!reason) return;
+          result = await adminService.suspendUser(userId, reason);
+          break;
+        case 'unsuspend':
+          result = await adminService.unsuspendUser(userId);
+          break;
+        case 'delete':
+          if (!confirm('Are you sure you want to soft delete this user? This action can be reversed.')) return;
+          result = await adminService.softDeleteUser(userId);
+          break;
+        default:
+          throw new Error('Invalid action');
+      }
+
+      if (result.success) {
+        await loadUsers(); // Refresh users
+        alert(`User ${action}ed successfully`);
+      }
+    } catch (error) {
+      alert(`Failed to ${action} user: ${error.message}`);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const getUserStatusBadge = (user) => {
+    if (user.is_banned) {
+      return <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">Banned</span>;
+    }
+    if (user.is_suspended) {
+      return <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Suspended</span>;
+    }
+    if (user.status === 'active') {
+      return <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>;
+    }
+    return <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>;
+  };
+
+  const getRoleBadge = (role) => {
+    const colors = {
+      admin: 'bg-red-100 text-red-800',
+      host: 'bg-purple-100 text-purple-800',
+      client: 'bg-blue-100 text-blue-800'
+    };
+    
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[role] || 'bg-gray-100 text-gray-800'}`}>
+        {role.charAt(0).toUpperCase() + role.slice(1)}
+      </span>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-red-400 mb-4">{error}</p>
+        <Button onClick={loadUsers} variant="gradient">Try Again</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-white">User Management</h1>
+          <p className="text-gray-400">
+            {filteredUsers.length} of {users.length} users
+          </p>
+        </div>
+        
+        <Button
+          onClick={loadUsers}
+          variant="outline"
+          className="border-gray-600 text-gray-300"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-gray-800 rounded-xl p-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Input
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-gray-700 border-gray-600 text-white"
+            />
+          </div>
+          
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+          >
+            <option value="all">All Roles</option>
+            <option value="client">Client</option>
+            <option value="host">Host</option>
+            <option value="admin">Admin</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="banned">Banned</option>
+            <option value="suspended">Suspended</option>
+          </select>
+
+          <div className="flex items-center space-x-2 text-sm text-gray-300">
+            <Filter className="w-4 h-4" />
+            <span>Filters Applied</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Users Table */}
+      <div className="bg-gray-800 rounded-xl overflow-hidden">
+        {filteredUsers.length === 0 ? (
+          <div className="text-center py-16">
+            <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-white mb-2">No users found</h3>
+            <p className="text-gray-400">Try adjusting your search criteria</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-700">
+                <tr>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">User</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Role</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Status</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Joined</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Stats</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-700/50">
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-medium text-sm">
+                            {user.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-white font-medium">{user.name}</div>
+                          <div className="text-gray-400 text-sm">{user.email}</div>
+                          <div className="text-gray-500 text-xs">ID: {user.id}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      {getRoleBadge(user.role)}
+                    </td>
+                    <td className="py-4 px-6">
+                      {getUserStatusBadge(user)}
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="text-white text-sm">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        {new Date(user.created_at).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="text-sm">
+                        {user.role === 'host' && (
+                          <>
+                            <div className="text-white">{user.listing_count || 0} listings</div>
+                            <div className="text-gray-400">₱{(user.total_earnings || 0).toLocaleString()}</div>
+                          </>
+                        )}
+                        {user.role === 'client' && (
+                          <>
+                            <div className="text-white">{user.booking_count || 0} bookings</div>
+                            <div className="text-gray-400">₱{(user.total_spent || 0).toLocaleString()}</div>
+                          </>
+                        )}
+                        {user.role === 'admin' && (
+                          <div className="text-red-400">Administrator</div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-gray-400"
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowUserModal(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+
+                        {!user.is_banned ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300"
+                            loading={actionLoading[user.id] === 'ban'}
+                            onClick={() => handleUserAction(user.id, 'ban')}
+                            disabled={user.role === 'admin'}
+                          >
+                            <Ban className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-green-400 hover:text-green-300"
+                            loading={actionLoading[user.id] === 'unban'}
+                            onClick={() => handleUserAction(user.id, 'unban')}
+                          >
+                            <Shield className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        {!user.is_suspended ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-yellow-400 hover:text-yellow-300"
+                            loading={actionLoading[user.id] === 'suspend'}
+                            onClick={() => handleUserAction(user.id, 'suspend')}
+                            disabled={user.role === 'admin'}
+                          >
+                            <UserX className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-400 hover:text-blue-300"
+                            loading={actionLoading[user.id] === 'unsuspend'}
+                            onClick={() => handleUserAction(user.id, 'unsuspend')}
+                          >
+                            <Users className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        <div className="relative group">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-gray-400"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                          
+                          <div className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(user.email);
+                                alert('Email copied to clipboard');
+                              }}
+                              className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-gray-600 w-full text-left"
+                            >
+                              <Mail className="w-4 h-4" />
+                              <span>Copy Email</span>
+                            </button>
+                            
+                            {user.phone && (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(user.phone);
+                                  alert('Phone copied to clipboard');
+                                }}
+                                className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-gray-600 w-full text-left"
+                              >
+                                <Phone className="w-4 h-4" />
+                                <span>Copy Phone</span>
+                              </button>
+                            )}
+                            
+                            <button
+                              onClick={() => handleUserAction(user.id, 'delete')}
+                              className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:bg-gray-600 w-full text-left"
+                              disabled={user.role === 'admin'}
+                            >
+                              <UserX className="w-4 h-4" />
+                              <span>Soft Delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* User Detail Modal */}
+      {showUserModal && selectedUser && (
+        <UserDetailModal 
+          user={selectedUser}
+          onClose={() => {
+            setShowUserModal(false);
+            setSelectedUser(null);
+          }}
+          onAction={handleUserAction}
+        />
+      )}
+    </div>
+  );
+};
+
+// User Detail Modal Component
+const UserDetailModal = ({ user, onClose, onAction }) => {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-white">User Details</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            ✕
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium text-white mb-4">Basic Information</h3>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-gray-400">Name:</span>
+                  <span className="text-white ml-2">{user.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Email:</span>
+                  <span className="text-white ml-2">{user.email}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Phone:</span>
+                  <span className="text-white ml-2">{user.phone || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Role:</span>
+                  <span className="text-white ml-2 capitalize">{user.role}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Joined:</span>
+                  <span className="text-white ml-2">
+                    {new Date(user.created_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium text-white mb-4">Account Status</h3>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-gray-400">Status:</span>
+                  <span className="text-white ml-2">{user.status}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Banned:</span>
+                  <span className={`ml-2 ${user.is_banned ? 'text-red-400' : 'text-green-400'}`}>
+                    {user.is_banned ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Suspended:</span>
+                  <span className={`ml-2 ${user.is_suspended ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {user.is_suspended ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Verified:</span>
+                  <span className={`ml-2 ${user.is_verified ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {user.is_verified ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Last Login:</span>
+                  <span className="text-white ml-2">
+                    {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Activity Stats */}
+        <div className="mt-6">
+          <h3 className="text-lg font-medium text-white mb-4">Activity Statistics</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {user.role === 'host' && (
+              <>
+                <div className="bg-gray-700 p-3 rounded-lg text-center">
+                  <div className="text-xl font-bold text-white">{user.listing_count || 0}</div>
+                  <div className="text-gray-400 text-sm">Listings</div>
+                </div>
+                <div className="bg-gray-700 p-3 rounded-lg text-center">
+                  <div className="text-xl font-bold text-green-400">₱{(user.total_earnings || 0).toLocaleString()}</div>
+                  <div className="text-gray-400 text-sm">Total Earnings</div>
+                </div>
+              </>
+            )}
+            {user.role === 'client' && (
+              <>
+                <div className="bg-gray-700 p-3 rounded-lg text-center">
+                  <div className="text-xl font-bold text-white">{user.booking_count || 0}</div>
+                  <div className="text-gray-400 text-sm">Bookings</div>
+                </div>
+                <div className="bg-gray-700 p-3 rounded-lg text-center">
+                  <div className="text-xl font-bold text-blue-400">₱{(user.total_spent || 0).toLocaleString()}</div>
+                  <div className="text-gray-400 text-sm">Total Spent</div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="mt-6 flex justify-end space-x-3">
+          <Button
+            onClick={onClose}
+            variant="outline"
+            className="border-gray-600 text-gray-300"
+          >
+            Close
+          </Button>
+          
+          {!user.is_banned && user.role !== 'admin' && (
+            <Button
+              onClick={() => {
+                onAction(user.id, 'ban');
+                onClose();
+              }}
+              variant="outline"
+              className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
+            >
+              Ban User
+            </Button>
+          )}
+          
+          {user.is_banned && (
+            <Button
+              onClick={() => {
+                onAction(user.id, 'unban');
+                onClose();
+              }}
+              variant="gradient"
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Unban User
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UserManagement;
