@@ -1,14 +1,15 @@
-// backend/routes/adminRoutes.js - FIXED VERSION
+// backend/routes/adminRoutes.js - FIXED VERSION using payout controller
 const express = require('express');
 const router = express.Router();
 
 const adminController = require('../controllers/adminController');
+const payoutController = require('../controllers/payoutController'); // ✅ ADD THIS
 const reportsController = require('../controllers/reportsController');
-const { authenticateToken, requireAdmin } = require('../middleware/auth'); // ✅ Use the correct import
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Apply authentication and admin check to all routes
 router.use(authenticateToken);
-router.use(requireAdmin); // ✅ Use requireAdmin instead of Admin middleware
+router.use(requireAdmin);
 
 // Dashboard redirect route
 router.get('/', (req, res) => {
@@ -46,14 +47,33 @@ router.delete('/bookings/:bookingId', adminController.cancelBooking);
 router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.removeReview);
 
-// Financial Management - Payouts & Earnings
-router.get('/earnings/:hostId', adminController.getHostEarnings);
-router.post('/mark-paid', adminController.markHostAsPaid);
-router.get('/payouts-summary', adminController.getHostsPendingPayouts);
-router.post('/payouts/host/:hostId', adminController.processHostPayout);
-router.post('/payout/:bookingId', adminController.processPayout);
+// ✅ FIXED - Financial Management using PAYOUT CONTROLLER
+router.get('/payouts/all', payoutController.getAllPayouts);
+router.post('/payouts/release', payoutController.releasePayout);
 
-// Financial Management - Refunds & Transactions  
+// ✅ ADD MISSING ADMIN PAYOUT ROUTES
+router.get('/payouts', payoutController.getAllPayouts);        // For /admin/payouts
+router.post('/payouts/process', payoutController.releasePayout); // For processing
+
+// ✅ FIXED - For specific host earnings (admin can check any host)
+router.get('/earnings/:hostId', async (req, res) => {
+  try {
+    // Create a temporary request object with the hostId as user.id
+    const tempReq = {
+      user: { id: req.params.hostId },
+      params: req.params,
+      query: req.query
+    };
+    await payoutController.getHostEarnings(tempReq, res);
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch host earnings'
+    });
+  }
+});
+
+// Financial Management - Refunds & Transactions (keep these in admin controller)
 router.post('/refund/:transactionId', adminController.processRefund);
 router.get('/transactions', adminController.getAllTransactions);
 

@@ -25,7 +25,6 @@ import AdminEarnings from '../../components/admin/AdminEarnings';
 import BookingManagement from '../../components/admin/BookingManagement';
 import ReportManagement from '../../components/admin/ReportManagement';
 import PlatformFeedback from '../../components/admin/PlatformFeedback';
-import AdminSettings from '../../components/admin/AdminSettings';
 import adminService from '../../services/adminService';
 
 const AdminDashboard = () => {
@@ -106,11 +105,6 @@ const AdminDashboard = () => {
       icon: Star,
       label: 'Platform Feedback'
     },
-    {
-      path: '/admin/settings',
-      icon: Settings,
-      label: 'System Settings'
-    }
   ];
 
   if (loading) {
@@ -206,7 +200,6 @@ const AdminDashboard = () => {
             <Route path="/bookings" element={<BookingManagement />} />
             <Route path="/reports" element={<ReportManagement />} />
             <Route path="/feedback" element={<PlatformFeedback />} />
-            <Route path="/settings" element={<AdminSettings />} />
             <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
           </Routes>
         </main>

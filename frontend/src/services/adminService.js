@@ -1,14 +1,15 @@
-// frontend/src/services/adminService.js
+// frontend/src/services/adminService.js - FIXED VERSION
 import api from './api';
 
 class AdminService {
   /**
-   * Get admin dashboard overview data
+   * Get admin dashboard overview data - FIXED ENDPOINT
    * @returns {Promise<object>} Dashboard data
    */
   async getDashboardOverview() {
     try {
-      const response = await api.get('/admin/dashboard');
+      // ✅ FIXED: Use the correct endpoint that exists in your backend
+      const response = await api.get('/admin/dashboard-stats');
       return response.data.data || {};
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to fetch dashboard data');
@@ -31,20 +32,6 @@ class AdminService {
   }
 
   /**
-   * Get user by ID
-   * @param {number} userId - User ID
-   * @returns {Promise<object>} User data
-   */
-  async getUserById(userId) {
-    try {
-      const response = await api.get(`/admin/users/${userId}`);
-      return response.data.data?.user || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch user');
-    }
-  }
-
-  /**
    * Ban user
    * @param {number} userId - User ID
    * @param {string} reason - Ban reason
@@ -52,7 +39,7 @@ class AdminService {
    */
   async banUser(userId, reason = 'Violation of terms of service') {
     try {
-      const response = await api.post(`/admin/users/${userId}/ban`, { reason });
+      const response = await api.put(`/admin/users/${userId}/ban`, { reason });
       return { success: true, data: response.data };
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to ban user');
@@ -66,7 +53,7 @@ class AdminService {
    */
   async unbanUser(userId) {
     try {
-      const response = await api.post(`/admin/users/${userId}/unban`);
+      const response = await api.put(`/admin/users/${userId}/unban`);
       return { success: true, data: response.data };
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to unban user');
@@ -74,49 +61,17 @@ class AdminService {
   }
 
   /**
-   * Suspend user
+   * Update user role
    * @param {number} userId - User ID
-   * @param {string} reason - Suspension reason
-   * @param {number} duration - Duration in days
-   * @returns {Promise<object>} Suspension result
+   * @param {string} role - New role
+   * @returns {Promise<object>} Update result
    */
-  async suspendUser(userId, reason, duration = 30) {
+  async updateUserRole(userId, role) {
     try {
-      const response = await api.post(`/admin/users/${userId}/suspend`, { 
-        reason, 
-        duration 
-      });
+      const response = await api.put(`/admin/users/${userId}/role`, { role });
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to suspend user');
-    }
-  }
-
-  /**
-   * Unsuspend user
-   * @param {number} userId - User ID
-   * @returns {Promise<object>} Unsuspension result
-   */
-  async unsuspendUser(userId) {
-    try {
-      const response = await api.post(`/admin/users/${userId}/unsuspend`);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to unsuspend user');
-    }
-  }
-
-  /**
-   * Soft delete user
-   * @param {number} userId - User ID
-   * @returns {Promise<object>} Deletion result
-   */
-  async softDeleteUser(userId) {
-    try {
-      const response = await api.delete(`/admin/users/${userId}/soft`);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to delete user');
+      throw new Error(error.response?.data?.message || 'Failed to update user role');
     }
   }
 
@@ -136,62 +91,23 @@ class AdminService {
   }
 
   /**
-   * Approve listing
-   * @param {number} listingId - Listing ID
-   * @returns {Promise<object>} Approval result
-   */
-  async approveListing(listingId) {
-    try {
-      const response = await api.post(`/admin/listings/${listingId}/approve`);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to approve listing');
-    }
-  }
-
-  /**
-   * Reject listing
-   * @param {number} listingId - Listing ID
-   * @param {string} reason - Rejection reason
-   * @returns {Promise<object>} Rejection result
-   */
-  async rejectListing(listingId, reason) {
-    try {
-      const response = await api.post(`/admin/listings/${listingId}/reject`, { reason });
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to reject listing');
-    }
-  }
-
-  /**
    * Delete listing
    * @param {number} listingId - Listing ID
+   * @param {string} reason - Deletion reason
    * @returns {Promise<object>} Deletion result
    */
-  async deleteListing(listingId) {
+  async deleteListing(listingId, reason = '') {
     try {
-      const response = await api.delete(`/admin/listings/${listingId}`);
+      const response = await api.delete(`/admin/listings/${listingId}`, { 
+        data: { reason } 
+      });
       return { success: true, data: response.data };
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to delete listing');
     }
   }
 
-  /**
-   * Check for duplicate listings
-   * @returns {Promise<Array>} Duplicate listings
-   */
-  async checkDuplicateListings() {
-    try {
-      const response = await api.get('/admin/listings/duplicates');
-      return response.data.data?.duplicates || [];
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to check duplicates');
-    }
-  }
-
-  // PAYOUT MANAGEMENT
+  // ✅ FIXED PAYOUT MANAGEMENT - Using correct endpoints
   /**
    * Get all payouts
    * @param {object} params - Query parameters
@@ -199,7 +115,7 @@ class AdminService {
    */
   async getAllPayouts(params = {}) {
     try {
-      const response = await api.get('/admin/payouts', { params });
+      const response = await api.get('/payouts/all', { params });
       return response.data.data?.payouts || [];
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to fetch payouts');
@@ -207,44 +123,54 @@ class AdminService {
   }
 
   /**
-   * Process payout
-   * @param {number} payoutId - Payout ID
-   * @returns {Promise<object>} Processing result
-   */
-  async processPayout(payoutId) {
-    try {
-      const response = await api.post(`/admin/payouts/${payoutId}/process`);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to process payout');
-    }
-  }
-
-  /**
-   * Reject payout
-   * @param {number} payoutId - Payout ID
-   * @param {string} reason - Rejection reason
-   * @returns {Promise<object>} Rejection result
-   */
-  async rejectPayout(payoutId, reason) {
-    try {
-      const response = await api.post(`/admin/payouts/${payoutId}/reject`, { reason });
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to reject payout');
-    }
-  }
-
-  /**
-   * Get platform earnings
-   * @returns {Promise<object>} Earnings data
+   * Get platform earnings - ADDED MISSING METHOD
+   * @returns {Promise<object>} Platform earnings data
    */
   async getPlatformEarnings() {
     try {
-      const response = await api.get('/admin/earnings');
-      return response.data.data || {};
+      // Use dashboard stats to get earnings data
+      const dashboardData = await this.getDashboardOverview();
+      
+      // Calculate platform earnings from dashboard stats
+      const platformEarnings = {
+        totalRevenue: dashboardData.totalRevenue || 0,
+        totalCommission: (dashboardData.totalRevenue || 0) * 0.1, // 10% platform fee
+        totalPayouts: dashboardData.totalPayouts || 0,
+        pendingPayouts: dashboardData.pendingPayouts || 0,
+        netEarnings: ((dashboardData.totalRevenue || 0) * 0.1) - (dashboardData.totalPayouts || 0)
+      };
+      
+      return platformEarnings;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch earnings');
+      throw new Error(error.response?.data?.message || 'Failed to fetch platform earnings');
+    }
+  }
+
+  /**
+   * Get host earnings (admin checking specific host)
+   * @param {number} hostId - Host ID
+   * @returns {Promise<object>} Host earnings
+   */
+  async getHostEarnings(hostId) {
+    try {
+      const response = await api.get(`/admin/earnings/${hostId}`);
+      return response.data || {};
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch host earnings');
+    }
+  }
+
+  /**
+   * Release/process payout
+   * @param {object} payoutData - Payout data
+   * @returns {Promise<object>} Processing result
+   */
+  async releasePayout(payoutData) {
+    try {
+      const response = await api.post('/admin/payouts/release', payoutData);
+      return { success: true, data: response.data };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to process payout');
     }
   }
 
@@ -271,7 +197,9 @@ class AdminService {
    */
   async cancelBooking(bookingId, reason) {
     try {
-      const response = await api.post(`/admin/bookings/${bookingId}/cancel`, { reason });
+      const response = await api.delete(`/admin/bookings/${bookingId}`, { 
+        data: { reason } 
+      });
       return { success: true, data: response.data };
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to cancel booking');
@@ -294,230 +222,48 @@ class AdminService {
   }
 
   /**
-   * Update report status
-   * @param {number} reportId - Report ID
-   * @param {string} status - New status
-   * @param {string} adminResponse - Admin response
-   * @returns {Promise<object>} Update result
+   * Take action on report
+   * @param {object} actionData - Action data
+   * @returns {Promise<object>} Action result
    */
-  async updateReportStatus(reportId, status, adminResponse = '') {
+  async takeAction(actionData) {
     try {
-      const response = await api.put(`/admin/reports/${reportId}`, { 
-        status, 
-        admin_response: adminResponse 
-      });
+      const response = await api.post('/admin/actions', actionData);
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update report');
+      throw new Error(error.response?.data?.message || 'Failed to take action');
+    }
+  }
+
+  // REVIEW MANAGEMENT
+  /**
+   * Get all reviews
+   * @returns {Promise<Array>} Reviews list
+   */
+  async getAllReviews() {
+    try {
+      const response = await api.get('/admin/reviews');
+      return response.data.data?.reviews || [];
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch reviews');
     }
   }
 
   /**
-   * Send message to users involved in report
-   * @param {number} reportId - Report ID
-   * @param {string} message - Message to send
-   * @returns {Promise<object>} Send result
+   * Remove review
+   * @param {number} reviewId - Review ID
+   * @returns {Promise<object>} Removal result
    */
-  async sendReportMessage(reportId, message) {
+  async removeReview(reviewId) {
     try {
-      const response = await api.post(`/admin/reports/${reportId}/message`, { message });
+      const response = await api.delete(`/admin/reviews/${reviewId}`);
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to send message');
-    }
-  }
-
-  // FEEDBACK MANAGEMENT
-  /**
-   * Get platform feedback
-   * @param {object} params - Query parameters
-   * @returns {Promise<Array>} Feedback list
-   */
-  async getPlatformFeedback(params = {}) {
-    try {
-      const response = await api.get('/admin/feedback', { params });
-      return response.data.data?.feedback || [];
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch feedback');
-    }
-  }
-
-  /**
-   * Update feedback status
-   * @param {number} feedbackId - Feedback ID
-   * @param {string} status - New status
-   * @param {string} adminResponse - Admin response
-   * @returns {Promise<object>} Update result
-   */
-  async updateFeedbackStatus(feedbackId, status, adminResponse = '') {
-    try {
-      const response = await api.put(`/admin/feedback/${feedbackId}`, { 
-        status, 
-        admin_response: adminResponse 
-      });
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update feedback');
-    }
-  }
-
-  // ANALYTICS AND REPORTING
-  /**
-   * Get platform analytics
-   * @param {string} period - Time period (week, month, year)
-   * @returns {Promise<object>} Analytics data
-   */
-  async getPlatformAnalytics(period = 'month') {
-    try {
-      const response = await api.get('/admin/analytics', { 
-        params: { period } 
-      });
-      return response.data.data || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch analytics');
-    }
-  }
-
-  /**
-   * Generate report
-   * @param {string} reportType - Type of report
-   * @param {object} params - Report parameters
-   * @returns {Promise<object>} Report data
-   */
-  async generateReport(reportType, params = {}) {
-    try {
-      const response = await api.post('/admin/reports/generate', { 
-        type: reportType, 
-        ...params 
-      });
-      return response.data.data || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to generate report');
-    }
-  }
-
-  /**
-   * Export data
-   * @param {string} dataType - Type of data to export
-   * @param {object} filters - Export filters
-   * @returns {Promise<Blob>} Export file
-   */
-  async exportData(dataType, filters = {}) {
-    try {
-      const response = await api.post('/admin/export', { 
-        type: dataType, 
-        filters 
-      }, {
-        responseType: 'blob'
-      });
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to export data');
-    }
-  }
-
-  // SYSTEM SETTINGS
-  /**
-   * Get system settings
-   * @returns {Promise<object>} System settings
-   */
-  async getSystemSettings() {
-    try {
-      const response = await api.get('/admin/settings');
-      return response.data.data?.settings || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch settings');
-    }
-  }
-
-  /**
-   * Update system settings
-   * @param {object} settings - Settings to update
-   * @returns {Promise<object>} Update result
-   */
-  async updateSystemSettings(settings) {
-    try {
-      const response = await api.put('/admin/settings', settings);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update settings');
-    }
-  }
-
-  /**
-   * Send system notification to all users
-   * @param {object} notification - Notification data
-   * @returns {Promise<object>} Send result
-   */
-  async sendSystemNotification(notification) {
-    try {
-      const response = await api.post('/admin/notifications/broadcast', notification);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to send notification');
+      throw new Error(error.response?.data?.message || 'Failed to remove review');
     }
   }
 
   // UTILITY METHODS
-  /**
-   * Get system health status
-   * @returns {Promise<object>} Health status
-   */
-  async getSystemHealth() {
-    try {
-      const response = await api.get('/admin/health');
-      return response.data.data || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch system health');
-    }
-  }
-
-  /**
-   * Clear cache
-   * @param {string} cacheType - Type of cache to clear
-   * @returns {Promise<object>} Clear result
-   */
-  async clearCache(cacheType = 'all') {
-    try {
-      const response = await api.post('/admin/cache/clear', { type: cacheType });
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to clear cache');
-    }
-  }
-
-  /**
-   * Get activity logs
-   * @param {object} params - Query parameters
-   * @returns {Promise<Array>} Activity logs
-   */
-  async getActivityLogs(params = {}) {
-    try {
-      const response = await api.get('/admin/logs', { params });
-      return response.data.data?.logs || [];
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch logs');
-    }
-  }
-
-  /**
-   * Search across platform
-   * @param {string} query - Search query
-   * @param {string} type - Search type (users, listings, bookings, etc.)
-   * @returns {Promise<object>} Search results
-   */
-  async searchPlatform(query, type = 'all') {
-    try {
-      const response = await api.get('/admin/search', { 
-        params: { q: query, type } 
-      });
-      return response.data.data?.results || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to search');
-    }
-  }
-
-  // HELPER METHODS
   /**
    * Format user for display
    * @param {object} user - User object

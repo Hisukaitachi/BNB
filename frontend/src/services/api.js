@@ -1,4 +1,4 @@
-// frontend/src/services/api.js - Updated with Admin Endpoints
+// frontend/src/services/api.js - FIXED ADMIN PAYOUT SECTION
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
@@ -38,7 +38,7 @@ api.interceptors.response.use(
   }
 );
 
-// ADMIN FUNCTIONS - NEW SECTION
+// ✅ FIXED ADMIN FUNCTIONS - Updated payout endpoints
 export const adminAPI = {
   // Dashboard
   getDashboardStats: () => api.get('/admin/dashboard-stats'),
@@ -64,14 +64,12 @@ export const adminAPI = {
   getAllReviews: () => api.get('/admin/reviews'),
   removeReview: (reviewId) => api.delete(`/admin/reviews/${reviewId}`),
   
-  // Financial Management - Payouts
-  getHostEarnings: (hostId) => api.get(`/admin/earnings/${hostId}`),
-  getHostsPendingPayouts: () => api.get('/admin/payouts-summary'),
-  processHostPayout: (hostId) => api.post(`/admin/payouts/host/${hostId}`),
-  processBookingPayout: (bookingId) => api.post(`/admin/payout/${bookingId}`),
-  markHostAsPaid: (hostId) => api.post('/admin/mark-paid', { hostId }),
+  // ✅ FIXED - Financial Management using PAYOUT endpoints
+  getHostEarnings: (hostId) => api.get(`/admin/earnings/${hostId}`), // Uses fixed admin route
+  getAllPayouts: () => api.get('/admin/payouts/all'), // Uses payout controller via admin
+  releasePayout: (payoutData) => api.post('/admin/payouts/release', payoutData), // Uses payout controller via admin
   
-  // Financial Management - Refunds & Transactions
+  // Financial Management - Refunds & Transactions (admin controller)
   processRefund: (transactionId) => api.post(`/admin/refund/${transactionId}`),
   getAllTransactions: () => api.get('/admin/transactions'),
   
@@ -80,7 +78,18 @@ export const adminAPI = {
   takeAction: (actionData) => api.post('/admin/actions', actionData)
 };
 
-// BOOKING FUNCTIONS
+// ✅ FIXED PAYOUT FUNCTIONS - Direct payout endpoints for hosts
+export const payoutAPI = {
+  // For hosts to check their own earnings
+  getMyEarnings: () => api.get('/payouts/host/earnings'),
+  getMyPayouts: () => api.get('/payouts/my-received'),
+  
+  // For admin use via adminAPI above
+  getAllPayouts: () => api.get('/payouts/all'),
+  releasePayout: (payoutData) => api.post('/payouts/release', payoutData)
+};
+
+// BOOKING FUNCTIONS (unchanged)
 export const bookingAPI = {
   // Book a unit
   createBooking: (bookingData) => api.post('/bookings', bookingData),
@@ -105,7 +114,7 @@ export const bookingAPI = {
   getBookingsByListing: (listingId) => api.get(`/bookings/listing/${listingId}`)
 };
 
-// PAYMENT FUNCTIONS
+// PAYMENT FUNCTIONS (unchanged)
 export const paymentAPI = {
   // Create payment intent for GCash
   createPaymentIntent: (bookingId) => 
@@ -121,7 +130,7 @@ export const paymentAPI = {
   testConfig: () => api.get('/payments/test-config')
 };
 
-// MESSAGING FUNCTIONS
+// MESSAGING FUNCTIONS (unchanged)
 export const messageAPI = {
   // Send message (with image/video support)
   sendMessage: (receiverId, message, mediaFile = null) => {
@@ -151,7 +160,7 @@ export const messageAPI = {
     api.patch(`/messages/conversation/${otherUserId}/read`)
 };
 
-// REVIEWS AND FEEDBACK FUNCTIONS
+// REVIEWS AND FEEDBACK FUNCTIONS (unchanged)
 export const reviewAPI = {
   // Create review for unit/host
   createReview: (reviewData) => api.post('/reviews', reviewData),
@@ -167,7 +176,7 @@ export const reviewAPI = {
   deleteReview: (reviewId) => api.delete(`/reviews/${reviewId}`)
 };
 
-// FAVORITES FUNCTIONS
+// FAVORITES FUNCTIONS (unchanged)
 export const favoritesAPI = {
   // Add to favorites
   addFavorite: (listingId) => api.post(`/favorites/${listingId}`),
@@ -179,7 +188,7 @@ export const favoritesAPI = {
   getFavorites: (page = 1) => api.get(`/favorites?page=${page}`)
 };
 
-// REPORTS & DISPUTES FUNCTIONS
+// REPORTS & DISPUTES FUNCTIONS (unchanged)
 export const reportsAPI = {
   // Submit report/dispute - CONNECT TO BACKEND
   submitReport: (reportData) => api.post('/reports', reportData),
@@ -188,7 +197,7 @@ export const reportsAPI = {
   getMyReports: () => api.get('/reports/my-reports')
 };
 
-// NOTIFICATIONS FUNCTIONS
+// NOTIFICATIONS FUNCTIONS (unchanged)
 export const notificationAPI = {
   // Get notifications
   getNotifications: (page = 1, unreadOnly = false) => 
@@ -202,7 +211,7 @@ export const notificationAPI = {
   markAllNotificationsRead: () => api.patch('/notifications/read-all')
 };
 
-// REQUEST VIEW UNIT FUNCTIONS
+// REQUEST VIEW UNIT FUNCTIONS (unchanged)
 export const viewRequestAPI = {
   // Request to view unit
   requestViewUnit: (listingId, requestData) => 
@@ -216,7 +225,7 @@ export const viewRequestAPI = {
     api.put(`/listings/view-requests/${requestId}`, response)
 };
 
-// LISTING FUNCTIONS
+// LISTING FUNCTIONS (unchanged)
 export const listingAPI = {
   // Get all listings
   getAllListings: () => api.get('/listings'),
@@ -241,7 +250,7 @@ export const listingAPI = {
   getMyListings: () => api.get('/listings/my-listings')
 };
 
-// ROLE MANAGEMENT FUNCTIONS
+// ROLE MANAGEMENT FUNCTIONS (unchanged)
 export const roleAPI = {
   // Switch role
   switchRole: (newRole) => api.post('/role/switch', { newRole }),
@@ -250,7 +259,7 @@ export const roleAPI = {
   getRoleInfo: () => api.get('/role/info')
 };
 
-// USER FUNCTIONS
+// USER FUNCTIONS (unchanged)
 export const userAPI = {
   // Authentication
   register: (userData) => api.post('/users/register', userData),
@@ -272,7 +281,7 @@ export const userAPI = {
   checkMyBanStatus: () => api.get('/users/check-my-ban')
 };
 
-// HEALTH CHECK FUNCTIONS
+// HEALTH CHECK FUNCTIONS (unchanged)
 export const healthAPI = {
   // Basic health check
   getHealth: () => api.get('/health'),
