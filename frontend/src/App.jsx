@@ -19,6 +19,7 @@ import MessagesPage from './pages/messaging/MessagesPage';
 import PaymentPage from './pages/payment/PaymentPage';
 
 import HostDashboard from './pages/host/HostDashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 import './styles/globals.css';
 
@@ -196,45 +197,6 @@ function App() {
   );
 }
 
-
-// Admin Dashboard Component (placeholder - you can expand this)  
-const AdminDashboard = () => (
-  <div className="min-h-screen bg-gray-900 pt-20">
-    <div className="container mx-auto px-6 py-8">
-      <h1 className="text-3xl font-bold text-white mb-8">Admin Dashboard</h1>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Users</h3>
-          <p className="text-gray-400">Manage all users</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            Manage Users →
-          </button>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Listings</h3>
-          <p className="text-gray-400">Review all listings</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            Review Listings →
-          </button>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Reports</h3>
-          <p className="text-gray-400">Handle user reports</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            View Reports →
-          </button>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-semibold text-white mb-4">Analytics</h3>
-          <p className="text-gray-400">Platform statistics</p>
-          <button className="mt-4 text-purple-400 hover:text-purple-300 transition">
-            View Analytics →
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-);
 
 // 404 Not Found Page
 const NotFoundPage = () => (
