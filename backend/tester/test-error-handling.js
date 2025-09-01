@@ -1,7 +1,7 @@
 // backend/test-error-handling.js (temporary test file)
-const { AppError } = require('./middleware/errorHandler');
-const catchAsync = require('./utils/catchAsync');
-const logger = require('./utils/logger');
+const { AppError } = require('../middleware/errorHandler');
+const catchAsync = require('../utils/catchAsync');
+const logger = require('../utils/logger');
 
 // Test the logger
 console.log('Testing logger...');

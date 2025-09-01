@@ -31,18 +31,18 @@ console.log('✅ Static files middleware added');
 // Test 4: Add all routes
 console.log('Test 4: Adding all routes...');
 try {
-  app.use('/api/users', require('./routes/usersRoutes'));
-  app.use('/api/listings', require('./routes/listingsRoutes'));
-  app.use('/api/bookings', require('./routes/bookingsRoutes'));
-  app.use('/api/admin', require('./routes/adminRoutes'));
-  app.use('/api/reviews', require('./routes/reviewsRoutes'));
-  app.use('/api/favorites', require('./routes/favoritesRoutes'));
-  app.use('/api/messages', require('./routes/messagesRoutes'));
-  app.use('/api/transactions', require('./routes/transactionsRoutes'));
-  app.use('/api/notifications', require('./routes/notificationsRoutes'));
-  app.use('/api/refunds', require('./routes/refundRoutes'));
-  app.use('/api/payouts', require('./routes/payoutRoutes'));
-  app.use('/api/reports', require('./routes/reportsRoutes'));
+  app.use('/api/users', require('../routes/usersRoutes'));
+  app.use('/api/listings', require('../routes/listingsRoutes'));
+  app.use('/api/bookings', require('../routes/bookingsRoutes'));
+  app.use('/api/admin', require('../routes/adminRoutes'));
+  app.use('/api/reviews', require('../routes/reviewsRoutes'));
+  app.use('/api/favorites', require('../routes/favoritesRoutes'));
+  app.use('/api/messages', require('../routes/messagesRoutes'));
+  app.use('/api/transactions', require('../routes/transactionsRoutes'));
+  app.use('/api/notifications', require('../routes/notificationsRoutes'));
+  app.use('/api/refunds', require('../routes/refundRoutes'));
+  app.use('/api/payouts', require('../routes/payoutRoutes'));
+  app.use('/api/reports', require('../routes/reportsRoutes'));
   console.log('✅ All routes added successfully');
 } catch (err) {
   console.log('❌ Error adding routes:', err.message);
@@ -52,7 +52,7 @@ try {
 // Test 5: Add error handling
 console.log('Test 5: Adding error handling...');
 try {
-  const { globalErrorHandler, AppError } = require('./middleware/errorHandler');
+  const { globalErrorHandler, AppError } = require('../middleware/errorHandler');
   
   app.get('/health', (req, res) => {
     res.status(200).json({ status: 'success', message: 'Server is running' });

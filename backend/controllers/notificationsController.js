@@ -67,6 +67,7 @@ exports.getMyNotifications = catchAsync(async (req, res, next) => {
     }
   });
 });
+
 exports.markAsRead = catchAsync(async (req, res, next) => {
   const notificationId = req.params.id;
   const userId = req.user.id;

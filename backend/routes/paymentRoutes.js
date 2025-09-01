@@ -16,5 +16,4 @@ router.get('/booking/:bookingId', authenticateToken, paymentController.getPaymen
 // Get user's payment history
 router.get('/my-payments', authenticateToken, paymentController.getMyPayments);
 
-router.get('/test-config', paymentController.testConfig);
 module.exports = router;
