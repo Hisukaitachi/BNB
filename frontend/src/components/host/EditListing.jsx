@@ -1,4 +1,4 @@
-// frontend/src/components/host/EditListing.jsx - Edit Listing Form
+// frontend/src/components/host/EditListing.jsx - Fixed Edit Listing with Interactive Map
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -10,13 +10,93 @@ import {
   Video,
   RefreshCw,
   AlertTriangle,
-  Eye
+  Eye,
+  MapPin,
+  Target
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import listingService from '../../services/listingService';
+import api from '../../services/api';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Location Picker Component for Edit
+const LocationPickerEdit = ({ onLocationSelect, selectedLocation, initialLocation }) => {
+  const LocationMarker = () => {
+    useMapEvents({
+      click(e) {
+        const { lat, lng } = e.latlng;
+        onLocationSelect({
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6))
+        });
+      },
+    });
+
+    return selectedLocation ? (
+      <Marker 
+        position={[selectedLocation.lat, selectedLocation.lng]}
+        icon={L.divIcon({
+          className: 'custom-location-marker',
+          html: `<div style="
+            width: 30px; 
+            height: 30px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, #10b981, #059669); 
+            border: 4px solid white;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            <span style="color: white; font-size: 14px; font-weight: bold;">📍</span>
+          </div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        })}
+      />
+    ) : null;
+  };
+
+  // Determine map center - use selected location, initial location, or default to Cebu
+  const getMapCenter = () => {
+    if (selectedLocation) return [selectedLocation.lat, selectedLocation.lng];
+    if (initialLocation && initialLocation.lat && initialLocation.lng) {
+      return [initialLocation.lat, initialLocation.lng];
+    }
+    return [10.3157, 123.8854]; // Cebu City default
+  };
+
+  return (
+    <div className="relative">
+      <MapContainer 
+        center={getMapCenter()}
+        zoom={14} 
+        style={{ height: '300px', width: '100%' }}
+        className="rounded-lg cursor-crosshair"
+        key={`${selectedLocation?.lat}-${selectedLocation?.lng}`} // Force re-render when location changes
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <LocationMarker />
+      </MapContainer>
+      
+      {/* Instructions overlay */}
+      <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded-lg backdrop-blur-sm">
+        <div className="flex items-center space-x-2">
+          <Target className="w-4 h-4" />
+          <span>Click to update location</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const EditListing = () => {
   const { id } = useParams();
@@ -51,6 +131,8 @@ const EditListing = () => {
   const [currentImage, setCurrentImage] = useState(null);
   const [currentVideo, setCurrentVideo] = useState(null);
   const [errors, setErrors] = useState({});
+  const [selectedMapLocation, setSelectedMapLocation] = useState(null);
+  const [initialMapLocation, setInitialMapLocation] = useState(null);
 
   useEffect(() => {
     if (id) {
@@ -85,6 +167,16 @@ const EditListing = () => {
         status: listing.status || 'active'
       });
 
+      // Set map location if coordinates exist
+      if (listing.latitude && listing.longitude) {
+        const mapLocation = {
+          lat: Number(listing.latitude),
+          lng: Number(listing.longitude)
+        };
+        setSelectedMapLocation(mapLocation);
+        setInitialMapLocation(mapLocation);
+      }
+
       // Set current media
       if (listing.image_url) {
         setCurrentImage(`/uploads/${listing.image_url.split('/').pop()}`);
@@ -109,6 +201,39 @@ const EditListing = () => {
     
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleLocationSelect = (location) => {
+    setSelectedMapLocation(location);
+    setFormData(prev => ({
+      ...prev,
+      latitude: location.lat,
+      longitude: location.lng
+    }));
+    
+    // Clear location-related errors
+    setErrors(prev => ({ 
+      ...prev, 
+      latitude: '', 
+      longitude: '',
+      location_coordinates: ''
+    }));
+  };
+
+  const handleManualCoordinates = (field, value) => {
+    const numValue = value === '' ? '' : Number(value);
+    
+    setFormData(prev => ({
+      ...prev,
+      [field]: numValue
+    }));
+
+    // Update map marker if both coordinates are valid
+    if (field === 'latitude' && formData.longitude && numValue) {
+      setSelectedMapLocation({ lat: numValue, lng: formData.longitude });
+    } else if (field === 'longitude' && formData.latitude && numValue) {
+      setSelectedMapLocation({ lat: formData.latitude, lng: numValue });
     }
   };
 
@@ -194,26 +319,52 @@ const EditListing = () => {
     try {
       setSaving(true);
       
-      // Prepare update data
-      const updateData = { ...formData };
-      
-      // Handle file uploads separately if new files are selected
+      // Check if we have new files to upload
       if (imageFile || videoFile) {
-        const submissionData = {
-          ...formData,
-          image: imageFile,
-          video: videoFile
-        };
-        await hostService.createListing(submissionData); // This handles file uploads
+        // If there are new files, use FormData approach
+        const formDataWithFiles = new FormData();
+        
+        // Add all text fields to FormData
+        Object.keys(formData).forEach(key => {
+          if (formData[key] !== '' && formData[key] !== null && formData[key] !== undefined) {
+            formDataWithFiles.append(key, formData[key]);
+          }
+        });
+        
+        // Add files
+        if (imageFile) {
+          formDataWithFiles.append('image', imageFile);
+        }
+        if (videoFile) {
+          formDataWithFiles.append('video', videoFile);
+        }
+
+        // Use direct API call with FormData
+        await api.put(`/listings/${id}`, formDataWithFiles, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
       } else {
-        await hostService.updateListing(id, updateData);
+        // If no new files, just update the listing data
+        await hostService.updateListing(id, formData);
       }
       
       navigate('/host/listings', { 
         state: { message: 'Listing updated successfully!' }
       });
     } catch (error) {
-      setErrors({ submit: error.message });
+      console.error('Update error:', error);
+      
+      // Get the actual error message from the response
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to update listing';
+      
+      console.error('Detailed error:', error.response?.data);
+      setErrors({ submit: errorMessage });
     } finally {
       setSaving(false);
     }
@@ -244,7 +395,7 @@ const EditListing = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center space-x-4">
@@ -313,7 +464,44 @@ const EditListing = () => {
                     error={errors.location}
                     className="bg-gray-700 border-gray-600 text-white"
                   />
+                </div>
+              </div>
 
+              {/* Interactive Map Location Selector */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                  <MapPin className="w-5 h-5 mr-2" />
+                  Property Location
+                </h3>
+                
+                <div className="space-y-4">
+                  {/* Interactive Map */}
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-3">
+                      Click on the map to update your property location
+                    </label>
+                    <LocationPickerEdit 
+                      onLocationSelect={handleLocationSelect}
+                      selectedLocation={selectedMapLocation}
+                      initialLocation={initialMapLocation}
+                    />
+                  </div>
+
+                  {/* Selected Coordinates Display */}
+                  {selectedMapLocation && (
+                    <div className="bg-green-900/20 border border-green-600 rounded-lg p-4">
+                      <h4 className="text-green-400 font-medium mb-2 flex items-center">
+                        <Target className="w-4 h-4 mr-2" />
+                        Current Location
+                      </h4>
+                      <div className="text-green-300 text-sm space-y-1">
+                        <p>Latitude: {selectedMapLocation.lat}</p>
+                        <p>Longitude: {selectedMapLocation.lng}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual Input */}
                   <div className="grid grid-cols-2 gap-4">
                     <Input
                       label="Latitude"
@@ -321,7 +509,7 @@ const EditListing = () => {
                       type="number"
                       step="any"
                       value={formData.latitude}
-                      onChange={handleInputChange}
+                      onChange={(e) => handleManualCoordinates('latitude', e.target.value)}
                       className="bg-gray-700 border-gray-600 text-white"
                     />
                     <Input
@@ -330,7 +518,7 @@ const EditListing = () => {
                       type="number"
                       step="any"
                       value={formData.longitude}
-                      onChange={handleInputChange}
+                      onChange={(e) => handleManualCoordinates('longitude', e.target.value)}
                       className="bg-gray-700 border-gray-600 text-white"
                     />
                   </div>
@@ -599,11 +787,27 @@ const EditListing = () => {
                 <span className="text-white">No reviews yet</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Created</span>
-                <span className="text-white">
-                  {new Date().toLocaleDateString()}
+                <span className="text-gray-400">Status</span>
+                <span className={`capitalize ${
+                  formData.status === 'active' ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {formData.status}
                 </span>
               </div>
+            </div>
+
+            {/* Status Toggle */}
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <label className="block text-sm text-gray-300 mb-2">Listing Status</label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
             </div>
           </div>
         </div>

@@ -159,44 +159,74 @@ class HostService {
   }
 
   /**
-   * Create new listing
-   * @param {object} listingData - Listing data with files
-   * @returns {Promise<object>} Creation result
-   */
-  async createListing(listingData) {
-    try {
-      const formData = new FormData();
-      
-      // Add text fields
-      Object.keys(listingData).forEach(key => {
-        if (key !== 'image' && key !== 'video') {
-          formData.append(key, listingData[key]);
-        }
-      });
-      
-      // Add files
-      if (listingData.image) {
-        formData.append('image', listingData.image);
-      }
-      if (listingData.video) {
-        formData.append('video', listingData.video);
-      }
-
-      const response = await api.post('/listings', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      return {
-        success: true,
-        data: response.data.data,
-        listingId: response.data.data?.listingId
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to create listing');
+ * Create new listing - FIXED VERSION
+ * @param {object} listingData - Listing data with files
+ * @returns {Promise<object>} Creation result
+ */
+async createListing(listingData) {
+  try {
+    console.log('🚀 Creating listing with data:', listingData);
+    
+    const formData = new FormData();
+    
+    // CRITICAL: Add text fields first (required by your backend validation)
+    formData.append('title', listingData.title || '');
+    formData.append('description', listingData.description || '');
+    formData.append('price_per_night', listingData.price_per_night || '');
+    formData.append('location', listingData.location || '');
+    
+    // Optional coordinate fields
+    if (listingData.latitude) formData.append('latitude', listingData.latitude);
+    if (listingData.longitude) formData.append('longitude', listingData.longitude);
+    
+    // Optional additional fields (your form has these)
+    if (listingData.max_guests) formData.append('max_guests', listingData.max_guests);
+    if (listingData.bedrooms) formData.append('bedrooms', listingData.bedrooms);
+    if (listingData.bathrooms) formData.append('bathrooms', listingData.bathrooms);
+    if (listingData.amenities) formData.append('amenities', listingData.amenities);
+    if (listingData.house_rules) formData.append('house_rules', listingData.house_rules);
+    if (listingData.check_in_time) formData.append('check_in_time', listingData.check_in_time);
+    if (listingData.check_out_time) formData.append('check_out_time', listingData.check_out_time);
+    if (listingData.minimum_stay) formData.append('minimum_stay', listingData.minimum_stay);
+    if (listingData.maximum_stay) formData.append('maximum_stay', listingData.maximum_stay);
+    
+    // CRITICAL: Add files with EXACT field names that match your backend
+    if (listingData.image && listingData.image instanceof File) {
+      formData.append('image', listingData.image);
+      console.log('📁 Image file added:', listingData.image.name, listingData.image.type);
     }
+    
+    if (listingData.video && listingData.video instanceof File) {
+      formData.append('video', listingData.video);
+      console.log('🎥 Video file added:', listingData.video.name, listingData.video.type);
+    }
+
+    // Debug: Log all FormData entries
+    console.log('📋 FormData contents:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`  ${key}:`, value instanceof File ? `File: ${value.name}` : value);
+    }
+
+    const response = await api.post('/listings', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      // Add timeout for large file uploads
+      timeout: 60000, // 60 seconds
+    });
+    
+    console.log('✅ Listing created successfully:', response.data);
+    
+    return {
+      success: true,
+      data: response.data.data,
+      listingId: response.data.data?.listingId
+    };
+  } catch (error) {
+    console.error('❌ CreateListing error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to create listing');
   }
+}
 
   /**
    * Update existing listing

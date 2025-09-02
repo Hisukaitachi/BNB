@@ -10,6 +10,13 @@ exports.createListing = catchAsync(async (req, res, next) => {
   const role = req.user.role;
   let { title, description, price_per_night, location, latitude, longitude } = req.body;
 
+  console.log('📝 Creating listing with data:', {
+    title, description, price_per_night, location,
+    files: req.files,
+    userId: hostId,
+    userRole: role
+  });
+
   if (role !== 'host') {
     return next(new AppError('Only hosts can create listings', 403));
   }
@@ -54,6 +61,26 @@ exports.createListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Maximum listings limit reached (50 listings per host)', 400));
   }
 
+  // FIXED: Handle multiple files properly
+  let imageUrl = null;
+  let videoUrl = null;
+
+  if (req.files) {
+    console.log('📁 Processing uploaded files:', req.files);
+    
+    // Handle image file
+    if (req.files.image && req.files.image[0]) {
+      imageUrl = `/uploads/${req.files.image[0].filename}`;
+      console.log('🖼️ Image uploaded:', imageUrl);
+    }
+    
+    // Handle video file
+    if (req.files.video && req.files.video[0]) {
+      videoUrl = `/uploads/${req.files.video[0].filename}`;
+      console.log('🎥 Video uploaded:', videoUrl);
+    }
+  }
+
   // If latitude or longitude are missing, try to geocode
   if (!latitude || !longitude) {
     try {
@@ -74,27 +101,59 @@ exports.createListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Longitude must be between -180 and 180', 400));
   }
 
-  const imageUrl = req.files?.image ? `/uploads/${req.files.image[0].filename}` : null;
-  const videoUrl = req.files?.video ? `/uploads/${req.files.video[0].filename}` : null;
+  try {
+    // Use stored procedure or direct query
+    const [result] = await pool.query(
+      'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
+    );
 
-  const [result] = await pool.query(
-    'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
-  );
+    console.log('✅ Listing created successfully:', result.insertId);
 
-  res.status(201).json({
-    status: 'success',
-    message: 'Listing created successfully',
-    data: {
-      listingId: result.insertId,
-      title,
-      location,
-      pricePerNight: price_per_night,
-      hasCoordinates: !!(latitude && longitude)
+    res.status(201).json({
+      status: 'success',
+      message: 'Listing created successfully',
+      data: {
+        listingId: result.insertId,
+        title,
+        location,
+        pricePerNight: price_per_night,
+        imageUrl,
+        videoUrl,
+        hasCoordinates: !!(latitude && longitude)
+      }
+    });
+
+  } catch (dbError) {
+    console.error('❌ Database error creating listing:', dbError);
+    
+    // If stored procedure doesn't exist, use direct query
+    if (dbError.code === 'ER_SP_DOES_NOT_EXIST') {
+      console.log('🔄 Stored procedure not found, using direct query...');
+      
+      const [directResult] = await pool.query(`
+        INSERT INTO listings (host_id, title, description, price_per_night, location, image_url, video_url, latitude, longitude, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `, [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]);
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Listing created successfully',
+        data: {
+          listingId: directResult.insertId,
+          title,
+          location,
+          pricePerNight: price_per_night,
+          imageUrl,
+          videoUrl,
+          hasCoordinates: !!(latitude && longitude)
+        }
+      });
     }
-  });
+    
+    throw dbError;
+  }
 });
-
 exports.getAllListings = catchAsync(async (req, res, next) => {
   const [results] = await pool.query('CALL sp_get_all_listings()');
   const listings = results[0];

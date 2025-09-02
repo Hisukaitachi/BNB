@@ -1,4 +1,4 @@
-// frontend/src/components/host/CreateListing.jsx - Create Listing with Video Upload
+// frontend/src/components/host/CreateListing.jsx - Create Listing with Interactive Map
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -11,12 +11,81 @@ import {
   Image as ImageIcon,
   Video,
   Save,
-  Eye
+  Eye,
+  Target
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
+import MapComponent from '../common/MapComponent';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Location Picker Component
+const LocationPicker = ({ onLocationSelect, selectedLocation }) => {
+  const LocationMarker = () => {
+    useMapEvents({
+      click(e) {
+        const { lat, lng } = e.latlng;
+        onLocationSelect({
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6))
+        });
+      },
+    });
+
+    return selectedLocation ? (
+      <Marker 
+        position={[selectedLocation.lat, selectedLocation.lng]}
+        icon={L.divIcon({
+          className: 'custom-location-marker',
+          html: `<div style="
+            width: 30px; 
+            height: 30px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, #10b981, #059669); 
+            border: 4px solid white;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            <span style="color: white; font-size: 14px; font-weight: bold;">📍</span>
+          </div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        })}
+      />
+    ) : null;
+  };
+
+  return (
+    <div className="relative">
+      <MapContainer 
+        center={[10.3157, 123.8854]} // Cebu City default
+        zoom={12} 
+        style={{ height: '400px', width: '100%' }}
+        className="rounded-lg cursor-crosshair"
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <LocationMarker />
+      </MapContainer>
+      
+      {/* Instructions overlay */}
+      <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded-lg backdrop-blur-sm">
+        <div className="flex items-center space-x-2">
+          <Target className="w-4 h-4" />
+          <span>Click on the map to set location</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CreateListing = () => {
   const navigate = useNavigate();
@@ -45,6 +114,7 @@ const CreateListing = () => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [selectedMapLocation, setSelectedMapLocation] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value, type } = e.target;
@@ -56,6 +126,39 @@ const CreateListing = () => {
     // Clear errors when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleLocationSelect = (location) => {
+    setSelectedMapLocation(location);
+    setFormData(prev => ({
+      ...prev,
+      latitude: location.lat,
+      longitude: location.lng
+    }));
+    
+    // Clear location-related errors
+    setErrors(prev => ({ 
+      ...prev, 
+      latitude: '', 
+      longitude: '',
+      location_coordinates: ''
+    }));
+  };
+
+  const handleManualCoordinates = (field, value) => {
+    const numValue = value === '' ? '' : Number(value);
+    
+    setFormData(prev => ({
+      ...prev,
+      [field]: numValue
+    }));
+
+    // Update map marker if both coordinates are valid
+    if (field === 'latitude' && formData.longitude && numValue) {
+      setSelectedMapLocation({ lat: numValue, lng: formData.longitude });
+    } else if (field === 'longitude' && formData.latitude && numValue) {
+      setSelectedMapLocation({ lat: formData.latitude, lng: numValue });
     }
   };
 
@@ -147,6 +250,9 @@ const CreateListing = () => {
 
     try {
       setLoading(true);
+      console.log('Submitting listing with data:', formData);
+      console.log('Image file:', imageFile);
+      console.log('Video file:', videoFile);
       
       const submissionData = {
         ...formData,
@@ -155,6 +261,7 @@ const CreateListing = () => {
       };
 
       const result = await hostService.createListing(submissionData);
+      console.log('Create listing result:', result);
       
       if (result.success) {
         navigate('/host/listings', { 
@@ -162,7 +269,15 @@ const CreateListing = () => {
         });
       }
     } catch (error) {
-      setErrors({ submit: error.message });
+      console.error('Create listing error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to create listing';
+      
+      setErrors({ submit: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -181,7 +296,7 @@ const CreateListing = () => {
       }
     }
     
-    setCurrentStep(prev => Math.min(prev + 1, 3));
+    setCurrentStep(prev => Math.min(prev + 1, 4));
     setErrors({});
   };
 
@@ -229,35 +344,94 @@ const CreateListing = () => {
                   placeholder="Cebu City, Philippines"
                   className="bg-gray-700 border-gray-600 text-white"
                 />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Latitude (Optional)"
-                    name="latitude"
-                    type="number"
-                    step="any"
-                    value={formData.latitude}
-                    onChange={handleInputChange}
-                    placeholder="10.3157"
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                  <Input
-                    label="Longitude (Optional)"
-                    name="longitude"
-                    type="number"
-                    step="any"
-                    value={formData.longitude}
-                    onChange={handleInputChange}
-                    placeholder="123.8854"
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
               </div>
             </div>
           </div>
         );
 
       case 2:
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                <MapPin className="w-5 h-5 mr-2" />
+                Select Property Location
+              </h3>
+              
+              <div className="space-y-6">
+                {/* Interactive Map */}
+                <div>
+                  <label className="block text-sm text-gray-300 mb-3">
+                    Click on the map to select your property location *
+                  </label>
+                  <LocationPicker 
+                    onLocationSelect={handleLocationSelect}
+                    selectedLocation={selectedMapLocation}
+                  />
+                  {errors.location_coordinates && (
+                    <p className="text-red-400 text-sm mt-2">{errors.location_coordinates}</p>
+                  )}
+                </div>
+
+                {/* Selected Coordinates Display */}
+                {selectedMapLocation && (
+                  <div className="bg-green-900/20 border border-green-600 rounded-lg p-4">
+                    <h4 className="text-green-400 font-medium mb-2 flex items-center">
+                      <Target className="w-4 h-4 mr-2" />
+                      Selected Location
+                    </h4>
+                    <div className="text-green-300 text-sm space-y-1">
+                      <p>Latitude: {selectedMapLocation.lat}</p>
+                      <p>Longitude: {selectedMapLocation.lng}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Input (Optional) */}
+                <div className="border-t border-gray-700 pt-6">
+                  <h4 className="text-sm font-medium text-gray-300 mb-4">
+                    Or enter coordinates manually (optional)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input
+                      label="Latitude"
+                      name="latitude"
+                      type="number"
+                      step="any"
+                      value={formData.latitude}
+                      onChange={(e) => handleManualCoordinates('latitude', e.target.value)}
+                      placeholder="10.3157"
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                    <Input
+                      label="Longitude"
+                      name="longitude"
+                      type="number"
+                      step="any"
+                      value={formData.longitude}
+                      onChange={(e) => handleManualCoordinates('longitude', e.target.value)}
+                      placeholder="123.8854"
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Location Tips */}
+                <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4">
+                  <h4 className="text-blue-400 font-medium mb-2">📍 Location Tips</h4>
+                  <ul className="text-blue-300 text-sm space-y-1">
+                    <li>• Click directly on your property's location on the map</li>
+                    <li>• The more accurate the location, the easier it is for guests to find</li>
+                    <li>• You can zoom in for better precision</li>
+                    <li>• The location will be shown to guests on the listing page</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 3:
         return (
           <div className="space-y-6">
             <div>
@@ -371,7 +545,7 @@ const CreateListing = () => {
           </div>
         );
 
-      case 3:
+      case 4:
         return (
           <div className="space-y-6">
             <div>
@@ -473,7 +647,7 @@ const CreateListing = () => {
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center space-x-4 mb-8">
-      {[1, 2, 3].map((step) => (
+      {[1, 2, 3, 4].map((step) => (
         <div key={step} className="flex items-center">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
             step === currentStep ? 'bg-purple-600 text-white' :
@@ -482,7 +656,7 @@ const CreateListing = () => {
           }`}>
             {step < currentStep ? '✓' : step}
           </div>
-          {step < 3 && (
+          {step < 4 && (
             <div className={`w-16 h-1 mx-2 ${
               step < currentStep ? 'bg-green-600' : 'bg-gray-700'
             }`} />
@@ -549,7 +723,7 @@ const CreateListing = () => {
                 Cancel
               </Button>
 
-              {currentStep < 3 ? (
+              {currentStep < 4 ? (
                 <Button
                   type="button"
                   variant="gradient"
@@ -606,6 +780,11 @@ const CreateListing = () => {
                 <div className="flex items-center text-gray-400 mb-3">
                   <MapPin className="w-4 h-4 mr-1" />
                   <span>{formData.location}</span>
+                  {selectedMapLocation && (
+                    <span className="ml-2 text-xs text-green-400">
+                      ({selectedMapLocation.lat}, {selectedMapLocation.lng})
+                    </span>
+                  )}
                 </div>
               )}
               

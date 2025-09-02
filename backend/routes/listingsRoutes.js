@@ -1,12 +1,11 @@
-// backend/routes/listingsRoutes.js - QUICK FIX VERSION
+// backend/routes/listingsRoutes.js - FIXED VERSION
 const express = require('express');
 const router = express.Router();
 const listingsController = require('../controllers/listingsController');
 const { authenticateToken } = require('../middleware/auth'); 
-const upload = require('../middleware/multer');
-const { validate } = require('../middleware/validation');
+const { uploadFields } = require('../middleware/multer'); // FIXED: Import the fields upload
 
-// Import validation schemas
+// Import validation schemas and validation middleware
 const {
   createListingSchema,
   updateListingSchema,
@@ -15,27 +14,49 @@ const {
   getListingSchema,
   deleteListingSchema
 } = require('../validation/listingValidation');
+const { validate } = require('../middleware/validation');
 
-// SPECIFIC routes BEFORE parameterized routes
+// Debug middleware for listings routes
+router.use((req, res, next) => {
+  console.log('🔍 Listings Route Debug:', {
+    method: req.method,
+    url: req.originalUrl,
+    contentType: req.headers['content-type'],
+    bodyKeys: Object.keys(req.body || {}),
+    filesCount: req.files ? Object.keys(req.files).length : 0
+  });
+  next();
+});
+
+// SPECIFIC routes BEFORE parameterized routes (order matters!)
 router.get('/search', validate(searchListingsSchema), listingsController.searchListings);
 router.get('/nearby', validate(nearbyListingsSchema), listingsController.getNearbyListings);
 router.get('/my-listings', authenticateToken, listingsController.getListingsByHost);
-router.get('/', listingsController.getAllListings);
 
-// Protected routes
-router.post('/', authenticateToken, upload.single('image'), validate(createListingSchema), listingsController.createListing);
+// FIXED: Use uploadFields with your validation
+router.post('/', 
+  authenticateToken, 
+  uploadFields, // This handles both 'image' and 'video' fields
+  (req, res, next) => {
+    console.log('📁 Files received:', req.files);
+    console.log('📝 Body received:', req.body);
+    next();
+  },
+  validate(createListingSchema),
+  listingsController.createListing
+);
+
+// Update and delete routes with validation
 router.put('/:id', authenticateToken, validate(updateListingSchema), listingsController.updateListing);
 router.delete('/:id', authenticateToken, validate(deleteListingSchema), listingsController.deleteListing);
 
-// QUICK FIX: Temporarily remove validation for getListingById
-// The controller already has validation logic
-router.get('/:id', listingsController.getListingById);
-
-// Additional routes for requesting to view a unit
+// Additional feature routes
 router.post('/:listingId/view-request', authenticateToken, listingsController.requestViewUnit);
 router.get('/view-requests', authenticateToken, listingsController.getViewRequests);  
 router.put('/view-requests/:requestId', authenticateToken, listingsController.respondToViewRequest);
-// ORIGINAL (causing the issue):
-// router.get('/:id', validate(getListingSchema), listingsController.getListingById);
+
+// IMPORTANT: Keep general routes LAST with validation
+router.get('/', listingsController.getAllListings);
+router.get('/:id', validate(getListingSchema), listingsController.getListingById);
 
 module.exports = router;
