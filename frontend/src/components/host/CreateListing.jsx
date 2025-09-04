@@ -1,4 +1,4 @@
-// frontend/src/components/host/CreateListing.jsx - Create Listing with Interactive Map
+// frontend/src/components/host/CreateListing.jsx - Multiple Images (3-4) + 1 Video
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -18,7 +18,6 @@ import hostService from '../../services/hostService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
-import MapComponent from '../common/MapComponent';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -107,9 +106,10 @@ const CreateListing = () => {
     longitude: ''
   });
   
-  const [imageFile, setImageFile] = useState(null);
+  // UPDATED: Multiple images support
+  const [imageFiles, setImageFiles] = useState([]); // Array for multiple images
   const [videoFile, setVideoFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreviews, setImagePreviews] = useState([]); // Array for multiple previews
   const [videoPreview, setVideoPreview] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -162,33 +162,71 @@ const CreateListing = () => {
     }
   };
 
+  // UPDATED: Handle multiple image uploads
   const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
 
-    // Validate image
-    if (!file.type.startsWith('image/')) {
-      setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }));
+    // Check if adding these files would exceed the limit
+    if (imageFiles.length + files.length > 4) {
+      setErrors(prev => ({ ...prev, image: 'Maximum 4 images allowed' }));
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      setErrors(prev => ({ ...prev, image: 'Image size must be less than 10MB' }));
-      return;
+    console.log(`📁 ${files.length} image files selected`);
+
+    const validFiles = [];
+    const newPreviews = [];
+    let hasErrors = false;
+
+    files.forEach((file, index) => {
+      // Validate each image
+      if (!file.type.startsWith('image/')) {
+        setErrors(prev => ({ ...prev, image: 'Please select valid image files only' }));
+        hasErrors = true;
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setErrors(prev => ({ ...prev, image: 'Each image must be less than 10MB' }));
+        hasErrors = true;
+        return;
+      }
+
+      validFiles.push(file);
+
+      // Create preview for each valid file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        newPreviews.push({
+          id: Date.now() + index,
+          url: e.target.result,
+          file: file
+        });
+
+        // Update state when all previews are ready
+        if (newPreviews.length === validFiles.length) {
+          setImageFiles(prev => [...prev, ...validFiles]);
+          setImagePreviews(prev => [...prev, ...newPreviews]);
+          console.log(`✅ ${validFiles.length} image previews created`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (!hasErrors) {
+      setErrors(prev => ({ ...prev, image: '' }));
     }
 
-    setImageFile(file);
-    setErrors(prev => ({ ...prev, image: '' }));
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target.result);
-    reader.readAsDataURL(file);
+    // Clear the file input
+    e.target.value = '';
   };
 
   const handleVideoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    console.log('🎥 Video file selected:', file.name, file.type, file.size);
 
     // Validate video
     const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/avi'];
@@ -202,25 +240,54 @@ const CreateListing = () => {
       return;
     }
 
+    // CRITICAL: Store the actual File object
     setVideoFile(file);
     setErrors(prev => ({ ...prev, video: '' }));
 
     // Create preview
     const reader = new FileReader();
-    reader.onload = (e) => setVideoPreview(e.target.result);
+    reader.onload = (e) => {
+      console.log('✅ Video preview created');
+      setVideoPreview(e.target.result);
+    };
     reader.readAsDataURL(file);
   };
 
-  const removeImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
+  // UPDATED: Remove individual image by ID
+  const removeImage = (imageId) => {
+    console.log('🗑️ Removing image with ID:', imageId);
+    setImageFiles(prev => {
+      const imageToRemove = imagePreviews.find(img => img.id === imageId);
+      if (imageToRemove) {
+        return prev.filter(file => file !== imageToRemove.file);
+      }
+      return prev;
+    });
+    setImagePreviews(prev => prev.filter(img => img.id !== imageId));
     setErrors(prev => ({ ...prev, image: '' }));
   };
 
+  // UPDATED: Remove all images
+  const removeAllImages = () => {
+    console.log('🗑️ Removing all images');
+    setImageFiles([]);
+    setImagePreviews([]);
+    setErrors(prev => ({ ...prev, image: '' }));
+    
+    // Clear the file input
+    const input = document.getElementById('image-upload');
+    if (input) input.value = '';
+  };
+
   const removeVideo = () => {
+    console.log('🗑️ Removing video');
     setVideoFile(null);
     setVideoPreview(null);
     setErrors(prev => ({ ...prev, video: '' }));
+    
+    // Clear the file input
+    const input = document.getElementById('video-upload');
+    if (input) input.value = '';
   };
 
   const validateForm = () => {
@@ -236,6 +303,11 @@ const CreateListing = () => {
     if (formData.bedrooms < 0) newErrors.bedrooms = 'Bedrooms cannot be negative';
     if (formData.bathrooms < 0) newErrors.bathrooms = 'Bathrooms cannot be negative';
 
+    // UPDATED: At least one image is required
+    if (imageFiles.length === 0) {
+      newErrors.image = 'At least 1 property image is required';
+    }
+
     return newErrors;
   };
 
@@ -245,23 +317,51 @@ const CreateListing = () => {
     const formErrors = validateForm();
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
+      // If image is missing, go back to step 4
+      if (formErrors.image && currentStep !== 4) {
+        setCurrentStep(4);
+      }
       return;
     }
 
     try {
       setLoading(true);
-      console.log('Submitting listing with data:', formData);
-      console.log('Image file:', imageFile);
-      console.log('Video file:', videoFile);
+      console.log('🚀 Submitting listing with data:', formData);
+      console.log(`📁 ${imageFiles.length} image files:`, imageFiles.map(f => f.name));
+      console.log('🎥 Video file:', videoFile ? `${videoFile.name} (${videoFile.type})` : 'None');
       
+      // UPDATED: Pass multiple images
       const submissionData = {
-        ...formData,
-        image: imageFile,
-        video: videoFile
+        // Text fields
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        location: formData.location.trim(),
+        price_per_night: formData.price_per_night,
+        max_guests: formData.max_guests,
+        bedrooms: formData.bedrooms,
+        bathrooms: formData.bathrooms,
+        amenities: formData.amenities?.trim() || '',
+        house_rules: formData.house_rules?.trim() || '',
+        check_in_time: formData.check_in_time,
+        check_out_time: formData.check_out_time,
+        minimum_stay: formData.minimum_stay,
+        maximum_stay: formData.maximum_stay,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        
+        // UPDATED: Pass array of image File objects
+        images: imageFiles, // Array of File objects
+        video: videoFile    // Single File object or null
       };
 
+      console.log('📋 Final submission data structure:', {
+        ...submissionData,
+        images: submissionData.images ? `${submissionData.images.length} image files` : 'None',
+        video: submissionData.video ? `File: ${submissionData.video.name}` : 'None'
+      });
+
       const result = await hostService.createListing(submissionData);
-      console.log('Create listing result:', result);
+      console.log('✅ Create listing result:', result);
       
       if (result.success) {
         navigate('/host/listings', { 
@@ -269,8 +369,8 @@ const CreateListing = () => {
         });
       }
     } catch (error) {
-      console.error('Create listing error:', error);
-      console.error('Error response:', error.response?.data);
+      console.error('❌ Create listing error:', error);
+      console.error('❌ Error response:', error.response?.data);
       
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
@@ -292,6 +392,14 @@ const CreateListing = () => {
       
       if (Object.keys(step1Errors).length > 0) {
         setErrors(step1Errors);
+        return;
+      }
+    }
+    
+    if (currentStep === 4) {
+      // UPDATED: Validate at least one image is uploaded
+      if (imageFiles.length === 0) {
+        setErrors({ image: 'At least 1 property image is required' });
         return;
       }
     }
@@ -551,40 +659,78 @@ const CreateListing = () => {
             <div>
               <h3 className="text-lg font-semibold text-white mb-4">Media Upload</h3>
               
-              {/* Image Upload */}
+              {/* UPDATED: Multiple Image Upload */}
               <div className="mb-6">
-                <label className="block text-sm text-gray-300 mb-3">Property Image *</label>
-                {imagePreview ? (
-                  <div className="relative">
-                    <img 
-                      src={imagePreview} 
-                      alt="Preview"
-                      className="w-full h-64 object-cover rounded-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute top-3 right-3 p-2 bg-red-600 text-white rounded-full hover:bg-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                <label className="block text-sm text-gray-300 mb-3">
+                  Property Images * (1-4 images)
+                </label>
+                
+                {/* Display Current Images */}
+                {imagePreviews.length > 0 && (
+                  <div className="mb-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <p className="text-sm text-green-400">
+                        {imagePreviews.length} image{imagePreviews.length > 1 ? 's' : ''} selected
+                      </p>
+                      <button
+                        type="button"
+                        onClick={removeAllImages}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove All
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      {imagePreviews.map((preview, index) => (
+                        <div key={preview.id} className="relative">
+                          <img
+                            src={preview.url}
+                            alt={`Preview ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(preview.id)}
+                            className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 text-xs"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                          <div className="absolute bottom-2 left-2 bg-green-600 text-white text-xs px-1 py-0.5 rounded">
+                            {index + 1}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center hover:border-purple-500 transition cursor-pointer">
+                )}
+
+                {/* Upload Area */}
+                {imagePreviews.length < 4 && (
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition cursor-pointer">
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleImageUpload}
+                      multiple
+                      max="4"
                       className="hidden"
                       id="image-upload"
                     />
                     <label htmlFor="image-upload" className="cursor-pointer">
-                      <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-300 mb-2">Click to upload property image</p>
-                      <p className="text-gray-500 text-sm">PNG, JPG, GIF up to 10MB</p>
+                      <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                      <p className="text-gray-300 mb-1">
+                        {imagePreviews.length === 0 
+                          ? 'Click to upload property images' 
+                          : `Add more images (${4 - imagePreviews.length} remaining)`
+                        }
+                      </p>
+                      <p className="text-gray-500 text-sm">PNG, JPG, GIF up to 10MB each</p>
+                      <p className="text-gray-500 text-xs mt-1">You can select multiple files at once</p>
                     </label>
                   </div>
                 )}
+
                 {errors.image && <p className="text-red-400 text-sm mt-2">{errors.image}</p>}
               </div>
 
@@ -605,6 +751,9 @@ const CreateListing = () => {
                     >
                       <X className="w-4 h-4" />
                     </button>
+                    <div className="absolute bottom-3 left-3 bg-green-600 text-white text-xs px-2 py-1 rounded">
+                      ✓ Video Ready
+                    </div>
                   </div>
                 ) : (
                   <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center hover:border-purple-500 transition cursor-pointer">
@@ -630,12 +779,35 @@ const CreateListing = () => {
                 <h4 className="text-blue-400 font-medium mb-2">📸 Photo & Video Tips</h4>
                 <ul className="text-blue-300 text-sm space-y-1">
                   <li>• Use high-quality, well-lit photos</li>
+                  <li>• Upload 3-4 images for better guest engagement</li>
                   <li>• Show different angles and rooms</li>
                   <li>• Videos should be 30-60 seconds long</li>
                   <li>• Highlight unique features and amenities</li>
                   <li>• Ensure clean and tidy spaces</li>
                 </ul>
               </div>
+
+              {/* File Status Debug Info (Remove in production) */}
+              {(imageFiles.length > 0 || videoFile) && (
+                <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 text-xs">
+                  <h4 className="text-gray-300 font-medium mb-2">Debug: File Status</h4>
+                  <div className="text-gray-400 space-y-1">
+                    {imageFiles.length > 0 && (
+                      <div>
+                        <p className="font-medium">📁 Images ({imageFiles.length}):</p>
+                        {imageFiles.map((file, index) => (
+                          <p key={index} className="ml-4">
+                            {index + 1}. {file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {videoFile && (
+                      <p>🎥 Video: {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(2)}MB)</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -691,7 +863,8 @@ const CreateListing = () => {
       <div className="bg-gray-800 rounded-xl p-8">
         {errors.submit && (
           <div className="mb-6 bg-red-900/20 border border-red-500 text-red-400 rounded-lg p-4">
-            {errors.submit}
+            <p className="font-medium">Error creating listing:</p>
+            <p>{errors.submit}</p>
           </div>
         )}
 
@@ -748,7 +921,7 @@ const CreateListing = () => {
       </div>
 
       {/* Preview Section */}
-      {(formData.title || formData.description || imagePreview) && (
+      {(formData.title || formData.description || imagePreviews.length > 0) && (
         <div className="mt-8 bg-gray-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
             <Eye className="w-5 h-5 mr-2" />
@@ -756,12 +929,19 @@ const CreateListing = () => {
           </h3>
           
           <div className="bg-gray-700 rounded-lg overflow-hidden">
-            {imagePreview && (
-              <img 
-                src={imagePreview} 
-                alt="Property preview"
-                className="w-full h-48 object-cover"
-              />
+            {imagePreviews.length > 0 && (
+              <div className="relative">
+                <img 
+                  src={imagePreviews[0].url}
+                  alt="Property preview"
+                  className="w-full h-48 object-cover"
+                />
+                {imagePreviews.length > 1 && (
+                  <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    +{imagePreviews.length - 1} more
+                  </div>
+                )}
+              </div>
             )}
             
             <div className="p-4">

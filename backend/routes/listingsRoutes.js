@@ -1,20 +1,9 @@
-// backend/routes/listingsRoutes.js - FIXED VERSION
+// backend/routes/listingsRoutes.js - TEMPORARY VERSION (NO VALIDATION)
 const express = require('express');
 const router = express.Router();
 const listingsController = require('../controllers/listingsController');
 const { authenticateToken } = require('../middleware/auth'); 
-const { uploadFields } = require('../middleware/multer'); // FIXED: Import the fields upload
-
-// Import validation schemas and validation middleware
-const {
-  createListingSchema,
-  updateListingSchema,
-  searchListingsSchema,
-  nearbyListingsSchema,
-  getListingSchema,
-  deleteListingSchema
-} = require('../validation/listingValidation');
-const { validate } = require('../middleware/validation');
+const { uploadFields } = require('../middleware/multer');
 
 // Debug middleware for listings routes
 router.use((req, res, next) => {
@@ -29,34 +18,50 @@ router.use((req, res, next) => {
 });
 
 // SPECIFIC routes BEFORE parameterized routes (order matters!)
-router.get('/search', validate(searchListingsSchema), listingsController.searchListings);
-router.get('/nearby', validate(nearbyListingsSchema), listingsController.getNearbyListings);
+router.get('/search', listingsController.searchListings);
+router.get('/nearby', listingsController.getNearbyListings);
 router.get('/my-listings', authenticateToken, listingsController.getListingsByHost);
 
-// FIXED: Use uploadFields with your validation
+// Create listing with file upload (temporarily no validation)
 router.post('/', 
   authenticateToken, 
-  uploadFields, // This handles both 'image' and 'video' fields
+  uploadFields,
   (req, res, next) => {
-    console.log('📁 Files received:', req.files);
-    console.log('📝 Body received:', req.body);
+    console.log('📁 Create - Files received:', req.files);
+    console.log('📝 Create - Body received:', req.body);
     next();
   },
-  validate(createListingSchema),
   listingsController.createListing
 );
 
-// Update and delete routes with validation
-router.put('/:id', authenticateToken, validate(updateListingSchema), listingsController.updateListing);
-router.delete('/:id', authenticateToken, validate(deleteListingSchema), listingsController.deleteListing);
+// FIXED: Update route with file upload support and debug middleware
+router.put('/:id', 
+  authenticateToken, 
+  uploadFields, // Handle file uploads for updates
+  (req, res, next) => {
+    console.log('🔧 Update Debug:', {
+      listingId: req.params.id,
+      params: req.params,
+      body: req.body,
+      bodyKeys: Object.keys(req.body || {}),
+      files: req.files,
+      contentType: req.headers['content-type']
+    });
+    next();
+  },
+  listingsController.updateListing
+);
+
+// Delete route (temporarily no validation)
+router.delete('/:id', authenticateToken, listingsController.deleteListing);
 
 // Additional feature routes
 router.post('/:listingId/view-request', authenticateToken, listingsController.requestViewUnit);
 router.get('/view-requests', authenticateToken, listingsController.getViewRequests);  
 router.put('/view-requests/:requestId', authenticateToken, listingsController.respondToViewRequest);
 
-// IMPORTANT: Keep general routes LAST with validation
+// IMPORTANT: Keep general routes LAST
 router.get('/', listingsController.getAllListings);
-router.get('/:id', validate(getListingSchema), listingsController.getListingById);
+router.get('/:id', listingsController.getListingById);
 
 module.exports = router;

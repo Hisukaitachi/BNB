@@ -2,18 +2,26 @@ const pool = require("../db");
 
 exports.submitReport = async (req, res) => {
   const { reporter_id, reported_user_id, booking_id, reason } = req.body;
+  
+  console.log('📩 Report submission received:');
+  console.log('Data:', { reporter_id, reported_user_id, booking_id, reason });
 
   try {
-    await pool.query("CALL sp_submit_report(?, ?, ?, ?)", [
+    console.log('🔄 Calling stored procedure sp_submit_report...');
+    
+    const result = await pool.query("CALL sp_submit_report(?, ?, ?, ?)", [
       reporter_id,
       reported_user_id,
       booking_id,
       reason,
     ]);
 
+    console.log('✅ Report submitted successfully to database');
+    console.log('Database result:', result);
+
     res.status(201).json({ message: "Report submitted successfully." });
   } catch (err) {
-    console.error("Error submitting report:", err);
+    console.error("❌ Error submitting report:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 };

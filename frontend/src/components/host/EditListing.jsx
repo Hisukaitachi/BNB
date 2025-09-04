@@ -1,4 +1,4 @@
-// frontend/src/components/host/EditListing.jsx - Fixed Edit Listing with Interactive Map
+// frontend/src/components/host/EditListing.jsx - Multiple Images (3-4) + 1 Video Support
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import listingService from '../../services/listingService';
-import api from '../../services/api';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
@@ -115,20 +114,17 @@ const EditListing = () => {
     bathrooms: 1,
     amenities: '',
     house_rules: '',
-    check_in_time: '15:00',
-    check_out_time: '11:00',
-    minimum_stay: 1,
-    maximum_stay: 30,
     latitude: '',
     longitude: '',
     status: 'active'
   });
   
-  const [imageFile, setImageFile] = useState(null);
+  // UPDATED: Multiple images support
+  const [newImageFiles, setNewImageFiles] = useState([]); // New images to upload
   const [videoFile, setVideoFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [newImagePreviews, setNewImagePreviews] = useState([]);
   const [videoPreview, setVideoPreview] = useState(null);
-  const [currentImage, setCurrentImage] = useState(null);
+  const [currentImages, setCurrentImages] = useState([]); // Existing images
   const [currentVideo, setCurrentVideo] = useState(null);
   const [errors, setErrors] = useState({});
   const [selectedMapLocation, setSelectedMapLocation] = useState(null);
@@ -158,10 +154,6 @@ const EditListing = () => {
         bathrooms: listing.bathrooms || 1,
         amenities: listing.amenities || '',
         house_rules: listing.house_rules || '',
-        check_in_time: listing.check_in_time || '15:00',
-        check_out_time: listing.check_out_time || '11:00',
-        minimum_stay: listing.minimum_stay || 1,
-        maximum_stay: listing.maximum_stay || 30,
         latitude: listing.latitude || '',
         longitude: listing.longitude || '',
         status: listing.status || 'active'
@@ -177,10 +169,40 @@ const EditListing = () => {
         setInitialMapLocation(mapLocation);
       }
 
-      // Set current media
-      if (listing.image_url) {
-        setCurrentImage(`/uploads/${listing.image_url.split('/').pop()}`);
+      // UPDATED: Handle multiple existing images - FIXED JSON PARSING
+      let existingImages = [];
+      
+      // Try to get images from the new 'images' JSON column first
+      if (listing.images) {
+        try {
+          // Parse JSON string to array
+          const parsedImages = typeof listing.images === 'string' 
+            ? JSON.parse(listing.images) 
+            : listing.images;
+          
+          if (Array.isArray(parsedImages) && parsedImages.length > 0) {
+            existingImages = parsedImages.map((img, index) => ({
+              id: index + 1,
+              url: img.startsWith('/uploads/') ? img : `/uploads/${img.split('/').pop()}`,
+              isExisting: true
+            }));
+          }
+        } catch (e) {
+          console.warn('Failed to parse images JSON:', e);
+        }
       }
+      
+      // Fallback to single image_url if no images found
+      if (existingImages.length === 0 && listing.image_url) {
+        const imageUrl = listing.image_url.startsWith('/uploads/') 
+          ? listing.image_url 
+          : `/uploads/${listing.image_url.split('/').pop()}`;
+        existingImages = [{ id: 1, url: imageUrl, isExisting: true }];
+      }
+      
+      setCurrentImages(existingImages);
+      console.log('📁 Loaded existing images:', existingImages);
+      
       if (listing.video_url) {
         setCurrentVideo(`/uploads/${listing.video_url.split('/').pop()}`);
       }
@@ -237,26 +259,66 @@ const EditListing = () => {
     }
   };
 
+  // UPDATED: Handle multiple new image uploads
   const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
 
-    if (!file.type.startsWith('image/')) {
-      setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }));
+    // Check total image limit (existing + new)
+    const totalImages = currentImages.length + newImageFiles.length + files.length;
+    if (totalImages > 4) {
+      setErrors(prev => ({ ...prev, image: 'Maximum 4 images allowed total' }));
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setErrors(prev => ({ ...prev, image: 'Image size must be less than 10MB' }));
-      return;
+    console.log(`📁 ${files.length} new image files selected`);
+
+    const validFiles = [];
+    const newPreviews = [];
+    let hasErrors = false;
+
+    files.forEach((file, index) => {
+      // Validate each image
+      if (!file.type.startsWith('image/')) {
+        setErrors(prev => ({ ...prev, image: 'Please select valid image files only' }));
+        hasErrors = true;
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setErrors(prev => ({ ...prev, image: 'Each image must be less than 10MB' }));
+        hasErrors = true;
+        return;
+      }
+
+      validFiles.push(file);
+
+      // Create preview for each valid file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        newPreviews.push({
+          id: Date.now() + index,
+          url: e.target.result,
+          file: file,
+          isNew: true
+        });
+
+        // Update state when all previews are ready
+        if (newPreviews.length === validFiles.length) {
+          setNewImageFiles(prev => [...prev, ...validFiles]);
+          setNewImagePreviews(prev => [...prev, ...newPreviews]);
+          console.log(`✅ ${validFiles.length} new image previews created`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (!hasErrors) {
+      setErrors(prev => ({ ...prev, image: '' }));
     }
 
-    setImageFile(file);
-    setErrors(prev => ({ ...prev, image: '' }));
-
-    const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target.result);
-    reader.readAsDataURL(file);
+    // Clear the file input
+    e.target.value = '';
   };
 
   const handleVideoUpload = (e) => {
@@ -282,10 +344,23 @@ const EditListing = () => {
     reader.readAsDataURL(file);
   };
 
-  const removeNewImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    setErrors(prev => ({ ...prev, image: '' }));
+  // UPDATED: Remove existing image
+  const removeExistingImage = (imageId) => {
+    console.log('🗑️ Removing existing image with ID:', imageId);
+    setCurrentImages(prev => prev.filter(img => img.id !== imageId));
+  };
+
+  // UPDATED: Remove new image
+  const removeNewImage = (imageId) => {
+    console.log('🗑️ Removing new image with ID:', imageId);
+    setNewImageFiles(prev => {
+      const imageToRemove = newImagePreviews.find(img => img.id === imageId);
+      if (imageToRemove) {
+        return prev.filter(file => file !== imageToRemove.file);
+      }
+      return prev;
+    });
+    setNewImagePreviews(prev => prev.filter(img => img.id !== imageId));
   };
 
   const removeNewVideo = () => {
@@ -319,52 +394,44 @@ const EditListing = () => {
     try {
       setSaving(true);
       
-      // Check if we have new files to upload
-      if (imageFile || videoFile) {
-        // If there are new files, use FormData approach
-        const formDataWithFiles = new FormData();
-        
-        // Add all text fields to FormData
-        Object.keys(formData).forEach(key => {
-          if (formData[key] !== '' && formData[key] !== null && formData[key] !== undefined) {
-            formDataWithFiles.append(key, formData[key]);
-          }
-        });
-        
-        // Add files
-        if (imageFile) {
-          formDataWithFiles.append('image', imageFile);
-        }
-        if (videoFile) {
-          formDataWithFiles.append('video', videoFile);
-        }
+      // Prepare data for hostService update
+      const updateData = {
+        title: formData.title?.trim(),
+        description: formData.description?.trim(),
+        location: formData.location?.trim(),
+        price_per_night: formData.price_per_night,
+        max_guests: formData.max_guests,
+        bedrooms: formData.bedrooms,
+        bathrooms: formData.bathrooms,
+        amenities: formData.amenities?.trim(),
+        house_rules: formData.house_rules?.trim(),
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        status: formData.status
+      };
 
-        // Use direct API call with FormData
-        await api.put(`/listings/${id}`, formDataWithFiles, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+      // UPDATED: Add new images if they exist
+      if (newImageFiles.length > 0) {
+        updateData.images = newImageFiles; // Array of File objects
+      }
+      if (videoFile) {
+        updateData.video = videoFile;
+      }
+
+      console.log('🚀 Using hostService.updateListing with data:', updateData);
+
+      // Use hostService instead of direct API call
+      const result = await hostService.updateListing(id, updateData);
+      
+      if (result.success) {
+        navigate('/host/listings', { 
+          state: { message: result.message || 'Listing updated successfully!' }
         });
-        
-      } else {
-        // If no new files, just update the listing data
-        await hostService.updateListing(id, formData);
       }
       
-      navigate('/host/listings', { 
-        state: { message: 'Listing updated successfully!' }
-      });
     } catch (error) {
-      console.error('Update error:', error);
-      
-      // Get the actual error message from the response
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.error || 
-                          error.message || 
-                          'Failed to update listing';
-      
-      console.error('Detailed error:', error.response?.data);
-      setErrors({ submit: errorMessage });
+      console.error('❌ Update error:', error);
+      setErrors({ submit: error.message });
     } finally {
       setSaving(false);
     }
@@ -393,6 +460,10 @@ const EditListing = () => {
       </div>
     );
   }
+
+  // Calculate total images (existing + new)
+  const totalImages = currentImages.length + newImageFiles.length;
+  const canAddMoreImages = totalImages < 4;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -570,44 +641,6 @@ const EditListing = () => {
                     onChange={handleInputChange}
                     className="bg-gray-700 border-gray-600 text-white"
                   />
-
-                  <Input
-                    label="Check-in Time"
-                    name="check_in_time"
-                    type="time"
-                    value={formData.check_in_time}
-                    onChange={handleInputChange}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-
-                  <Input
-                    label="Check-out Time"
-                    name="check_out_time"
-                    type="time"
-                    value={formData.check_out_time}
-                    onChange={handleInputChange}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-
-                  <Input
-                    label="Minimum Stay (nights)"
-                    name="minimum_stay"
-                    type="number"
-                    min="1"
-                    value={formData.minimum_stay}
-                    onChange={handleInputChange}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-
-                  <Input
-                    label="Maximum Stay (nights)"
-                    name="maximum_stay"
-                    type="number"
-                    min="1"
-                    value={formData.maximum_stay}
-                    onChange={handleInputChange}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 mt-4">
@@ -671,56 +704,96 @@ const EditListing = () => {
 
         {/* Media Upload Sidebar */}
         <div className="space-y-6">
-          {/* Current Image */}
+          {/* UPDATED: Multiple Images Section */}
           <div className="bg-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Property Image</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Property Images ({totalImages}/4)
+            </h3>
             
-            {/* Current Image Display */}
-            {(currentImage || imagePreview) && (
+            {/* Existing Images */}
+            {currentImages.length > 0 && (
               <div className="mb-4">
-                <p className="text-sm text-gray-400 mb-2">
-                  {imagePreview ? 'New Image (Preview)' : 'Current Image'}
-                </p>
-                <div className="relative">
-                  <img 
-                    src={imagePreview || currentImage} 
-                    alt="Property"
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                  {imagePreview && (
-                    <button
-                      type="button"
-                      onClick={removeNewImage}
-                      className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
+                <p className="text-sm text-gray-400 mb-3">Current Images</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {currentImages.map((image, index) => (
+                    <div key={image.id} className="relative">
+                      <img 
+                        src={image.url} 
+                        alt={`Current ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeExistingImage(image.id)}
+                        className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 text-xs"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <div className="absolute bottom-1 left-1 bg-blue-600 text-white text-xs px-1 py-0.5 rounded">
+                        {index + 1}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Image Upload */}
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition cursor-pointer">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="image-upload-edit"
-              />
-              <label htmlFor="image-upload-edit" className="cursor-pointer">
-                <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-300 text-sm">
-                  {currentImage ? 'Upload New Image' : 'Upload Image'}
-                </p>
-                <p className="text-gray-500 text-xs">PNG, JPG, GIF up to 10MB</p>
-              </label>
-            </div>
+            {/* New Images */}
+            {newImagePreviews.length > 0 && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-400 mb-3">New Images</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {newImagePreviews.map((preview, index) => (
+                    <div key={preview.id} className="relative">
+                      <img 
+                        src={preview.url} 
+                        alt={`New ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeNewImage(preview.id)}
+                        className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 text-xs"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <div className="absolute bottom-1 left-1 bg-green-600 text-white text-xs px-1 py-0.5 rounded">
+                        New
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Image Upload Area */}
+            {canAddMoreImages && (
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-purple-500 transition cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  multiple
+                  className="hidden"
+                  id="image-upload-edit"
+                />
+                <label htmlFor="image-upload-edit" className="cursor-pointer">
+                  <ImageIcon className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-300 text-sm">
+                    {currentImages.length === 0 && newImageFiles.length === 0
+                      ? 'Add Images'
+                      : `Add More (${4 - totalImages} remaining)`
+                    }
+                  </p>
+                  <p className="text-gray-500 text-xs">PNG, JPG, GIF up to 10MB each</p>
+                  <p className="text-gray-500 text-xs">Select multiple files at once</p>
+                </label>
+              </div>
+            )}
             {errors.image && <p className="text-red-400 text-sm mt-2">{errors.image}</p>}
           </div>
 
-          {/* Current Video */}
+          {/* Video Section */}
           <div className="bg-gray-800 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Property Video</h3>
             
@@ -733,7 +806,7 @@ const EditListing = () => {
                 <div className="relative">
                   <video 
                     src={videoPreview || currentVideo} 
-                    className="w-full h-48 object-cover rounded-lg"
+                    className="w-full h-32 object-cover rounded-lg"
                     controls
                   />
                   {videoPreview && (
@@ -750,7 +823,7 @@ const EditListing = () => {
             )}
 
             {/* Video Upload */}
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition cursor-pointer">
+            <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-purple-500 transition cursor-pointer">
               <input
                 type="file"
                 accept="video/*"
@@ -759,7 +832,7 @@ const EditListing = () => {
                 id="video-upload-edit"
               />
               <label htmlFor="video-upload-edit" className="cursor-pointer">
-                <Video className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <Video className="w-6 h-6 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-300 text-sm">
                   {currentVideo ? 'Upload New Video' : 'Upload Video (Optional)'}
                 </p>
@@ -796,19 +869,29 @@ const EditListing = () => {
               </div>
             </div>
 
-            {/* Status Toggle */}
+            {/* Media Summary */}
             <div className="mt-4 pt-4 border-t border-gray-700">
-              <label className="block text-sm text-gray-300 mb-2">Listing Status</label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+              <p className="text-sm text-gray-300 mb-2">Media Files</p>
+              <div className="text-xs text-gray-400 space-y-1">
+                <p>Images: {totalImages}/4</p>
+                <p>Video: {currentVideo || videoFile ? 'Yes' : 'None'}</p>
+              </div>
             </div>
+
+            {/* File Status Debug */}
+            {(newImageFiles.length > 0 || videoFile) && (
+              <div className="mt-4 pt-4 border-t border-gray-700">
+                <p className="text-sm text-gray-300 mb-2">New Files to Upload</p>
+                <div className="text-xs text-gray-400 space-y-1">
+                  {newImageFiles.length > 0 && (
+                    <p>New Images: {newImageFiles.length}</p>
+                  )}
+                  {videoFile && (
+                    <p>New Video: {videoFile.name}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

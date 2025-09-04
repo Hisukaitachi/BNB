@@ -1,4 +1,4 @@
-// backend/middleware/multer.js - FIXED VERSION
+// backend/middleware/multer.js - UPDATED FOR MULTIPLE IMAGES
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -47,25 +47,31 @@ const upload = multer({
   fileFilter,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB max file size
-    files: 2, // Maximum 2 files (1 image + 1 video)
-    fields: 50, // INCREASED: Allow more form fields for your listing form
-    fieldNameSize: 100, // INCREASED: Max field name size
-    fieldSize: 10 * 1024 * 1024 // INCREASED: 10MB max field value size
+    files: 5, // UPDATED: Maximum 5 files (4 images + 1 video)
+    fields: 50,
+    fieldNameSize: 100,
+    fieldSize: 10 * 1024 * 1024
   }
 });
 
-// FIXED: Export multiple upload configurations
+// UPDATED: Export multiple upload configurations
 module.exports = {
-  // For single image upload
+  // For single image upload (legacy)
   uploadSingle: upload.single('image'),
   
-  // For multiple files with specific field names
+  // UPDATED: For multiple images + video
   uploadFields: upload.fields([
+    { name: 'images', maxCount: 4 },   // Support up to 4 images
+    { name: 'video', maxCount: 1 }     // Support 1 video
+  ]),
+  
+  // Legacy support for single image
+  uploadFieldsLegacy: upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'video', maxCount: 1 }
   ]),
   
-  // For any files (up to 2)
+  // For any files (up to 5)
   uploadAny: upload.any(),
   
   // Export the base upload for backwards compatibility

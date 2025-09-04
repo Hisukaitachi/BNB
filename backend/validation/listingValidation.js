@@ -11,19 +11,33 @@ const createListingSchema = Joi.object({
   longitude: Joi.number().min(-180).max(180).optional()
 }).unknown(true);
 
-// Update listing validation - accepts string ID in params
+// FIXED: Update listing validation - more flexible, only require at least 1 field to update
 const updateListingSchema = Joi.object({
   id: Joi.string().pattern(/^\d+$/).required().messages({
     'string.pattern.base': 'Valid listing ID is required',
     'any.required': 'Valid listing ID is required'
   }),
+  
+  // All fields are optional for updates
   title: Joi.string().trim().min(5).max(200).optional(),
   description: Joi.string().trim().min(20).max(2000).optional(),
   price_per_night: Joi.number().positive().optional(),
   location: Joi.string().trim().min(5).max(255).optional(),
   latitude: Joi.number().min(-90).max(90).optional(),
-  longitude: Joi.number().min(-180).max(180).optional()
-}).min(2).unknown(true); // At least ID + one other field
+  longitude: Joi.number().min(-180).max(180).optional(),
+  max_guests: Joi.number().integer().min(1).optional(),
+  bedrooms: Joi.number().integer().min(0).optional(),
+  bathrooms: Joi.number().min(0).optional(),
+  amenities: Joi.string().max(1000).optional(),
+  house_rules: Joi.string().max(1000).optional(),
+  check_in_time: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+  check_out_time: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+  minimum_stay: Joi.number().integer().min(1).optional(),
+  maximum_stay: Joi.number().integer().min(1).optional(),
+  status: Joi.string().valid('active', 'inactive').optional()
+})
+.min(1) // FIXED: Only require at least 1 field (the ID is in params, not body)
+.unknown(true);
 
 // Search listings validation - accepts query parameters
 const searchListingsSchema = Joi.object({
@@ -53,7 +67,7 @@ const getListingSchema = Joi.object({
     'string.pattern.base': 'Valid listing ID is required',
     'any.required': 'Valid listing ID is required'
   })
-}).unknown(true); // Allow other fields to pass through
+}).unknown(true);
 
 // Delete listing validation - accepts string ID
 const deleteListingSchema = Joi.object({

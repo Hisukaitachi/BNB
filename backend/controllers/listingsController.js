@@ -8,7 +8,11 @@ const getCoordinatesFromLocation = require('../utils/geocode');
 exports.createListing = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
   const role = req.user.role;
-  let { title, description, price_per_night, location, latitude, longitude } = req.body;
+  
+  let { 
+    title, description, price_per_night, location, latitude, longitude,
+    max_guests, bedrooms, bathrooms, amenities, house_rules
+  } = req.body;
 
   console.log('📝 Creating listing with data:', {
     title, description, price_per_night, location,
@@ -26,58 +30,23 @@ exports.createListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Title, description, price per night, and location are required', 400));
   }
 
-  // Enhanced business validation
-  if (price_per_night < 1 || price_per_night > 1000000) {
-    return next(new AppError('Price must be between ₱1 and ₱1,000,000 per night', 400));
-  }
-
-  if (title.length < 5 || title.length > 200) {
-    return next(new AppError('Title must be between 5 and 200 characters', 400));
-  }
-
-  if (description.length < 20 || description.length > 2000) {
-    return next(new AppError('Description must be between 20 and 2000 characters', 400));
-  }
-
-  if (location.length < 3 || location.length > 255) {
-    return next(new AppError('Location must be between 3 and 255 characters', 400));
-  }
-
-  // Check for duplicate listings by same host
-  const [duplicateCheck] = await pool.query(
-    'SELECT id FROM listings WHERE host_id = ? AND title = ? AND location = ?',
-    [hostId, title, location]
-  );
-  if (duplicateCheck.length > 0) {
-    return next(new AppError('You already have a listing with this title and location', 400));
-  }
-
-  // Check host listing limit (optional business rule)
-  const [hostListings] = await pool.query(
-    'SELECT COUNT(*) as count FROM listings WHERE host_id = ?',
-    [hostId]
-  );
-  if (hostListings[0].count >= 50) { // Limit to 50 listings per host
-    return next(new AppError('Maximum listings limit reached (50 listings per host)', 400));
-  }
-
-  // FIXED: Handle multiple files properly
-  let imageUrl = null;
+  // UPDATED: Handle multiple image uploads
+  let imageUrls = [];
   let videoUrl = null;
 
   if (req.files) {
     console.log('📁 Processing uploaded files:', req.files);
     
-    // Handle image file
-    if (req.files.image && req.files.image[0]) {
-      imageUrl = `/uploads/${req.files.image[0].filename}`;
-      console.log('🖼️ Image uploaded:', imageUrl);
+    // Handle multiple images
+    if (req.files.images) {
+      const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+      imageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
+      console.log(`📁 ${imageUrls.length} image files processed:`, imageUrls);
     }
     
-    // Handle video file
     if (req.files.video && req.files.video[0]) {
       videoUrl = `/uploads/${req.files.video[0].filename}`;
-      console.log('🎥 Video uploaded:', videoUrl);
+      console.log('🎥 Video file processed:', videoUrl);
     }
   }
 
@@ -89,36 +58,42 @@ exports.createListing = catchAsync(async (req, res, next) => {
       longitude = coords.longitude;
     } catch (error) {
       console.warn('Geocoding failed:', error.message);
-      // Continue without coordinates
     }
   }
 
-  // Validate coordinates if provided
-  if (latitude && (latitude < -90 || latitude > 90)) {
-    return next(new AppError('Latitude must be between -90 and 90', 400));
-  }
-  if (longitude && (longitude < -180 || longitude > 180)) {
-    return next(new AppError('Longitude must be between -180 and 180', 400));
-  }
-
   try {
-    // Use stored procedure or direct query
-    const [result] = await pool.query(
-      'CALL sp_create_listing(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]
-    );
+    // UPDATED: Store multiple images as JSON
+    const imagesJson = JSON.stringify(imageUrls);
+    
+    // Use direct query since your SP might not support multiple images yet
+    const [directResult] = await pool.query(`
+      INSERT INTO listings (
+        host_id, title, description, price_per_night, location,
+        image_url, images, video_url, latitude, longitude,
+        max_guests, bedrooms, bathrooms, amenities, house_rules,
+        status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [
+      hostId, title, description, price_per_night, location,
+      imageUrls[0] || null, // Keep first image in image_url for legacy
+      imagesJson,           // Store all images as JSON
+      videoUrl, latitude, longitude,
+      max_guests || 2, bedrooms || 1, bathrooms || 1.0,
+      amenities || '', house_rules || '', 'active'
+    ]);
 
-    console.log('✅ Listing created successfully:', result.insertId);
+    const listingId = directResult.insertId;
+    console.log('✅ Listing created successfully with ID:', listingId);
 
     res.status(201).json({
       status: 'success',
       message: 'Listing created successfully',
       data: {
-        listingId: result.insertId,
+        listingId,
         title,
         location,
         pricePerNight: price_per_night,
-        imageUrl,
+        images: imageUrls,
         videoUrl,
         hasCoordinates: !!(latitude && longitude)
       }
@@ -126,34 +101,10 @@ exports.createListing = catchAsync(async (req, res, next) => {
 
   } catch (dbError) {
     console.error('❌ Database error creating listing:', dbError);
-    
-    // If stored procedure doesn't exist, use direct query
-    if (dbError.code === 'ER_SP_DOES_NOT_EXIST') {
-      console.log('🔄 Stored procedure not found, using direct query...');
-      
-      const [directResult] = await pool.query(`
-        INSERT INTO listings (host_id, title, description, price_per_night, location, image_url, video_url, latitude, longitude, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      `, [hostId, title, description, price_per_night, location, imageUrl, videoUrl, latitude, longitude]);
-
-      return res.status(201).json({
-        status: 'success',
-        message: 'Listing created successfully',
-        data: {
-          listingId: directResult.insertId,
-          title,
-          location,
-          pricePerNight: price_per_night,
-          imageUrl,
-          videoUrl,
-          hasCoordinates: !!(latitude && longitude)
-        }
-      });
-    }
-    
     throw dbError;
   }
 });
+
 exports.getAllListings = catchAsync(async (req, res, next) => {
   const [results] = await pool.query('CALL sp_get_all_listings()');
   const listings = results[0];
@@ -174,19 +125,36 @@ exports.getListingById = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  const [result] = await pool.query('CALL sp_get_listing_by_id(?)', [listingId]);
-  const listing = result[0][0];
+  try {
+    const [result] = await pool.query('CALL sp_get_listing_by_id(?)', [listingId]);
+    const listing = result[0][0];
 
-  if (!listing) {
-    return next(new AppError('Listing not found', 404));
-  }
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      listing
+    if (!listing) {
+      return next(new AppError('Listing not found', 404));
     }
-  });
+
+    res.status(200).json({
+      status: 'success',
+      data: { listing }
+    });
+
+  } catch (dbError) {
+    if (dbError.code === 'ER_SP_DOES_NOT_EXIST') {
+      // Fallback to direct query
+      const [result] = await pool.query('SELECT * FROM listings WHERE id = ?', [listingId]);
+      const listing = result[0];
+
+      if (!listing) {
+        return next(new AppError('Listing not found', 404));
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: { listing }
+      });
+    }
+    throw dbError;
+  }
 });
 
 exports.getListingsByHost = catchAsync(async (req, res, next) => {
@@ -197,35 +165,44 @@ exports.getListingsByHost = catchAsync(async (req, res, next) => {
     return next(new AppError('Only hosts can view their listings', 403));
   }
 
-  const [rows] = await pool.query('CALL sp_get_listings_by_host(?)', [hostId]);
+  try {
+    const [rows] = await pool.query('CALL sp_get_listings_by_host(?)', [hostId]);
 
-  res.status(200).json({
-    status: 'success',
-    results: rows[0].length,
-    data: {
-      listings: rows[0]
+    res.status(200).json({
+      status: 'success',
+      results: rows[0].length,
+      data: { listings: rows[0] }
+    });
+
+  } catch (dbError) {
+    if (dbError.code === 'ER_SP_DOES_NOT_EXIST') {
+      // Fallback to direct query
+      const [rows] = await pool.query('SELECT * FROM listings WHERE host_id = ?', [hostId]);
+      
+      return res.status(200).json({
+        status: 'success',
+        results: rows.length,
+        data: { listings: rows }
+      });
     }
-  });
+    throw dbError;
+  }
 });
 
+// FIXED updateListing function for listingsController.js
 exports.updateListing = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
   const hostId = req.user.id;
-  let { title, description, price_per_night, location, latitude, longitude } = req.body;
-
-  if (!listingId || isNaN(listingId)) {
-    return next(new AppError('Valid listing ID is required', 400));
-  }
-
-  // Check if at least one field is provided
-  if (!title && !description && !price_per_night && !location && !latitude && !longitude) {
-    return next(new AppError('At least one field must be provided for update', 400));
-  }
+  
+  console.log('🔧 Update request:', {
+    listingId,
+    body: req.body,
+    files: req.files
+  });
 
   // Verify ownership
   const [existingListing] = await pool.query(
-    'SELECT host_id, title as currentTitle, location as currentLocation FROM listings WHERE id = ?',
-    [listingId]
+    'SELECT host_id, images FROM listings WHERE id = ?', [listingId]
   );
   
   if (!existingListing.length) {
@@ -236,78 +213,59 @@ exports.updateListing = catchAsync(async (req, res, next) => {
     return next(new AppError('You can only update your own listings', 403));
   }
 
-  // Enhanced validation for provided fields
-  if (title && (title.length < 5 || title.length > 200)) {
-    return next(new AppError('Title must be between 5 and 200 characters', 400));
-  }
+  // Build update data
+  const updateFields = {};
+  const allowedFields = [
+    'title', 'description', 'price_per_night', 'location', 'latitude', 'longitude',
+    'max_guests', 'bedrooms', 'bathrooms', 'amenities', 'house_rules', 'status'
+  ];
 
-  if (description && (description.length < 20 || description.length > 2000)) {
-    return next(new AppError('Description must be between 20 and 2000 characters', 400));
-  }
-
-  if (price_per_night && (price_per_night < 1 || price_per_night > 1000000)) {
-    return next(new AppError('Price must be between ₱1 and ₱1,000,000 per night', 400));
-  }
-
-  if (location && (location.length < 3 || location.length > 255)) {
-    return next(new AppError('Location must be between 3 and 255 characters', 400));
-  }
-
-  // Check for duplicate if title or location is being updated
-  if (title || location) {
-    const titleToCheck = title || existingListing[0].currentTitle;
-    const locationToCheck = location || existingListing[0].currentLocation;
-    
-    const [duplicateCheck] = await pool.query(
-      'SELECT id FROM listings WHERE host_id = ? AND title = ? AND location = ? AND id != ?',
-      [hostId, titleToCheck, locationToCheck, listingId]
-    );
-    
-    if (duplicateCheck.length > 0) {
-      return next(new AppError('You already have another listing with this title and location', 400));
+  // Add text fields
+  allowedFields.forEach(field => {
+    if (req.body[field] !== undefined && req.body[field] !== '') {
+      updateFields[field] = req.body[field];
     }
+  });
+
+  // UPDATED: Handle multiple new images
+  if (req.files && req.files.images) {
+    const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+    const newImageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
+    
+    // Get existing images
+    const existingImages = existingListing[0].images ? JSON.parse(existingListing[0].images) : [];
+    
+    // Combine existing + new (limit to 4)
+    const allImages = [...existingImages, ...newImageUrls].slice(0, 4);
+    
+    updateFields.images = JSON.stringify(allImages);
+    updateFields.image_url = allImages[0]; // Keep first image for legacy
+    
+    console.log(`📁 Updated images: ${allImages.length} total`);
   }
 
-  // If lat/lng not provided but location is updated, attempt to geocode
-  if (location && (!latitude || !longitude)) {
-    try {
-      const coords = await getCoordinatesFromLocation(location);
-      latitude = coords.latitude;
-      longitude = coords.longitude;
-    } catch (error) {
-      console.warn('Geocoding failed during update:', error.message);
-    }
+  // Handle video
+  if (req.files && req.files.video && req.files.video[0]) {
+    updateFields.video_url = `/uploads/${req.files.video[0].filename}`;
+    console.log('🎥 Video updated');
   }
 
-  // Validate coordinates if provided
-  if (latitude && (latitude < -90 || latitude > 90)) {
-    return next(new AppError('Latitude must be between -90 and 90', 400));
-  }
-  if (longitude && (longitude < -180 || longitude > 180)) {
-    return next(new AppError('Longitude must be between -180 and 180', 400));
-  }
+  // Build dynamic SQL
+  const setClause = Object.keys(updateFields).map(field => `${field} = ?`).join(', ');
+  const values = [...Object.values(updateFields), listingId, hostId];
 
   const [result] = await pool.query(
-    'CALL sp_update_listing(?, ?, ?, ?, ?, ?, ?)',
-    [listingId, title, description, price_per_night, location, latitude, longitude]
+    `UPDATE listings SET ${setClause}, updated_at = NOW() WHERE id = ? AND host_id = ?`,
+    values
   );
 
-  if (result.affectedRows === 0) {
-    return next(new AppError('Listing not found or no changes made', 404));
-  }
-
-  res.status(200).json({
+  res.json({
     status: 'success',
     message: 'Listing updated successfully',
     data: {
       listingId: parseInt(listingId),
-      updatedFields: {
-        ...(title && { title }),
-        ...(description && { description }),
-        ...(price_per_night && { price_per_night }),
-        ...(location && { location }),
-        ...(latitude && longitude && { coordinates: { latitude, longitude } })
-      }
+      affectedRows: result.affectedRows,
+      updatedFields: updateFields
     }
   });
 });

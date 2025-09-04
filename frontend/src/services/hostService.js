@@ -159,7 +159,8 @@ class HostService {
   }
 
   /**
- * Create new listing - FIXED VERSION
+/**
+ * Create new listing - FINAL VERSION for multiple images
  * @param {object} listingData - Listing data with files
  * @returns {Promise<object>} Creation result
  */
@@ -169,50 +170,46 @@ async createListing(listingData) {
     
     const formData = new FormData();
     
-    // CRITICAL: Add text fields first (required by your backend validation)
+    // Add text fields
     formData.append('title', listingData.title || '');
     formData.append('description', listingData.description || '');
     formData.append('price_per_night', listingData.price_per_night || '');
     formData.append('location', listingData.location || '');
     
-    // Optional coordinate fields
+    // Optional fields
     if (listingData.latitude) formData.append('latitude', listingData.latitude);
     if (listingData.longitude) formData.append('longitude', listingData.longitude);
-    
-    // Optional additional fields (your form has these)
     if (listingData.max_guests) formData.append('max_guests', listingData.max_guests);
     if (listingData.bedrooms) formData.append('bedrooms', listingData.bedrooms);
     if (listingData.bathrooms) formData.append('bathrooms', listingData.bathrooms);
     if (listingData.amenities) formData.append('amenities', listingData.amenities);
     if (listingData.house_rules) formData.append('house_rules', listingData.house_rules);
-    if (listingData.check_in_time) formData.append('check_in_time', listingData.check_in_time);
-    if (listingData.check_out_time) formData.append('check_out_time', listingData.check_out_time);
-    if (listingData.minimum_stay) formData.append('minimum_stay', listingData.minimum_stay);
-    if (listingData.maximum_stay) formData.append('maximum_stay', listingData.maximum_stay);
     
-    // CRITICAL: Add files with EXACT field names that match your backend
-    if (listingData.image && listingData.image instanceof File) {
-      formData.append('image', listingData.image);
-      console.log('📁 Image file added:', listingData.image.name, listingData.image.type);
+    // CRITICAL: Handle multiple images with correct field name
+    if (listingData.images && Array.isArray(listingData.images)) {
+      listingData.images.forEach((image) => {
+        if (image instanceof File) {
+          formData.append('images', image); // MUST match multer config: 'images'
+        }
+      });
+      console.log(`📁 ${listingData.images.length} image files added`);
     }
     
+    // Video upload
     if (listingData.video && listingData.video instanceof File) {
       formData.append('video', listingData.video);
-      console.log('🎥 Video file added:', listingData.video.name, listingData.video.type);
+      console.log('🎥 Video file added:', listingData.video.name);
     }
 
-    // Debug: Log all FormData entries
-    console.log('📋 FormData contents:');
+    // Debug: Log what we're sending
+    console.log('📋 FormData being sent:');
     for (let [key, value] of formData.entries()) {
       console.log(`  ${key}:`, value instanceof File ? `File: ${value.name}` : value);
     }
 
     const response = await api.post('/listings', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      // Add timeout for large file uploads
-      timeout: 60000, // 60 seconds
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000 // 2 minutes for multiple large files
     });
     
     console.log('✅ Listing created successfully:', response.data);
@@ -227,27 +224,84 @@ async createListing(listingData) {
     throw new Error(error.response?.data?.message || 'Failed to create listing');
   }
 }
-
   /**
-   * Update existing listing
-   * @param {number} listingId - Listing ID
-   * @param {object} updateData - Update data
-   * @returns {Promise<object>} Update result
-   */
-  async updateListing(listingId, updateData) {
-    try {
-      const response = await api.put(`/listings/${listingId}`, updateData);
+ * Update existing listing - SIMPLIFIED VERSION
+ * @param {number} listingId - Listing ID  
+ * @param {object} updateData - Update data
+ * @returns {Promise<object>} Update result
+ */
+async updateListing(listingId, updateData) {
+  try {
+    console.log('🚀 HostService updateListing called:', listingId);
+    
+    // Check if we have files
+    const hasImages = updateData.images && Array.isArray(updateData.images) && updateData.images.length > 0;
+    const hasVideo = updateData.video && updateData.video instanceof File;
+    const hasFiles = hasImages || hasVideo;
+
+    if (hasFiles) {
+      // Use FormData for file uploads
+      const formData = new FormData();
+      
+      // Add text fields
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (key !== 'images' && key !== 'video' && value !== '' && value != null) {
+          formData.append(key, value);
+        }
+      });
+      
+      // Add multiple images
+      if (hasImages) {
+        updateData.images.forEach((image) => {
+          if (image instanceof File) {
+            formData.append('images', image);
+          }
+        });
+        console.log(`📁 ${updateData.images.length} images added`);
+      }
+      
+      // Add video
+      if (hasVideo) {
+        formData.append('video', updateData.video);
+        console.log('🎥 Video added');
+      }
+
+      const response = await api.put(`/listings/${listingId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000
+      });
       
       return {
         success: true,
         data: response.data.data,
         message: 'Listing updated successfully'
       };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update listing');
-    }
-  }
+      
+    } else {
+      // JSON for text-only updates
+      const fieldsToSend = {};
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (key !== 'images' && key !== 'video' && value !== '' && value != null) {
+          fieldsToSend[key] = value;
+        }
+      });
 
+      const response = await api.put(`/listings/${listingId}`, fieldsToSend, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      return {
+        success: true,
+        data: response.data.data,
+        message: 'Listing updated successfully'
+      };
+    }
+    
+  } catch (error) {
+    console.error('❌ UpdateListing error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to update listing');
+  }
+}
   /**
    * Delete listing
    * @param {number} listingId - Listing ID
