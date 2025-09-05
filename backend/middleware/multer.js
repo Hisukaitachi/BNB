@@ -1,17 +1,26 @@
-// backend/middleware/multer.js - UPDATED FOR MULTIPLE IMAGES
+// backend/middleware/multer.js - ENHANCED FOR MESSAGING
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists with subdirectories
 const uploadDir = 'uploads';
+const messagesDir = 'uploads/messages';
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+if (!fs.existsSync(messagesDir)) {
+  fs.mkdirSync(messagesDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+    // Separate storage for messages vs listings
+    if (req.route && req.route.path.includes('messages')) {
+      cb(null, 'uploads/messages/');
+    } else {
+      cb(null, 'uploads/');
+    }
   },
   filename: function (req, file, cb) {
     // Create unique filename with timestamp and original extension
@@ -29,8 +38,8 @@ const fileFilter = function (req, file, cb) {
   });
 
   // Define allowed file types
-  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/avi'];
+  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+  const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/avi', 'video/mov'];
   const allAllowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
 
   if (allAllowedTypes.includes(file.mimetype)) {
@@ -46,24 +55,32 @@ const upload = multer({
   storage, 
   fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max file size
-    files: 5, // UPDATED: Maximum 5 files (4 images + 1 video)
+    fileSize: 100 * 1024 * 1024, // 100MB max file size per file
+    files: 20, // Maximum 20 files per request
     fields: 50,
     fieldNameSize: 100,
     fieldSize: 10 * 1024 * 1024
   }
 });
 
-// UPDATED: Export multiple upload configurations
+// ENHANCED: Export multiple upload configurations
 module.exports = {
   // For single image upload (legacy)
   uploadSingle: upload.single('image'),
   
-  // UPDATED: For multiple images + video
+  // For listing uploads (4 images + 1 video)
   uploadFields: upload.fields([
-    { name: 'images', maxCount: 4 },   // Support up to 4 images
-    { name: 'video', maxCount: 1 }     // Support 1 video
+    { name: 'images', maxCount: 4 },   // Support up to 4 images for listings
+    { name: 'video', maxCount: 1 }     // Support 1 video for listings
   ]),
+  
+  // NEW: For message media uploads (unlimited files)
+  uploadMessageMedia: upload.fields([
+    { name: 'media', maxCount: 20 }    // Up to 20 media files per message
+  ]),
+  
+  // NEW: For any media files in messages
+  uploadMessageAny: upload.any(),
   
   // Legacy support for single image
   uploadFieldsLegacy: upload.fields([
@@ -71,7 +88,7 @@ module.exports = {
     { name: 'video', maxCount: 1 }
   ]),
   
-  // For any files (up to 5)
+  // For any files (up to 20)
   uploadAny: upload.any(),
   
   // Export the base upload for backwards compatibility

@@ -132,17 +132,25 @@ export const paymentAPI = {
 
 // MESSAGING FUNCTIONS (unchanged)
 export const messageAPI = {
-  // Send message (with image/video support)
+  // Send message - FIXED to match your backend
   sendMessage: (receiverId, message, mediaFile = null) => {
-    const formData = new FormData();
-    formData.append('receiverId', receiverId);
-    formData.append('message', message);
     if (mediaFile) {
+      // If there's a media file, use FormData
+      const formData = new FormData();
+      formData.append('receiverId', receiverId);
+      formData.append('message', message || ''); // Allow empty message with media
       formData.append('media', mediaFile);
+      
+      return api.post('/messages', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    } else {
+      // For text-only messages, use JSON
+      return api.post('/messages', {
+        receiverId: parseInt(receiverId),
+        message: message
+      });
     }
-    return api.post('/messages', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
   },
   
   // Get conversation with another user
@@ -217,12 +225,21 @@ export const viewRequestAPI = {
   requestViewUnit: (listingId, requestData) => 
     api.post(`/listings/${listingId}/view-request`, requestData),
   
-  // Get view requests (for hosts)
-  getViewRequests: () => api.get('/listings/view-requests'),
+  // Get view requests (for hosts) - with optional status filter
+  getViewRequests: (status = null) => {
+    const params = status ? { status } : {};
+    return api.get('/listings/view-requests', { params });
+  },
   
-  // Respond to view request
-  respondToViewRequest: (requestId, response) => 
-    api.put(`/listings/view-requests/${requestId}`, response)
+  // 🆕 NEW: Get my view requests (for clients)
+  getMyViewRequests: (status = null) => {
+    const params = status ? { status } : {};
+    return api.get('/listings/my-view-requests', { params });
+  },
+  
+  // Respond to view request (enhanced with better data structure)
+  respondToViewRequest: (requestId, response, message = '') => 
+    api.put(`/listings/view-requests/${requestId}`, { response, message })
 };
 
 // LISTING FUNCTIONS (unchanged)
@@ -233,21 +250,43 @@ export const listingAPI = {
   // Get listing by ID
   getListingById: (id) => api.get(`/listings/${id}`),
   
-  // Search listings
-  searchListings: (params) => api.get('/listings/search', { params }),
+  // Search listings with better parameter handling
+  searchListings: (params) => {
+    // Clean undefined params
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, value]) => value !== undefined && value !== '')
+    );
+    return api.get('/listings/search', { params: cleanParams });
+  },
   
   // Get nearby listings
   getNearbyListings: (lat, lng, radius = 10) => 
     api.get(`/listings/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
     
-  // Host listing management
-  createListing: (formData) => api.post('/listings', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  // Host listing management with better file handling
+  createListing: (formData) => {
+    // Ensure formData is FormData for file uploads
+    const data = formData instanceof FormData ? formData : formData;
+    return api.post('/listings', data, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   
-  updateListing: (id, data) => api.put(`/listings/${id}`, data),
+  // 🆕 IMPROVED: Update listing with file upload support
+  updateListing: (id, data) => {
+    // Check if data contains files (FormData) or just JSON
+    const isFormData = data instanceof FormData;
+    return api.put(`/listings/${id}`, data, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {}
+    });
+  },
+  
   deleteListing: (id) => api.delete(`/listings/${id}`),
-  getMyListings: () => api.get('/listings/my-listings')
+  getMyListings: () => api.get('/listings/my-listings'),
+  
+  // 🆕 NEW: Get search suggestions
+  getSearchSuggestions: (query) => 
+    api.get('/listings/suggestions', { params: { q: query } })
 };
 
 // ROLE MANAGEMENT FUNCTIONS (unchanged)
@@ -290,4 +329,28 @@ export const healthAPI = {
   getDetailedHealth: () => api.get('/health/detailed')
 };
 
+export const apiWithErrorHandling = {
+  // Wrapper for consistent error handling
+  async call(apiFunction, ...args) {
+    try {
+      const response = await apiFunction(...args);
+      return {
+        success: true,
+        data: response.data,
+        error: null
+      };
+    } catch (error) {
+      console.error('API Error:', error);
+      return {
+        success: false,
+        data: null,
+        error: {
+          message: error.response?.data?.message || error.message || 'Something went wrong',
+          status: error.response?.status || 500,
+          code: error.response?.data?.code || 'UNKNOWN_ERROR'
+        }
+      };
+    }
+  }
+};
 export default api;

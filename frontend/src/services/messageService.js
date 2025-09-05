@@ -1,6 +1,5 @@
-// src/services/messageService.js - Complete messaging with media support
+// src/services/messageService.js - FIXED - Remove all hook calls
 import { messageAPI } from './api';
-import { useSocket } from '../context/AppContext';
 
 export const MESSAGE_TYPES = {
   TEXT: 'text',
@@ -18,14 +17,11 @@ class MessageService {
   }
 
   /**
-   * Initialize socket connection for real-time messaging
-   * @param {number} userId - Current user ID
+   * Set socket instance (called from React component)
+   * @param {object} socketInstance - Socket instance from useSocket hook
    */
-  initializeSocket(userId) {
-    const { connectSocket } = useSocket();
-    if (connectSocket) {
-      connectSocket(userId);
-    }
+  setSocket(socketInstance) {
+    this.socket = socketInstance;
   }
 
   /**
@@ -54,16 +50,20 @@ class MessageService {
         }
       }
 
+      // Use the correct API call matching your backend
       const response = await messageAPI.sendMessage(receiverId, message, mediaFile);
       
-      // Send via socket for real-time delivery
-      const { socket, sendMessage: socketSend } = useSocket();
-      if (socket && socketSend) {
-        socketSend(receiverId, {
-          type: mediaFile ? this.getFileType(mediaFile) : MESSAGE_TYPES.TEXT,
-          content: message,
-          media: mediaFile ? URL.createObjectURL(mediaFile) : null,
-          timestamp: new Date()
+      // Send via socket for real-time delivery (if available)
+      if (this.socket && this.socket.emit) {
+        this.socket.emit('newMessage', {
+          receiverId,
+          message: {
+            sender_id: response.data.data.message.sender_id,
+            receiver_id: receiverId,
+            message: message,
+            created_at: new Date(),
+            type: mediaFile ? this.getFileType(mediaFile) : MESSAGE_TYPES.TEXT
+          }
         });
       }
 
@@ -103,10 +103,9 @@ class MessageService {
 
   /**
    * Get user's inbox - Messages/Chatbox list
-   * @param {number} page - Page number
    * @returns {Promise<Array>} Conversations
    */
-  async getInbox(page = 1) {
+  async getInbox() {
     try {
       const response = await messageAPI.getInbox();
       
@@ -167,34 +166,30 @@ class MessageService {
   }
 
   /**
-   * Start video/voice call (if implemented)
-   * @param {number} receiverId - Receiver user ID
-   * @param {string} callType - 'video' or 'audio'
-   * @returns {Promise<object>} Call initiation result
+   * Initialize conversation with specific user (for view requests)
+   * @param {number} userId - User ID to start conversation with
+   * @param {string} initialMessage - Optional initial message
+   * @returns {Promise<object>} Conversation data
    */
-  async initiateCall(receiverId, callType = 'video') {
+  async initializeConversation(userId, initialMessage = null) {
     try {
-      // This would integrate with WebRTC or a calling service
-      const { socket } = useSocket();
-      
-      if (!socket) {
-        throw new Error('Real-time connection not available');
+      if (!userId) {
+        throw new Error('User ID is required');
       }
 
-      // Emit call request via socket
-      socket.emit('callRequest', {
-        to: receiverId,
-        callType,
-        timestamp: new Date()
-      });
+      // First, try to get existing conversation
+      const existingConversation = await this.getConversation(userId, 1);
+      
+      // If no messages and we have an initial message, send it
+      if (existingConversation.messages.length === 0 && initialMessage) {
+        await this.sendMessage(userId, initialMessage);
+        // Get the conversation again after sending the message
+        return await this.getConversation(userId, 1);
+      }
 
-      return {
-        success: true,
-        callId: `call_${Date.now()}`,
-        type: callType
-      };
+      return existingConversation;
     } catch (error) {
-      throw new Error(error.message || 'Failed to initiate call');
+      throw new Error(error.message || 'Failed to initialize conversation');
     }
   }
 
@@ -354,15 +349,14 @@ class MessageService {
   }
 
   /**
-   * Handle typing indicators
+   * Handle typing indicators (requires socket to be set)
    * @param {number} receiverId - Receiver user ID
    */
   sendTypingIndicator(receiverId) {
-    const { socket } = useSocket();
-    if (socket) {
-      socket.emit('typing', {
-        senderId: socket.userId,
-        receiverId
+    if (this.socket && this.socket.emit) {
+      this.socket.emit('typing', {
+        receiverId,
+        timestamp: new Date()
       });
     }
   }
@@ -372,11 +366,10 @@ class MessageService {
    * @param {number} receiverId - Receiver user ID
    */
   stopTypingIndicator(receiverId) {
-    const { socket } = useSocket();
-    if (socket) {
-      socket.emit('stopTyping', {
-        senderId: socket.userId,
-        receiverId
+    if (this.socket && this.socket.emit) {
+      this.socket.emit('stopTyping', {
+        receiverId,
+        timestamp: new Date()
       });
     }
   }

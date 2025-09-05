@@ -59,6 +59,7 @@ router.delete('/:id', authenticateToken, listingsController.deleteListing);
 router.post('/:listingId/view-request', authenticateToken, listingsController.requestViewUnit);
 router.get('/view-requests', authenticateToken, listingsController.getViewRequests);  
 router.put('/view-requests/:requestId', authenticateToken, listingsController.respondToViewRequest);
+router.get('/my-view-requests', authenticateToken, listingsController.getMyViewRequests);
 
 // IMPORTANT: Keep general routes LAST
 router.get('/', listingsController.getAllListings);

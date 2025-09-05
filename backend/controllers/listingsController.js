@@ -515,136 +515,261 @@ exports.getNearbyListings = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.requestViewUnit = async (req, res) => {
+// Improved view request functions for listingController.js
+// Replace your existing view functions with these improved versions
+
+exports.requestViewUnit = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   const { listingId } = req.params;
   const { message, preferred_date, preferred_time } = req.body;
 
-  try {
-    // Check if listing exists
-    const [listings] = await pool.query('SELECT * FROM listings WHERE id = ?', [listingId]);
-    if (!listings.length) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Listing not found'
-      });
-    }
-
-    const listing = listings[0];
-
-    // Can't request to view own listing
-    if (listing.host_id === clientId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Cannot request to view your own listing'
-      });
-    }
-
-    // Create view request
-    const [result] = await pool.query(
-      `INSERT INTO view_requests (listing_id, client_id, host_id, message, preferred_date, preferred_time, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [listingId, clientId, listing.host_id, message, preferred_date, preferred_time]
-    );
-
-    // Notify host
-    await pool.query(
-      `INSERT INTO notifications (user_id, message, type)
-       VALUES (?, ?, 'view_request')`,
-      [listing.host_id, `New viewing request for "${listing.title}"`]
-    );
-
-    res.status(201).json({
-      status: 'success',
-      message: 'View request sent successfully',
-      data: {
-        requestId: result.insertId
-      }
-    });
-  } catch (error) {
-    console.error('View request error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to send view request'
-    });
+  // Input validation
+  if (!preferred_date || !preferred_time) {
+    return next(new AppError('Preferred date and time are required', 400));
   }
-};
 
-exports.getViewRequests = async (req, res) => {
-  const hostId = req.user.id;
+  if (!listingId || isNaN(listingId)) {
+    return next(new AppError('Valid listing ID is required', 400));
+  }
+
+  // Check if listing exists
+  const [listings] = await pool.query('SELECT * FROM listings WHERE id = ?', [listingId]);
+  if (!listings.length) {
+    return next(new AppError('Listing not found', 404));
+  }
+
+  const listing = listings[0];
+
+  // Can't request to view own listing
+  if (listing.host_id === clientId) {
+    return next(new AppError('Cannot request to view your own listing', 400));
+  }
+
+  // Check for existing pending request
+  const [existingRequest] = await pool.query(
+    'SELECT id FROM view_requests WHERE listing_id = ? AND client_id = ? AND status = "pending"',
+    [listingId, clientId]
+  );
   
-  try {
-    const [requests] = await pool.query(`
-      SELECT vr.*, u.name as client_name, u.email as client_email, l.title as listing_title
-      FROM view_requests vr
-      JOIN users u ON vr.client_id = u.id
-      JOIN listings l ON vr.listing_id = l.id
-      WHERE vr.host_id = ?
-      ORDER BY vr.created_at DESC
-    `, [hostId]);
-
-    res.status(200).json({
-      status: 'success',
-      data: { requests }
-    });
-  } catch (error) {
-    console.error('Get view requests error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch view requests'
-    });
+  if (existingRequest.length > 0) {
+    return next(new AppError('You already have a pending request for this listing', 400));
   }
-};
 
-exports.respondToViewRequest = async (req, res) => {
-  const { requestId } = req.params;
-  const { response, message } = req.body; // 'approved' or 'rejected'
-  const hostId = req.user.id;
+  // Create view request
+  const [result] = await pool.query(
+    `INSERT INTO view_requests (listing_id, client_id, host_id, message, preferred_date, preferred_time, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+    [listingId, clientId, listing.host_id, message || '', preferred_date, preferred_time]
+  );
 
-  try {
-    // Verify request belongs to host
-    const [requests] = await pool.query(
-      'SELECT * FROM view_requests WHERE id = ? AND host_id = ?',
-      [requestId, hostId]
-    );
+  // Notify host
+  await pool.query(
+    `INSERT INTO notifications (user_id, message, type, created_at)
+     VALUES (?, ?, 'view_request', NOW())`,
+    [listing.host_id, `New viewing request for "${listing.title}"`]
+  );
 
-    if (!requests.length) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'View request not found'
-      });
+  console.log('✅ View request created:', {
+    requestId: result.insertId,
+    listingId,
+    clientId,
+    hostId: listing.host_id
+  });
+
+  res.status(201).json({
+    status: 'success',
+    message: 'View request sent successfully',
+    data: {
+      requestId: result.insertId,
+      listingTitle: listing.title,
+      preferredDate: preferred_date,
+      preferredTime: preferred_time
     }
+  });
+});
 
-    const request = requests[0];
+exports.getViewRequests = catchAsync(async (req, res, next) => {
+  const hostId = req.user.id;
+  const role = req.user.role;
 
-    // Update request
-    await pool.query(
-      `UPDATE view_requests 
-       SET status = ?, host_response = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [response, message, requestId]
-    );
-
-    // Notify client
-    const responseMessage = response === 'approved' 
-      ? `Your viewing request has been approved! ${message || ''}`
-      : `Your viewing request has been declined. ${message || ''}`;
-
-    await pool.query(
-      `INSERT INTO notifications (user_id, message, type)
-       VALUES (?, ?, 'view_response')`,
-      [request.client_id, responseMessage]
-    );
-
-    res.status(200).json({
-      status: 'success',
-      message: `View request ${response} successfully`
-    });
-  } catch (error) {
-    console.error('Respond to view request error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to respond to view request'
-    });
+  // Verify user is a host
+  if (role !== 'host') {
+    return next(new AppError('Only hosts can view view requests', 403));
   }
-};
+
+  const { status } = req.query; // Optional filter by status
+
+  let query = `
+    SELECT 
+      vr.id,
+      vr.listing_id,
+      vr.message,
+      vr.preferred_date,
+      vr.preferred_time,
+      vr.status,
+      vr.host_response,
+      vr.created_at,
+      vr.updated_at,
+      u.name as client_name,
+      u.email as client_email,
+      u.phone as client_phone,
+      l.title as listing_title,
+      l.location as listing_location
+    FROM view_requests vr
+    JOIN users u ON vr.client_id = u.id
+    JOIN listings l ON vr.listing_id = l.id
+    WHERE vr.host_id = ?
+  `;
+
+  const queryParams = [hostId];
+
+  // Add status filter if provided
+  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    query += ' AND vr.status = ?';
+    queryParams.push(status);
+  }
+
+  query += ' ORDER BY vr.created_at DESC';
+
+  const [requests] = await pool.query(query, queryParams);
+
+  res.status(200).json({
+    status: 'success',
+    results: requests.length,
+    data: { 
+      requests,
+      filter: status || 'all'
+    }
+  });
+});
+
+exports.respondToViewRequest = catchAsync(async (req, res, next) => {
+  const { requestId } = req.params;
+  const { response, message } = req.body;
+  const hostId = req.user.id;
+  const role = req.user.role;
+
+  // Verify user is a host
+  if (role !== 'host') {
+    return next(new AppError('Only hosts can respond to view requests', 403));
+  }
+
+  // Validate request ID
+  if (!requestId || isNaN(requestId)) {
+    return next(new AppError('Valid request ID is required', 400));
+  }
+
+  // Validate response
+  if (!response || !['approved', 'rejected'].includes(response)) {
+    return next(new AppError('Response must be either "approved" or "rejected"', 400));
+  }
+
+  // Verify request belongs to host and get request details
+  const [requests] = await pool.query(`
+    SELECT vr.*, l.title as listing_title
+    FROM view_requests vr
+    JOIN listings l ON vr.listing_id = l.id
+    WHERE vr.id = ? AND vr.host_id = ?
+  `, [requestId, hostId]);
+
+  if (!requests.length) {
+    return next(new AppError('View request not found or you do not have permission to respond', 404));
+  }
+
+  const request = requests[0];
+
+  // Check if already responded
+  if (request.status !== 'pending') {
+    return next(new AppError(`Request has already been ${request.status}`, 400));
+  }
+
+  // Update request
+  const [updateResult] = await pool.query(
+    `UPDATE view_requests 
+     SET status = ?, host_response = ?, updated_at = NOW()
+     WHERE id = ?`,
+    [response, message || '', requestId]
+  );
+
+  if (updateResult.affectedRows === 0) {
+    return next(new AppError('Failed to update view request', 500));
+  }
+
+  // Create notification message
+  const responseMessage = response === 'approved' 
+    ? `Your viewing request for "${request.listing_title}" has been approved!${message ? ` Host says: ${message}` : ''}`
+    : `Your viewing request for "${request.listing_title}" has been declined.${message ? ` Host says: ${message}` : ''}`;
+
+  // Notify client
+  await pool.query(
+    `INSERT INTO notifications (user_id, message, type, created_at)
+     VALUES (?, ?, 'view_response', NOW())`,
+    [request.client_id, responseMessage]
+  );
+
+  console.log('✅ View request responded:', {
+    requestId,
+    response,
+    listingTitle: request.listing_title,
+    clientId: request.client_id
+  });
+
+  res.status(200).json({
+    status: 'success',
+    message: `View request ${response} successfully`,
+    data: {
+      requestId: parseInt(requestId),
+      response,
+      listingTitle: request.listing_title,
+      clientNotified: true
+    }
+  });
+});
+
+// BONUS: Add a function to get client's own view requests
+exports.getMyViewRequests = catchAsync(async (req, res, next) => {
+  const clientId = req.user.id;
+  const { status } = req.query; // Optional filter
+
+  let query = `
+    SELECT 
+      vr.id,
+      vr.listing_id,
+      vr.message,
+      vr.preferred_date,
+      vr.preferred_time,
+      vr.status,
+      vr.host_response,
+      vr.created_at,
+      vr.updated_at,
+      l.title as listing_title,
+      l.location as listing_location,
+      l.image_url,
+      u.name as host_name,
+      u.email as host_email
+    FROM view_requests vr
+    JOIN listings l ON vr.listing_id = l.id
+    JOIN users u ON vr.host_id = u.id
+    WHERE vr.client_id = ?
+  `;
+
+  const queryParams = [clientId];
+
+  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    query += ' AND vr.status = ?';
+    queryParams.push(status);
+  }
+
+  query += ' ORDER BY vr.created_at DESC';
+
+  const [requests] = await pool.query(query, queryParams);
+
+  res.status(200).json({
+    status: 'success',
+    results: requests.length,
+    data: { 
+      requests,
+      filter: status || 'all'
+    }
+  });
+});

@@ -1,6 +1,11 @@
-// src/components/messaging/MessagesPage.jsx - Complete messaging with media support
+// src/components/messaging/MessagesPage.jsx - TEMPORARY VERSION (Text messages only)
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Phone, Video, Paperclip, Image, X, User } from 'lucide-react';
+import { useSearchParams, useLocation } from 'react-router-dom';
+import { 
+  Send, Phone, Video, Paperclip, Image, X, User, Search, 
+  MoreVertical, ArrowLeft, Smile, Check, CheckCheck, 
+  Clock, MessageCircle, Users, Settings
+} from 'lucide-react';
 import messageService from '../../services/messageService';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/AppContext';
@@ -8,39 +13,110 @@ import Button from '../../components/ui/Button';
 
 const MessagesPage = () => {
   const { user } = useAuth();
-  const { socket } = useSocket();
+  const { socket, connectSocket } = useSocket();
+  const [searchParams] = useSearchParams();
+  
+  // States
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [mediaFile, setMediaFile] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(false);
+  
   const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
+  // Initialize socket service and handle URL params
   useEffect(() => {
+    // Connect socket if user exists and not already connected
+    if (user && !socket) {
+      connectSocket(user.id);
+    }
+
+    // Set socket in messageService when available
+    if (socket) {
+      messageService.setSocket(socket);
+    }
+
     loadConversations();
     
+    // Handle URL parameters for direct user targeting (from ViewRequests)
+    const targetUserId = searchParams.get('user');
+    const initialMessage = searchParams.get('message');
+    
+    if (targetUserId && user) {
+      handleDirectUserMessage(parseInt(targetUserId), initialMessage);
+    }
+  }, [socket, user, searchParams]);
+
+  // Socket listeners
+  useEffect(() => {
     if (socket) {
+      const handleNewMessage = (message) => {
+        console.log('Received new message:', message);
+        if (activeConversation && 
+            (message.sender_id === activeConversation.id || message.sender_id === user.id)) {
+          const formattedMessage = messageService.formatMessage(message, user.id);
+          setMessages(prev => [...prev, formattedMessage]);
+        }
+        loadConversations(); // Update conversation list
+      };
+
+      const handleTypingIndicator = (data) => {
+        if (data.senderId === activeConversation?.id) {
+          setIsTyping(true);
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+        }
+      };
+
+      const handleStoppedTyping = (data) => {
+        if (data.senderId === activeConversation?.id) {
+          setIsTyping(false);
+          clearTimeout(typingTimeoutRef.current);
+        }
+      };
+
       socket.on('receiveMessage', handleNewMessage);
-      socket.on('updateInbox', loadConversations);
+      socket.on('userTyping', handleTypingIndicator);
+      socket.on('userStoppedTyping', handleStoppedTyping);
       
       return () => {
         socket.off('receiveMessage', handleNewMessage);
-        socket.off('updateInbox', loadConversations);
+        socket.off('userTyping', handleTypingIndicator);
+        socket.off('userStoppedTyping', handleStoppedTyping);
       };
     }
-  }, [socket]);
+  }, [socket, activeConversation, user]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  const handleDirectUserMessage = async (userId, initialMsg) => {
+    try {
+      console.log('Direct message to user:', userId, initialMsg);
+      // If there's an initial message from URL params, set it but don't send it yet
+      if (initialMsg) {
+        setNewMessage(decodeURIComponent(initialMsg));
+      }
+      
+      // Load existing conversation or create new one
+      await loadConversation(userId);
+      setShowMobileChat(true); // Show chat on mobile
+    } catch (error) {
+      console.error('Failed to initialize conversation:', error);
+    }
+  };
+
   const loadConversations = async () => {
     try {
       const data = await messageService.getInbox();
+      console.log('Loaded conversations:', data);
       setConversations(data);
     } catch (error) {
       console.error('Failed to load conversations:', error);
@@ -51,9 +127,13 @@ const MessagesPage = () => {
 
   const loadConversation = async (otherUserId) => {
     try {
+      console.log('Loading conversation with user:', otherUserId);
       const data = await messageService.getConversation(otherUserId);
+      console.log('Conversation data:', data);
+      
       setMessages(data.messages.map(msg => messageService.formatMessage(msg, user.id)));
       setActiveConversation(data.otherUser);
+      setShowMobileChat(true);
       
       // Mark conversation as read
       await messageService.markConversationAsRead(otherUserId);
@@ -62,85 +142,88 @@ const MessagesPage = () => {
     }
   };
 
-  const handleNewMessage = (message) => {
-    if (activeConversation && 
-        (message.sender_id === activeConversation.id || message.sender_id === user.id)) {
-      const formattedMessage = messageService.formatMessage(message, user.id);
-      setMessages(prev => [...prev, formattedMessage]);
-    }
-    loadConversations(); // Update conversation list
-  };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // FIXED: Simplified send message function (text only)
   const handleSendMessage = async (e) => {
     e.preventDefault();
     
-    if (!newMessage.trim() && !mediaFile) return;
-    if (!activeConversation) return;
+    if (!newMessage.trim()) {
+      return; // Don't show alert for empty message
+    }
+    
+    if (!activeConversation) {
+      alert('Please select a conversation first');
+      return;
+    }
+
+    console.log('Sending message to:', activeConversation.id, newMessage.trim());
 
     try {
       setSending(true);
       
-      await messageService.sendMessage(
+      // Send only text message for now
+      const result = await messageService.sendMessage(
         activeConversation.id,
         newMessage.trim(),
-        mediaFile
+        null // No media files for now
       );
       
-      setNewMessage('');
-      setMediaFile(null);
-      setMediaPreview(null);
+      console.log('Message sent successfully:', result);
       
-      // Refresh conversation
-      await loadConversation(activeConversation.id);
+      setNewMessage('');
+      
+      // Stop typing indicator
+      messageService.stopTypingIndicator(activeConversation.id);
+      
+      // Refresh conversation without forcing scroll
+      const data = await messageService.getConversation(activeConversation.id);
+      setMessages(data.messages.map(msg => messageService.formatMessage(msg, user.id)));
+      
     } catch (error) {
-      alert('Failed to send message: ' + error.message);
+      console.error('Send message error:', error);
+      alert('Failed to send message: ' + (error.response?.data?.message || error.message));
     } finally {
       setSending(false);
     }
   };
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const validation = messageService.validateMediaFile ? 
-      messageService.validateMediaFile(file) : { isValid: true };
-      
-    if (!validation.isValid) {
-      alert(validation.error);
-      return;
-    }
-
-    setMediaFile(file);
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
     
-    // Create preview for images/videos
-    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => setMediaPreview(e.target.result);
-      reader.readAsDataURL(file);
+    // Send typing indicator
+    if (activeConversation) {
+      messageService.sendTypingIndicator(activeConversation.id);
+      
+      // Clear existing timeout
+      clearTimeout(typingTimeoutRef.current);
+      
+      // Set timeout to stop typing
+      typingTimeoutRef.current = setTimeout(() => {
+        messageService.stopTypingIndicator(activeConversation.id);
+      }, 1000);
     }
   };
 
-  const removeMediaFile = () => {
-    setMediaFile(null);
-    setMediaPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const initiateCall = (callType) => {
+    alert(`${callType.charAt(0).toUpperCase() + callType.slice(1)} calling feature will be implemented soon!`);
   };
 
-  const initiateCall = async (callType) => {
-    try {
-      await messageService.initiateCall(activeConversation.id, callType);
-      alert(`${callType} call initiated! (Feature coming soon)`);
-    } catch (error) {
-      alert('Call failed: ' + error.message);
+  const getMessageStatus = (message) => {
+    if (message.isSender) {
+      if (message.is_read) {
+        return <CheckCheck className="w-4 h-4 text-blue-400" />;
+      }
+      return <Check className="w-4 h-4 text-gray-400" />;
     }
+    return null;
   };
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.other_user_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -151,206 +234,269 @@ const MessagesPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 pt-20">
-      <div className="container mx-auto px-6 py-8">
-        <div className="flex h-[calc(100vh-200px)] bg-gray-800 rounded-xl overflow-hidden">
+    <div className="min-h-screen bg-gray-900 pt-16 fixed inset-0 overflow-hidden">
+      <div className="h-full flex overflow-hidden">
+        
+        {/* Sidebar - Conversations List */}
+        <div className={`${showMobileChat ? 'hidden md:flex' : 'flex'} md:w-80 w-full flex-col bg-gray-800 border-r border-gray-700`}>
           
-          {/* Conversations List */}
-          <div className="w-1/3 border-r border-gray-700">
-            <div className="p-4 border-b border-gray-700">
-              <h2 className="text-xl font-semibold text-white">Messages</h2>
+          {/* Header */}
+          <div className="p-4 bg-gray-800 border-b border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h1 className="text-xl font-semibold text-white">Messages</h1>
+              <div className="flex space-x-2">
+                <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300">
+                  <Users className="w-5 h-5" />
+                </button>
+                <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300">
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             
-            <div className="overflow-y-auto h-full">
-              {conversations.length === 0 ? (
-                <div className="p-4 text-center text-gray-400">
-                  <p>No conversations yet</p>
-                </div>
-              ) : (
-                conversations.map((conv) => (
-                  <div
-                    key={conv.other_user_id}
-                    onClick={() => loadConversation(conv.other_user_id)}
-                    className={`p-4 cursor-pointer hover:bg-gray-700 transition ${
-                      activeConversation?.id === conv.other_user_id ? 'bg-gray-700' : ''
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-                        <User className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center">
-                          <h3 className="text-white font-medium truncate">
-                            {conv.other_user_name}
-                          </h3>
-                          <span className="text-xs text-gray-400">{conv.timeAgo}</span>
-                        </div>
-                        <p className="text-sm text-gray-400 truncate">
-                          {conv.lastMessagePreview}
-                        </p>
-                      </div>
-                      {conv.isUnread && (
-                        <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search conversations..."
+                className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
             </div>
           </div>
-
-          {/* Chat Area */}
-          <div className="flex-1 flex flex-col">
-            {activeConversation ? (
-              <>
-                {/* Chat Header */}
-                <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          
+          {/* Conversations */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredConversations.length === 0 ? (
+              <div className="p-6 text-center text-gray-400">
+                <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="font-medium">No conversations yet</p>
+                <p className="text-sm mt-1">Start messaging to see conversations here</p>
+              </div>
+            ) : (
+              filteredConversations.map((conv) => (
+                <div
+                  key={conv.other_user_id}
+                  onClick={() => loadConversation(conv.other_user_id)}
+                  className={`p-4 cursor-pointer hover:bg-gray-700/50 transition-colors ${
+                    activeConversation?.id === conv.other_user_id ? 'bg-gray-700' : ''
+                  }`}
+                >
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="text-white font-medium">{activeConversation.name}</h3>
-                  </div>
-                  
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => initiateCall('audio')}
-                      className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
-                    >
-                      <Phone className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => initiateCall('video')}
-                      className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
-                    >
-                      <Video className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.isSender ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          message.isSender
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-700 text-gray-200'
-                        }`}
-                      >
-                        {message.hasMedia && (
-                          <div className="mb-2">
-                            {message.image_url && (
-                              <img
-                                src={message.image_url}
-                                alt="Shared image"
-                                className="max-w-full h-auto rounded"
-                              />
-                            )}
-                            {message.video_url && (
-                              <video
-                                src={message.video_url}
-                                controls
-                                className="max-w-full h-auto rounded"
-                              />
-                            )}
-                          </div>
-                        )}
-                        <p className="text-sm">{message.message}</p>
-                        <p className="text-xs opacity-70 mt-1">{message.timeFormatted}</p>
+                    {/* Avatar */}
+                    <div className="relative">
+                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                        <span className="text-white font-semibold text-lg">
+                          {conv.other_user_name.charAt(0).toUpperCase()}
+                        </span>
                       </div>
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Media Preview */}
-                {mediaPreview && (
-                  <div className="p-4 border-t border-gray-700">
-                    <div className="relative inline-block">
-                      {mediaFile?.type.startsWith('image/') ? (
-                        <img
-                          src={mediaPreview}
-                          alt="Preview"
-                          className="max-w-32 h-auto rounded"
-                        />
-                      ) : (
-                        <video
-                          src={mediaPreview}
-                          className="max-w-32 h-auto rounded"
-                        />
-                      )}
-                      <button
-                        onClick={removeMediaFile}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 text-white rounded-full flex items-center justify-center"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Message Input */}
-                <div className="p-4 border-t border-gray-700">
-                  <form onSubmit={handleSendMessage} className="flex space-x-2">
-                    <div className="flex space-x-2">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileSelect}
-                        accept="image/*,video/*"
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
-                      >
-                        <Image className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
-                      >
-                        <Paperclip className="w-5 h-5" />
-                      </button>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></div>
                     </div>
                     
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <h3 className="text-white font-medium truncate">
+                          {conv.other_user_name}
+                        </h3>
+                        <span className="text-xs text-gray-400">{conv.timeAgo}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm text-gray-400 truncate flex-1">
+                          {conv.lastMessagePreview}
+                        </p>
+                        {conv.unread_count > 0 && (
+                          <div className="ml-2 min-w-[20px] h-5 bg-purple-600 text-white text-xs rounded-full flex items-center justify-center px-1.5">
+                            {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className={`${showMobileChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-gray-900`}>
+          {activeConversation ? (
+            <>
+              {/* Chat Header */}
+              <div className="p-4 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => setShowMobileChat(false)}
+                    className="md:hidden p-2 rounded-lg hover:bg-gray-700 text-gray-300"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                    <span className="text-white font-semibold">
+                      {activeConversation.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-white font-medium">{activeConversation.name}</h3>
+                    {isTyping ? (
+                      <p className="text-sm text-purple-400 flex items-center">
+                        <span className="mr-1">typing</span>
+                        <div className="flex space-x-1">
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce"></div>
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </p>
+                    ) : (
+                      <p className="text-sm text-green-400">online</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => initiateCall('audio')}
+                    className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors"
+                  >
+                    <Phone className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => initiateCall('video')}
+                    className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors"
+                  >
+                    <Video className="w-5 h-5" />
+                  </button>
+                  <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors">
+                    <MoreVertical className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
+                {messages.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center text-gray-400">
+                      <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <h3 className="text-lg font-medium mb-2">Start the conversation</h3>
+                      <p>Send a message to begin chatting with {activeConversation.name}</p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message, index) => (
+                    <div
+                      key={message.id || index}
+                      className={`flex ${message.isSender ? 'justify-end' : 'justify-start'} group`}
+                    >
+                      <div className="flex items-end space-x-2 max-w-[70%]">
+                        {!message.isSender && (
+                          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-sm">
+                            <span className="text-white text-xs font-semibold">
+                              {activeConversation.name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                        
+                        <div
+                          className={`px-4 py-2 rounded-2xl shadow-sm ${
+                            message.isSender
+                              ? 'bg-purple-600 text-white rounded-br-md'
+                              : 'bg-gray-700 text-gray-100 rounded-bl-md'
+                          }`}
+                        >
+                          <p className="text-sm leading-relaxed">{message.message}</p>
+                          
+                          <div className="flex items-center justify-end mt-1 space-x-1">
+                            <span className={`text-xs opacity-70 ${message.isSender ? 'text-purple-100' : 'text-gray-400'}`}>
+                              {message.timeFormatted}
+                            </span>
+                            {getMessageStatus(message)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Message Input */}
+              <div className="p-4 bg-gray-800 border-t border-gray-700">
+                <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
+                  {/* Disabled media buttons for now */}
+                  <div className="flex space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => alert('📎 File upload coming soon! Backend needs media support first.')}
+                      className="p-2 rounded-full text-gray-500 cursor-not-allowed"
+                      disabled
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button" 
+                      onClick={() => alert('🖼️ Image upload coming soon! Backend needs media support first.')}
+                      className="p-2 rounded-full text-gray-500 cursor-not-allowed"
+                      disabled
+                    >
+                      <Image className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="flex-1 relative">
                     <input
                       type="text"
                       value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
+                      onChange={handleInputChange}
                       placeholder="Type a message..."
-                      className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-2xl text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent pr-12"
                       maxLength={1000}
                     />
-                    
-                    <Button
-                      type="submit"
-                      variant="gradient"
-                      loading={sending}
-                      disabled={!newMessage.trim() && !mediaFile}
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded-full hover:bg-gray-600 text-gray-400 transition-colors"
+                      onClick={() => alert('😊 Emoji picker coming soon!')}
                     >
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  </form>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <h3 className="text-lg font-medium mb-2">Select a conversation</h3>
-                  <p>Choose a conversation to start messaging</p>
+                      <Smile className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <Button
+                    type="submit"
+                    variant="gradient"
+                    loading={sending}
+                    disabled={!newMessage.trim()}
+                    className="p-3 rounded-full"
+                  >
+                    <Send className="w-5 h-5" />
+                  </Button>
+                </form>
+                
+                {/* Status messages */}
+                <div className="mt-2 text-xs text-gray-500 text-center">
+                  💬 Text messaging ready • 📷 Media & 📹 Calls coming soon
                 </div>
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-gray-900">
+              <div className="text-center text-gray-400 max-w-sm">
+                <MessageCircle className="w-20 h-20 mx-auto mb-6 opacity-50" />
+                <h3 className="text-2xl font-medium mb-3 text-white">Welcome to Messages</h3>
+                <p className="text-gray-400 leading-relaxed">
+                  Select a conversation from the sidebar to start messaging, or start a new conversation.
+                </p>
+                <div className="mt-4 text-sm text-gray-500">
+                  📱 Text messaging is ready to use!
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
