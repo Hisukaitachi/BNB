@@ -143,7 +143,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     
     const [result] = await pool.query(
       'CALL sp_send_message_with_media(?, ?, ?, ?, ?)',
-      [senderId, receiverId, trimmedMessage || null, mediaJson, mediaFiles.length]
+      [senderId, receiverId, trimmedMessage || (mediaFiles.length > 0 ? '[Media]' : 'Empty message'), mediaJson, mediaFiles.length]
     );
 
     const messageId = result[0][0].message_id;

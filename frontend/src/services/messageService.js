@@ -31,52 +31,59 @@ class MessageService {
    * @param {File|null} mediaFile - Media file (image/video)
    * @returns {Promise<object>} Send result
    */
-  async sendMessage(receiverId, message, mediaFile = null) {
-    try {
-      // Validate input
-      if (!receiverId || (!message?.trim() && !mediaFile)) {
-        throw new Error('Receiver ID and message content are required');
+  async sendMessage(receiverId, message, mediaFiles = []) {
+  try {
+    // Validate input
+    if (!receiverId || (!message?.trim() && (!mediaFiles || mediaFiles.length === 0))) {
+      throw new Error('Receiver ID and message content or files are required');
+    }
+
+    if (message && message.length > 1000) {
+      throw new Error('Message cannot exceed 1000 characters');
+    }
+
+    // Validate media files array
+    if (mediaFiles && mediaFiles.length > 0) {
+      if (mediaFiles.length > 20) {
+        throw new Error('Cannot send more than 20 files at once');
       }
 
-      if (message && message.length > 1000) {
-        throw new Error('Message cannot exceed 1000 characters');
-      }
-
-      // Validate media file
-      if (mediaFile) {
-        const validationResult = this.validateMediaFile(mediaFile);
+      // Validate each file
+      for (const file of mediaFiles) {
+        const validationResult = this.validateMediaFile(file);
         if (!validationResult.isValid) {
-          throw new Error(validationResult.error);
+          throw new Error(`Invalid file ${file.name}: ${validationResult.error}`);
         }
       }
-
-      // Use the correct API call matching your backend
-      const response = await messageAPI.sendMessage(receiverId, message, mediaFile);
-      
-      // Send via socket for real-time delivery (if available)
-      if (this.socket && this.socket.emit) {
-        this.socket.emit('newMessage', {
-          receiverId,
-          message: {
-            sender_id: response.data.data.message.sender_id,
-            receiver_id: receiverId,
-            message: message,
-            created_at: new Date(),
-            type: mediaFile ? this.getFileType(mediaFile) : MESSAGE_TYPES.TEXT
-          }
-        });
-      }
-
-      return {
-        success: true,
-        data: response.data.data?.message,
-        messageId: response.data.data?.message?.id
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
     }
-  }
 
+    // Use the correct API call
+    const response = await messageAPI.sendMessage(receiverId, message, mediaFiles);
+    
+    // Send via socket for real-time delivery (if available)
+    if (this.socket && this.socket.emit) {
+      this.socket.emit('newMessage', {
+        receiverId,
+        message: {
+          sender_id: response.data.data.message.sender_id,
+          receiver_id: receiverId,
+          message: message,
+          media_count: mediaFiles ? mediaFiles.length : 0,
+          created_at: new Date(),
+          type: mediaFiles && mediaFiles.length > 0 ? 'media' : 'text'
+        }
+      });
+    }
+
+    return {
+      success: true,
+      data: response.data.data?.message,
+      messageId: response.data.data?.message?.id
+    };
+  } catch (error) {
+    throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
+  }
+}
   /**
    * Get conversation with another user
    * @param {number} otherUserId - Other user ID

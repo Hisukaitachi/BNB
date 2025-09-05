@@ -132,25 +132,27 @@ export const paymentAPI = {
 
 // MESSAGING FUNCTIONS (unchanged)
 export const messageAPI = {
-  // Send message - FIXED to match your backend
-  sendMessage: (receiverId, message, mediaFile = null) => {
-    if (mediaFile) {
-      // If there's a media file, use FormData
-      const formData = new FormData();
-      formData.append('receiverId', receiverId);
-      formData.append('message', message || ''); // Allow empty message with media
-      formData.append('media', mediaFile);
-      
-      return api.post('/messages', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-    } else {
-      // For text-only messages, use JSON
-      return api.post('/messages', {
-        receiverId: parseInt(receiverId),
-        message: message
-      });
+  // Send message with multiple media files
+  sendMessage: (receiverId, message, mediaFiles = []) => {
+    const formData = new FormData();
+    formData.append('receiverId', receiverId);
+    
+    // Allow empty message if media files are present
+    if (message && message.trim()) {
+      formData.append('message', message.trim());
     }
+    
+    // Add multiple media files
+    if (mediaFiles && mediaFiles.length > 0) {
+      mediaFiles.forEach((file) => {
+        formData.append('media', file);
+      });
+      console.log(`📁 Sending ${mediaFiles.length} media files`);
+    }
+    
+    return api.post('/messages', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
   },
   
   // Get conversation with another user
@@ -165,7 +167,17 @@ export const messageAPI = {
   
   // Mark entire conversation as read
   markConversationAsRead: (otherUserId) => 
-    api.patch(`/messages/conversation/${otherUserId}/read`)
+    api.patch(`/messages/conversation/${otherUserId}/read`),
+
+  // NEW: Get message statistics
+  getMessageStats: () => api.get('/messages/stats'),
+
+  // NEW: Search messages
+  searchMessages: (query, page = 1, limit = 20) => 
+    api.get(`/messages/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`),
+
+  // NEW: Delete message
+  deleteMessage: (messageId) => api.delete(`/messages/${messageId}`)
 };
 
 // REVIEWS AND FEEDBACK FUNCTIONS (unchanged)

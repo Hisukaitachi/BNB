@@ -30,77 +30,79 @@ export const AppProvider = ({ children }) => {
   const [toast, setToast] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
-  const connectSocket = (userId) => {
-    if (socket) return;
+// Replace your connectSocket function with this corrected version:
+const connectSocket = (userId) => {
+  if (socket) return;
 
-    try {
-      setConnectionStatus('connecting');
-      
-      const newSocket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
-        transports: ['websocket', 'polling'], // FIX: Add polling fallback
-        timeout: 20000,
-        forceNew: true
-      });
+  try {
+    setConnectionStatus('connecting');
+    
+    const newSocket = io('http://localhost:5000', { // Hardcode for now
+      transports: ['websocket', 'polling'],
+      timeout: 20000,
+      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    });
 
-      newSocket.on('connect', () => {
-        console.log('Connected to socket server');
-        setConnectionStatus('connected');
-        newSocket.emit('register', userId);
-      });
+    // IMPORTANT: Store userId on socket for backend use
+    newSocket.userId = userId;
 
-      newSocket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-        setConnectionStatus('error');
-        // FIX: Don't show error toast immediately, maybe server is starting
-        setTimeout(() => {
-          if (connectionStatus === 'error') {
-            showToast('Real-time features unavailable', 'warning');
-          }
-        }, 5000);
-      });
+    newSocket.on('connect', () => {
+      console.log('Connected to socket server with userId:', userId);
+      setConnectionStatus('connected');
+      newSocket.emit('register', userId);
+    });
 
-      newSocket.on('disconnect', () => {
-        console.log('Disconnected from socket server');
-        setConnectionStatus('disconnected');
-      });
-
-      newSocket.on('userOnline', (userId) => {
-        setOnlineUsers(prev => [...prev.filter(id => id !== userId), userId]);
-      });
-
-      newSocket.on('userOffline', (userId) => {
-        setOnlineUsers(prev => prev.filter(id => id !== userId));
-      });
-
-      newSocket.on('receiveMessage', (message) => {
-        setUnreadMessages(prev => prev + 1);
-        showToast('New message received', 'info');
-      });
-
-      newSocket.on('newNotification', (notification) => {
-        setNotifications(prev => [notification, ...prev]);
-        showToast(notification.message, 'info');
-      });
-
-      newSocket.on('banned', (data) => {
-        showToast(data.message, 'error');
-        // Force logout after showing message
-        setTimeout(() => {
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-        }, 3000);
-      });
-
-      newSocket.on('unbanned', (data) => {
-        showToast(data.message, 'success');
-      });
-
-      setSocket(newSocket);
-    } catch (error) {
-      console.error('Failed to connect socket:', error);
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
       setConnectionStatus('error');
-    }
-  };
+      showToast('Unable to connect to real-time server. Calling may not work.', 'warning');
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('Disconnected from socket server');
+      setConnectionStatus('disconnected');
+    });
+
+    // Your existing event handlers...
+    newSocket.on('userOnline', (userId) => {
+      setOnlineUsers(prev => [...prev.filter(id => id !== userId), userId]);
+    });
+
+    newSocket.on('userOffline', (userId) => {
+      setOnlineUsers(prev => prev.filter(id => id !== userId));
+    });
+
+    newSocket.on('receiveMessage', (message) => {
+      setUnreadMessages(prev => prev + 1);
+      showToast('New message received', 'info');
+    });
+
+    newSocket.on('newNotification', (notification) => {
+      setNotifications(prev => [notification, ...prev]);
+      showToast(notification.message, 'info');
+    });
+
+    newSocket.on('banned', (data) => {
+      showToast(data.message, 'error');
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }, 3000);
+    });
+
+    newSocket.on('unbanned', (data) => {
+      showToast(data.message, 'success');
+    });
+
+    setSocket(newSocket);
+  } catch (error) {
+    console.error('Failed to connect socket:', error);
+    setConnectionStatus('error');
+  }
+};
 
   const disconnectSocket = () => {
     if (socket) {

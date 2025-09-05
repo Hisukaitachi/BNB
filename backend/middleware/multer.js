@@ -1,9 +1,9 @@
-// backend/middleware/multer.js - ENHANCED FOR MESSAGING
+// backend/middleware/multer.js - FIXED FOR MESSAGES DIRECTORY
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure uploads directory exists with subdirectories
+// Ensure uploads directories exist
 const uploadDir = 'uploads';
 const messagesDir = 'uploads/messages';
 if (!fs.existsSync(uploadDir)) {
@@ -13,24 +13,37 @@ if (!fs.existsSync(messagesDir)) {
   fs.mkdirSync(messagesDir, { recursive: true });
 }
 
+// Storage configuration for regular uploads (listings)
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Separate storage for messages vs listings
-    if (req.route && req.route.path.includes('messages')) {
-      cb(null, 'uploads/messages/');
-    } else {
-      cb(null, 'uploads/');
-    }
+    cb(null, 'uploads/');
   },
   filename: function (req, file, cb) {
-    // Create unique filename with timestamp and original extension
     const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
     cb(null, uniqueName);
+  }
+});
+
+// FIXED: Dedicated storage configuration for messages
+const messageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log('Message file upload - saving to uploads/messages/');
+    // Ensure messages directory exists
+    if (!fs.existsSync(messagesDir)) {
+      fs.mkdirSync(messagesDir, { recursive: true });
+      console.log('Created messages directory');
+    }
+    cb(null, 'uploads/messages/');
   },
+  filename: function (req, file, cb) {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+    console.log('Message file saved as:', uniqueName);
+    cb(null, uniqueName);
+  }
 });
 
 const fileFilter = function (req, file, cb) {
-  console.log('📁 Multer received file:', {
+  console.log('Multer received file:', {
     fieldname: file.fieldname,
     originalname: file.originalname,
     mimetype: file.mimetype,
@@ -45,14 +58,27 @@ const fileFilter = function (req, file, cb) {
   if (allAllowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    console.error('❌ File type not allowed:', file.mimetype);
+    console.error('File type not allowed:', file.mimetype);
     cb(new Error(`File type ${file.mimetype} not allowed. Allowed types: ${allAllowedTypes.join(', ')}`), false);
   }
 };
 
-// Create multer instance with enhanced configuration
+// Regular multer instance for listings
 const upload = multer({ 
   storage, 
+  fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    files: 5,
+    fields: 50,
+    fieldNameSize: 100,
+    fieldSize: 10 * 1024 * 1024
+  }
+});
+
+// FIXED: Dedicated multer instance for messages
+const messageUpload = multer({ 
+  storage: messageStorage, // Use dedicated message storage
   fileFilter,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB max file size per file
@@ -63,24 +89,24 @@ const upload = multer({
   }
 });
 
-// ENHANCED: Export multiple upload configurations
+// Export configurations
 module.exports = {
   // For single image upload (legacy)
   uploadSingle: upload.single('image'),
   
   // For listing uploads (4 images + 1 video)
   uploadFields: upload.fields([
-    { name: 'images', maxCount: 4 },   // Support up to 4 images for listings
-    { name: 'video', maxCount: 1 }     // Support 1 video for listings
+    { name: 'images', maxCount: 4 },
+    { name: 'video', maxCount: 1 }
   ]),
   
-  // NEW: For message media uploads (unlimited files)
-  uploadMessageMedia: upload.fields([
-    { name: 'media', maxCount: 20 }    // Up to 20 media files per message
+  // FIXED: For message media uploads using dedicated message storage
+  uploadMessageMedia: messageUpload.fields([
+    { name: 'media', maxCount: 20 }
   ]),
   
-  // NEW: For any media files in messages
-  uploadMessageAny: upload.any(),
+  // For any media files in messages (alternative)
+  uploadMessageAny: messageUpload.any(),
   
   // Legacy support for single image
   uploadFieldsLegacy: upload.fields([
@@ -88,7 +114,7 @@ module.exports = {
     { name: 'video', maxCount: 1 }
   ]),
   
-  // For any files (up to 20)
+  // For any files (up to 20) - using regular storage
   uploadAny: upload.any(),
   
   // Export the base upload for backwards compatibility
