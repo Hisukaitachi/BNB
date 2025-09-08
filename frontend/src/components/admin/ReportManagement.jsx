@@ -1,60 +1,73 @@
 // frontend/src/components/admin/ReportManagement.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  AlertTriangle, 
-  Search, 
-  Filter, 
-  Eye, 
-  Check, 
+  AlertTriangle,
+  Search,
+  Filter,
+  Eye,
+  Check,
   X,
-  MessageCircle,
-  User,
-  Calendar,
-  Home,
-  Flag,
-  RefreshCw,
-  Shield,
   Clock,
+  User,
+  Ban,
+  MessageSquare,
+  RefreshCw,
+  Download,
+  Shield,
   FileText,
-  Send
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink
 } from 'lucide-react';
-import adminService from '../../services/adminService';
+import { adminAPI } from '../../services/api';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
 const ReportManagement = () => {
   const [reports, setReports] = useState([]);
-  const [filteredReports, setFilteredReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Filter and search state
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [filteredReports, setFilteredReports] = useState([]);
+  
+  // Modal state
   const [selectedReport, setSelectedReport] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [actionLoading, setActionLoading] = useState({});
 
   useEffect(() => {
-    loadReports();
+    fetchReports();
   }, []);
 
   useEffect(() => {
     applyFilters();
-  }, [reports, searchTerm, statusFilter, categoryFilter]);
+  }, [reports, searchTerm, statusFilter, typeFilter]);
 
-  const loadReports = async () => {
+  // Fetch all reports
+  const fetchReports = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await adminService.getAllReports();
-      setReports(data);
+      
+      const response = await adminAPI.getAllReports();
+      
+      if (response.data.reports) {
+        setReports(response.data.reports);
+      }
     } catch (err) {
-      setError(err.message);
+      setError('Failed to fetch reports: ' + (err.response?.data?.message || err.message));
+      console.error('Error fetching reports:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Apply filters to reports
   const applyFilters = () => {
     let filtered = [...reports];
 
@@ -62,11 +75,10 @@ const ReportManagement = () => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(report => 
+        report.reason?.toLowerCase().includes(term) ||
         report.reporter_name?.toLowerCase().includes(term) ||
         report.reported_user_name?.toLowerCase().includes(term) ||
-        report.category?.toLowerCase().includes(term) ||
-        report.description?.toLowerCase().includes(term) ||
-        report.id.toString().includes(term)
+        report.id?.toString().includes(term)
       );
     }
 
@@ -75,89 +87,64 @@ const ReportManagement = () => {
       filtered = filtered.filter(report => report.status === statusFilter);
     }
 
-    // Category filter
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter(report => report.category === categoryFilter);
+    // Type filter (if you have different report types)
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(report => report.report_type === typeFilter);
     }
 
     setFilteredReports(filtered);
   };
 
-  const handleReportAction = async (reportId, action, adminResponse = '') => {
+  // Handle admin action
+  const handleAdminAction = async (reportId, actionType, reason = '') => {
     try {
-      setActionLoading(prev => ({ ...prev, [reportId]: action }));
+      setActionLoading(prev => ({ ...prev, [reportId]: actionType }));
       
-      let result;
-      switch (action) {
-        case 'resolve':
-          if (!adminResponse) {
-            adminResponse = prompt('Resolution notes (optional):');
-          }
-          result = await adminService.updateReportStatus(reportId, 'resolved', adminResponse);
-          break;
-        case 'reject':
-          if (!adminResponse) {
-            adminResponse = prompt('Reason for dismissal:');
-            if (!adminResponse) return;
-          }
-          result = await adminService.updateReportStatus(reportId, 'dismissed', adminResponse);
-          break;
-        case 'investigate':
-          result = await adminService.updateReportStatus(reportId, 'investigating', 'Case under review');
-          break;
-        case 'message':
-          if (!adminResponse) {
-            adminResponse = prompt('Message to send to involved parties:');
-            if (!adminResponse) return;
-          }
-          result = await adminService.sendReportMessage(reportId, adminResponse);
-          break;
-        default:
-          throw new Error('Invalid action');
+      const report = reports.find(r => r.id === reportId);
+      if (!report) {
+        throw new Error('Report not found');
       }
 
-      if (result.success) {
-        await loadReports(); // Refresh reports
-        alert(`Report ${action}d successfully`);
+      // Get admin ID from local storage or auth context
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const adminId = user.id;
+      
+      if (!adminId) {
+        throw new Error('Admin ID not found. Please log in again.');
+      }
+
+      const actionData = {
+        admin_id: adminId, // Use actual admin ID from auth
+        user_id: report.reported_user_id,
+        action_type: actionType,
+        reason: reason || `Action taken on report #${reportId}`,
+        report_id: reportId
+      };
+
+      const response = await adminAPI.takeAction(actionData);
+      
+      if (response.data.message) {
+        alert(`Action completed: ${actionType}`);
+        await fetchReports(); // Refresh reports
       }
     } catch (error) {
-      alert(`Failed to ${action} report: ${error.message}`);
+      alert(`Failed to take action: ${error.response?.data?.message || error.message}`);
     } finally {
       setActionLoading(prev => ({ ...prev, [reportId]: false }));
     }
   };
 
+  // Get status badge
   const getStatusBadge = (status) => {
     const badges = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending', icon: Clock },
-      investigating: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Investigating', icon: Search },
-      resolved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved', icon: Check },
-      dismissed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Dismissed', icon: X }
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
+      reviewed: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Reviewed' },
+      resolved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved' },
+      dismissed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Dismissed' },
+      escalated: { bg: 'bg-red-100', text: 'text-red-800', label: 'Escalated' }
     };
     
     const badge = badges[status] || badges.pending;
-    const Icon = badge.icon;
-    
-    return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-        <Icon className="w-3 h-3 mr-1" />
-        {badge.label}
-      </span>
-    );
-  };
-
-  const getCategoryBadge = (category) => {
-    const badges = {
-      'inappropriate_content': { bg: 'bg-red-100', text: 'text-red-800', label: 'Inappropriate Content' },
-      'harassment': { bg: 'bg-red-100', text: 'text-red-800', label: 'Harassment' },
-      'fraud': { bg: 'bg-red-100', text: 'text-red-800', label: 'Fraud' },
-      'spam': { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Spam' },
-      'fake_listing': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Fake Listing' },
-      'safety_concern': { bg: 'bg-red-100', text: 'text-red-800', label: 'Safety Concern' },
-      'other': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Other' }
-    };
-    
-    const badge = badges[category] || badges.other;
     
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
@@ -166,19 +153,28 @@ const ReportManagement = () => {
     );
   };
 
-  const getPriorityLevel = (report) => {
-    // Determine priority based on category and age
-    const highPriorityCategories = ['harassment', 'fraud', 'safety_concern'];
-    const daysSinceReport = Math.floor(
-      (new Date() - new Date(report.created_at)) / (1000 * 60 * 60 * 24)
-    );
+  // Get priority indicator
+  const getPriorityIndicator = (report) => {
+    const createdDate = new Date(report.created_at);
+    const today = new Date();
+    const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
     
-    if (highPriorityCategories.includes(report.category)) {
-      return { level: 'high', color: 'text-red-400', label: 'High Priority' };
-    } else if (daysSinceReport >= 3) {
-      return { level: 'medium', color: 'text-yellow-400', label: 'Overdue' };
+    if (daysOld >= 7 && report.status === 'pending') {
+      return (
+        <div className="flex items-center text-red-400 text-xs">
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Overdue
+        </div>
+      );
+    } else if (daysOld >= 3 && report.status === 'pending') {
+      return (
+        <div className="flex items-center text-yellow-400 text-xs">
+          <Clock className="w-3 h-3 mr-1" />
+          Due soon
+        </div>
+      );
     }
-    return { level: 'normal', color: 'text-gray-400', label: 'Normal' };
+    return null;
   };
 
   if (loading) {
@@ -193,71 +189,91 @@ const ReportManagement = () => {
     return (
       <div className="text-center py-16">
         <p className="text-red-400 mb-4">{error}</p>
-        <Button onClick={loadReports} variant="gradient">Try Again</Button>
+        <Button onClick={fetchReports} variant="gradient">Try Again</Button>
       </div>
     );
   }
-
-  const pendingReports = reports.filter(r => r.status === 'pending');
-  const investigatingReports = reports.filter(r => r.status === 'investigating');
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-white">Reports & Disputes</h1>
+          <h1 className="text-2xl font-bold text-white">Report Management</h1>
           <p className="text-gray-400">
-            {filteredReports.length} of {reports.length} reports
+            {filteredReports.length} reports found
           </p>
         </div>
         
-        <Button
-          onClick={loadReports}
-          variant="outline"
-          className="border-gray-600 text-gray-300"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => {
+              const csvData = 'Report ID,Reporter,Reported User,Reason,Status,Created\n' +
+                filteredReports.map(r => 
+                  `${r.id},"${r.reporter_name}","${r.reported_user_name}","${r.reason}",${r.status},${new Date(r.created_at).toLocaleDateString()}`
+                ).join('\n');
+              const blob = new Blob([csvData], { type: 'text/csv' });
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'reports-export.csv';
+              a.click();
+            }}
+            variant="outline"
+            className="border-gray-600 text-gray-300"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export
+          </Button>
+          <Button
+            onClick={fetchReports}
+            variant="outline"
+            className="border-gray-600 text-gray-300"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6 border-l-4 border-yellow-500">
+        <div className="bg-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">Total Reports</p>
+              <p className="text-2xl font-bold text-white">{reports.length}</p>
+              <p className="text-xs text-gray-500">All time</p>
+            </div>
+            <div className="p-3 rounded-full bg-blue-600/20">
+              <FileText className="w-6 h-6 text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">Pending Review</p>
-              <p className="text-2xl font-bold text-yellow-400">{pendingReports.length}</p>
+              <p className="text-2xl font-bold text-yellow-400">
+                {reports.filter(r => r.status === 'pending').length}
+              </p>
               <p className="text-xs text-gray-500">Need attention</p>
             </div>
             <div className="p-3 rounded-full bg-yellow-600/20">
-              <AlertTriangle className="w-6 h-6 text-yellow-400" />
+              <Clock className="w-6 h-6 text-yellow-400" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border-l-4 border-blue-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-400">Investigating</p>
-              <p className="text-2xl font-bold text-blue-400">{investigatingReports.length}</p>
-              <p className="text-xs text-gray-500">In progress</p>
-            </div>
-            <div className="p-3 rounded-full bg-blue-600/20">
-              <Search className="w-6 h-6 text-blue-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-6 border-l-4 border-green-500">
+        <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">Resolved</p>
               <p className="text-2xl font-bold text-green-400">
                 {reports.filter(r => r.status === 'resolved').length}
               </p>
-              <p className="text-xs text-gray-500">This month</p>
+              <p className="text-xs text-gray-500">Completed</p>
             </div>
             <div className="p-3 rounded-full bg-green-600/20">
               <Check className="w-6 h-6 text-green-400" />
@@ -265,17 +281,20 @@ const ReportManagement = () => {
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border-l-4 border-red-500">
+        <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">High Priority</p>
               <p className="text-2xl font-bold text-red-400">
-                {reports.filter(r => ['harassment', 'fraud', 'safety_concern'].includes(r.category)).length}
+                {reports.filter(r => {
+                  const daysOld = Math.floor((new Date() - new Date(r.created_at)) / (1000 * 60 * 60 * 24));
+                  return daysOld >= 7 && r.status === 'pending';
+                }).length}
               </p>
-              <p className="text-xs text-gray-500">Urgent cases</p>
+              <p className="text-xs text-gray-500">Overdue</p>
             </div>
             <div className="p-3 rounded-full bg-red-600/20">
-              <Flag className="w-6 h-6 text-red-400" />
+              <AlertTriangle className="w-6 h-6 text-red-400" />
             </div>
           </div>
         </div>
@@ -301,29 +320,30 @@ const ReportManagement = () => {
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
-            <option value="investigating">Investigating</option>
+            <option value="reviewed">Reviewed</option>
             <option value="resolved">Resolved</option>
             <option value="dismissed">Dismissed</option>
+            <option value="escalated">Escalated</option>
           </select>
 
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
           >
-            <option value="all">All Categories</option>
-            <option value="inappropriate_content">Inappropriate Content</option>
+            <option value="all">All Types</option>
             <option value="harassment">Harassment</option>
             <option value="fraud">Fraud</option>
-            <option value="spam">Spam</option>
-            <option value="fake_listing">Fake Listing</option>
-            <option value="safety_concern">Safety Concern</option>
+            <option value="inappropriate">Inappropriate Content</option>
+            <option value="safety">Safety Concern</option>
             <option value="other">Other</option>
           </select>
 
           <div className="flex items-center space-x-2 text-sm text-gray-300">
             <Filter className="w-4 h-4" />
-            <span>{pendingReports.length} urgent</span>
+            <span>
+              {reports.filter(r => r.status === 'pending').length} pending
+            </span>
           </div>
         </div>
       </div>
@@ -332,7 +352,7 @@ const ReportManagement = () => {
       <div className="bg-gray-800 rounded-xl overflow-hidden">
         {filteredReports.length === 0 ? (
           <div className="text-center py-16">
-            <AlertTriangle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-white mb-2">No reports found</h3>
             <p className="text-gray-400">Try adjusting your search criteria</p>
           </div>
@@ -341,233 +361,136 @@ const ReportManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-700">
                 <tr>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Report</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Category</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Parties</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Report Details</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Reporter</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Reported User</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Date</th>
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Status</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Reported</th>
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {filteredReports.map((report) => {
-                  const priority = getPriorityLevel(report);
-                  return (
-                    <tr key={report.id} className="hover:bg-gray-700/50">
-                      <td className="py-4 px-6">
-                        <div className="flex items-start space-x-3">
-                          <div className={`p-2 rounded-full ${priority.level === 'high' ? 'bg-red-600/20' : 'bg-gray-600/20'}`}>
-                            <AlertTriangle className={`w-4 h-4 ${priority.color}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white font-medium">#{report.id}</div>
-                            <p className="text-gray-400 text-sm line-clamp-2 mt-1">
-                              {report.description || 'No description provided'}
-                            </p>
-                            <div className={`text-xs mt-1 ${priority.color}`}>
-                              {priority.label}
-                            </div>
-                          </div>
+                {filteredReports.map((report) => (
+                  <tr key={report.id} className="hover:bg-gray-700/50">
+                    <td className="py-4 px-6">
+                      <div className="flex items-start space-x-3">
+                        <div className="w-12 h-12 bg-gradient-to-r from-red-400 to-orange-600 rounded-lg flex items-center justify-center">
+                          <AlertTriangle className="w-6 h-6 text-white" />
                         </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        {getCategoryBadge(report.category)}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center space-x-2">
-                            <User className="w-3 h-3 text-blue-400" />
-                            <span className="text-gray-300">Reporter:</span>
-                            <span className="text-white">{report.reporter_name || 'Anonymous'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white font-medium line-clamp-2">
+                            {report.reason || 'No reason provided'}
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <Flag className="w-3 h-3 text-red-400" />
-                            <span className="text-gray-300">Reported:</span>
-                            <span className="text-white">{report.reported_user_name || 'Unknown'}</span>
+                          <div className="text-gray-500 text-xs mt-1">
+                            Report ID: #{report.id}
                           </div>
-                          {report.listing_id && (
-                            <div className="flex items-center space-x-2">
-                              <Home className="w-3 h-3 text-green-400" />
-                              <span className="text-gray-300">Listing:</span>
-                              <span className="text-white">#{report.listing_id}</span>
+                          {report.booking_id && (
+                            <div className="text-gray-400 text-xs">
+                              Related to Booking #{report.booking_id}
                             </div>
                           )}
                         </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="space-y-1">
-                          {getStatusBadge(report.status)}
-                          {report.admin_response && (
-                            <div className="flex items-center text-gray-400 text-xs">
-                              <MessageCircle className="w-3 h-3 mr-1" />
-                              Admin responded
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-white text-sm">
-                          {new Date(report.created_at).toLocaleDateString()}
-                        </div>
-                        <div className="text-gray-400 text-xs">
-                          {new Date(report.created_at).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-gray-400"
-                            onClick={() => {
-                              setSelectedReport(report);
-                              setShowReportModal(true);
-                            }}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4 text-blue-400" />
+                        <span className="text-white text-sm">{report.reporter_name || 'Unknown'}</span>
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        ID: {report.reporter_id}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4 text-red-400" />
+                        <span className="text-white text-sm">{report.reported_user_name || 'Unknown'}</span>
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        ID: {report.reported_user_id}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="text-white text-sm">
+                        {new Date(report.created_at).toLocaleDateString()}
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        {new Date(report.created_at).toLocaleTimeString()}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="space-y-1">
+                        {getStatusBadge(report.status || 'pending')}
+                        {getPriorityIndicator(report)}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-gray-400"
+                          onClick={() => {
+                            setSelectedReport(report);
+                            setShowReportModal(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
 
-                          {report.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-blue-400 hover:text-blue-300"
-                                loading={actionLoading[report.id] === 'investigate'}
-                                onClick={() => handleReportAction(report.id, 'investigate')}
-                              >
-                                <Search className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-green-400 hover:text-green-300"
-                                loading={actionLoading[report.id] === 'resolve'}
-                                onClick={() => handleReportAction(report.id, 'resolve')}
-                              >
-                                <Check className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-400 hover:text-red-300"
-                                loading={actionLoading[report.id] === 'reject'}
-                                onClick={() => handleReportAction(report.id, 'reject')}
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </>
-                          )}
+                        {report.status === 'pending' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-green-400 hover:text-green-300"
+                              loading={actionLoading[report.id] === 'no_action'}
+                              onClick={() => handleAdminAction(report.id, 'no_action', 'Report resolved - no action needed')}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-400 hover:text-red-300"
+                              loading={actionLoading[report.id] === 'ban'}
+                              onClick={() => {
+                                if (confirm('Are you sure you want to ban this user?')) {
+                                  handleAdminAction(report.id, 'ban', 'User banned due to report');
+                                }
+                              }}
+                            >
+                              <Ban className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-yellow-400 hover:text-yellow-300"
+                              loading={actionLoading[report.id] === 'warn'}
+                              onClick={() => handleAdminAction(report.id, 'warn', 'User warned due to report')}
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
 
-                          {report.status === 'investigating' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-purple-400 hover:text-purple-300"
-                                loading={actionLoading[report.id] === 'message'}
-                                onClick={() => handleReportAction(report.id, 'message')}
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-green-400 hover:text-green-300"
-                                loading={actionLoading[report.id] === 'resolve'}
-                                onClick={() => handleReportAction(report.id, 'resolve')}
-                              >
-                                <Check className="w-4 h-4" />
-                              </Button>
-                            </>
-                          )}
-
-                          {(report.status === 'resolved' || report.status === 'dismissed') && (
-                            <div className="flex items-center text-gray-500 text-xs">
-                              <FileText className="w-3 h-3 mr-1" />
-                              Closed
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-yellow-400 hover:text-yellow-300"
+                          loading={actionLoading[report.id] === 'dismiss'}
+                          onClick={() => handleAdminAction(report.id, 'dismiss', 'Report dismissed by admin')}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Button
-            onClick={() => {
-              // Mark all high priority reports as investigating
-              const highPriorityReports = reports.filter(r => 
-                r.status === 'pending' && ['harassment', 'fraud', 'safety_concern'].includes(r.category)
-              );
-              if (highPriorityReports.length > 0) {
-                if (confirm(`Mark ${highPriorityReports.length} high priority reports as investigating?`)) {
-                  alert('Batch action not implemented yet');
-                }
-              } else {
-                alert('No high priority reports to process');
-              }
-            }}
-            variant="outline"
-            className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
-          >
-            <Flag className="w-4 h-4 mr-2" />
-            Process Urgent
-          </Button>
-          
-          <Button
-            onClick={() => {
-              // Send bulk message to pending reports
-              const message = prompt('Message to send to all pending report parties:');
-              if (message) {
-                alert('Bulk message feature to be implemented');
-              }
-            }}
-            variant="outline"
-            className="border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white"
-          >
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Bulk Message
-          </Button>
-          
-          <Button
-            onClick={() => {
-              // Generate reports summary
-              alert('Reports analytics to be implemented');
-            }}
-            variant="outline"
-            className="border-purple-500 text-purple-400 hover:bg-purple-500 hover:text-white"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Report
-          </Button>
-          
-          <Button
-            onClick={() => {
-              // Report settings
-              alert('Report settings to be implemented');
-            }}
-            variant="outline"
-            className="border-gray-500 text-gray-400 hover:bg-gray-500 hover:text-white"
-          >
-            <Shield className="w-4 h-4 mr-2" />
-            Settings
-          </Button>
-        </div>
       </div>
 
       {/* Report Detail Modal */}
@@ -578,7 +501,7 @@ const ReportManagement = () => {
             setShowReportModal(false);
             setSelectedReport(null);
           }}
-          onAction={handleReportAction}
+          onAction={handleAdminAction}
         />
       )}
     </div>
@@ -587,37 +510,25 @@ const ReportManagement = () => {
 
 // Report Detail Modal Component
 const ReportDetailModal = ({ report, onClose, onAction }) => {
-  const [adminResponse, setAdminResponse] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [actionReason, setActionReason] = useState('');
+  const [selectedAction, setSelectedAction] = useState('');
 
-  const handleSendMessage = async () => {
-    if (!adminResponse.trim()) return;
-    
-    try {
-      setSendingMessage(true);
-      await onAction(report.id, 'message', adminResponse);
-      setAdminResponse('');
-    } catch (error) {
-      console.error('Failed to send message:', error);
-    } finally {
-      setSendingMessage(false);
+  const handleTakeAction = () => {
+    if (!selectedAction) {
+      alert('Please select an action');
+      return;
     }
+    
+    const reason = actionReason || `${selectedAction} action taken on report #${report.id}`;
+    onAction(report.id, selectedAction, reason);
+    onClose();
   };
-
-  const priority = getPriorityLevel(report);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center p-6 border-b border-gray-700">
-          <div>
-            <h2 className="text-xl font-semibold text-white">Report #{report.id}</h2>
-            <div className="flex items-center space-x-2 mt-1">
-              {getCategoryBadge(report.category)}
-              {getStatusBadge(report.status)}
-              <span className={`text-xs ${priority.color}`}>{priority.label}</span>
-            </div>
-          </div>
+          <h2 className="text-xl font-semibold text-white">Report Details</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X className="w-6 h-6" />
           </button>
@@ -625,168 +536,100 @@ const ReportDetailModal = ({ report, onClose, onAction }) => {
 
         <div className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Report Details */}
+            {/* Report Information */}
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-medium text-white mb-4">Report Information</h3>
                 <div className="space-y-3">
                   <div>
-                    <span className="text-gray-400">Category:</span>
-                    <span className="text-white ml-2">{report.category.replace('_', ' ')}</span>
+                    <span className="text-gray-400">Report ID:</span>
+                    <span className="text-white ml-2">#{report.id}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400">Reported by:</span>
-                    <span className="text-white ml-2">{report.reporter_name || 'Anonymous'}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Reported user:</span>
-                    <span className="text-white ml-2">{report.reported_user_name || 'Unknown'}</span>
-                  </div>
-                  {report.listing_id && (
-                    <div>
-                      <span className="text-gray-400">Related listing:</span>
-                      <span className="text-white ml-2">#{report.listing_id}</span>
+                    <span className="text-gray-400">Reason:</span>
+                    <div className="text-white ml-2 mt-1 p-3 bg-gray-700 rounded">
+                      {report.reason || 'No reason provided'}
                     </div>
-                  )}
+                  </div>
                   <div>
                     <span className="text-gray-400">Status:</span>
-                    <span className="text-white ml-2">{report.status}</span>
+                    <span className="ml-2">{getStatusBadge(report.status || 'pending')}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400">Reported on:</span>
-                    <span className="text-white ml-2">
-                      {new Date(report.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
+                    <span className="text-gray-400">Created:</span>
+                    <span className="text-white ml-2">{new Date(report.created_at).toLocaleString()}</span>
                   </div>
+                  {report.booking_id && (
+                    <div>
+                      <span className="text-gray-400">Related Booking:</span>
+                      <span className="text-white ml-2">#{report.booking_id}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Description */}
-              <div>
-                <h3 className="text-lg font-medium text-white mb-4">Description</h3>
-                <div className="bg-gray-700 p-4 rounded-lg">
-                  <p className="text-gray-300">{report.description || 'No description provided'}</p>
-                </div>
-              </div>
-
-              {/* Evidence */}
-              {report.evidence && report.evidence.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-4">Evidence</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {report.evidence.map((evidence, index) => (
-                      <div key={index} className="bg-gray-700 p-2 rounded">
-                        {evidence.type === 'image' ? (
-                          <img src={evidence.url} alt={`Evidence ${index + 1}`} className="w-full h-24 object-cover rounded" />
-                        ) : (
-                          <div className="flex items-center justify-center h-24 bg-gray-600 rounded">
-                            <FileText className="w-8 h-8 text-gray-400" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* Admin Section */}
+            {/* Users Information */}
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-medium text-white mb-4">Admin Actions</h3>
-                
-                {/* Previous Admin Response */}
-                {report.admin_response && (
-                  <div className="bg-gray-700 p-4 rounded-lg mb-4">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Shield className="w-4 h-4 text-blue-400" />
-                      <span className="text-blue-400 font-medium">Previous Response</span>
+                <h3 className="text-lg font-medium text-white mb-4">Involved Users</h3>
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-700 rounded-lg">
+                    <h4 className="text-white font-medium mb-2">Reporter</h4>
+                    <div className="space-y-1">
+                      <div className="text-gray-300">{report.reporter_name || 'Unknown'}</div>
+                      <div className="text-gray-400 text-sm">ID: {report.reporter_id}</div>
                     </div>
-                    <p className="text-gray-300 text-sm">{report.admin_response}</p>
                   </div>
-                )}
-
-                {/* New Response */}
-                <div className="space-y-3">
-                  <textarea
-                    placeholder="Type your response or resolution notes..."
-                    value={adminResponse}
-                    onChange={(e) => setAdminResponse(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    rows={4}
-                  />
                   
-                  <Button
-                    onClick={handleSendMessage}
-                    loading={sendingMessage}
-                    disabled={!adminResponse.trim()}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Send Message to Parties
-                  </Button>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div>
-                <h4 className="text-white font-medium mb-3">Quick Actions</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {report.status === 'pending' && (
-                    <>
-                      <Button
-                        onClick={() => onAction(report.id, 'investigate')}
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Search className="w-4 h-4 mr-1" />
-                        Investigate
-                      </Button>
-                      <Button
-                        onClick={() => onAction(report.id, 'resolve')}
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <Check className="w-4 h-4 mr-1" />
-                        Resolve
-                      </Button>
-                    </>
-                  )}
-                  
-                  {report.status === 'investigating' && (
-                    <Button
-                      onClick={() => onAction(report.id, 'resolve')}
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 col-span-2"
-                    >
-                      <Check className="w-4 h-4 mr-1" />
-                      Mark as Resolved
-                    </Button>
-                  )}
-                  
-                  {(report.status === 'pending' || report.status === 'investigating') && (
-                    <Button
-                      onClick={() => onAction(report.id, 'reject')}
-                      size="sm"
-                      variant="outline"
-                      className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white col-span-2"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Dismiss Report
-                    </Button>
-                  )}
+                  <div className="p-4 bg-red-900/20 border border-red-800 rounded-lg">
+                    <h4 className="text-white font-medium mb-2">Reported User</h4>
+                    <div className="space-y-1">
+                      <div className="text-gray-300">{report.reported_user_name || 'Unknown'}</div>
+                      <div className="text-gray-400 text-sm">ID: {report.reported_user_id}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Modal Actions */}
+          {/* Admin Actions */}
+          {report.status === 'pending' && (
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-white mb-4">Take Action</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Action</label>
+                  <select
+                    value={selectedAction}
+                    onChange={(e) => setSelectedAction(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  >
+                    <option value="">Select an action</option>
+                    <option value="resolve">Resolve Report</option>
+                    <option value="ban_user">Ban Reported User</option>
+                    <option value="warn_user">Warn Reported User</option>
+                    <option value="dismiss">Dismiss Report</option>
+                    <option value="escalate">Escalate Report</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Reason (Optional)</label>
+                  <textarea
+                    value={actionReason}
+                    onChange={(e) => setActionReason(e.target.value)}
+                    placeholder="Provide a reason for this action..."
+                    rows={3}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
           <div className="mt-6 flex justify-end space-x-3 pt-4 border-t border-gray-700">
             <Button
               onClick={onClose}
@@ -795,6 +638,17 @@ const ReportDetailModal = ({ report, onClose, onAction }) => {
             >
               Close
             </Button>
+            
+            {report.status === 'pending' && (
+              <Button
+                onClick={handleTakeAction}
+                variant="gradient"
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={!selectedAction}
+              >
+                Take Action
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -802,55 +656,20 @@ const ReportDetailModal = ({ report, onClose, onAction }) => {
   );
 };
 
-// Helper function (moved here since it's used in modal)
-const getPriorityLevel = (report) => {
-  const highPriorityCategories = ['harassment', 'fraud', 'safety_concern'];
-  const daysSinceReport = Math.floor(
-    (new Date() - new Date(report.created_at)) / (1000 * 60 * 60 * 24)
-  );
-  
-  if (highPriorityCategories.includes(report.category)) {
-    return { level: 'high', color: 'text-red-400', label: 'High Priority' };
-  } else if (daysSinceReport >= 3) {
-    return { level: 'medium', color: 'text-yellow-400', label: 'Overdue' };
-  }
-  return { level: 'normal', color: 'text-gray-400', label: 'Normal' };
-};
-
-const getCategoryBadge = (category) => {
-  const badges = {
-    'inappropriate_content': { bg: 'bg-red-100', text: 'text-red-800', label: 'Inappropriate Content' },
-    'harassment': { bg: 'bg-red-100', text: 'text-red-800', label: 'Harassment' },
-    'fraud': { bg: 'bg-red-100', text: 'text-red-800', label: 'Fraud' },
-    'spam': { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Spam' },
-    'fake_listing': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Fake Listing' },
-    'safety_concern': { bg: 'bg-red-100', text: 'text-red-800', label: 'Safety Concern' },
-    'other': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Other' }
-  };
-  
-  const badge = badges[category] || badges.other;
-  
-  return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-      {badge.label}
-    </span>
-  );
-};
-
+// Helper function for status badge (moved outside component to avoid re-creation)
 const getStatusBadge = (status) => {
   const badges = {
-    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending', icon: Clock },
-    investigating: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Investigating', icon: Search },
-    resolved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved', icon: Check },
-    dismissed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Dismissed', icon: X }
+    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
+    reviewed: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Reviewed' },
+    resolved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved' },
+    dismissed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Dismissed' },
+    escalated: { bg: 'bg-red-100', text: 'text-red-800', label: 'Escalated' }
   };
   
   const badge = badges[status] || badges.pending;
-  const Icon = badge.icon;
   
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-      <Icon className="w-3 h-3 mr-1" />
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
       {badge.label}
     </span>
   );

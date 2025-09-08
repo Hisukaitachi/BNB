@@ -29,11 +29,30 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Handle banned user responses
+    if (error.response?.status === 403 && 
+        error.response?.data?.message === 'Account has been banned') {
+      
+      console.log('API detected banned user, forcing logout...');
+      
+      // Complete logout
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      
+      // Force redirect to ban page
+      window.location.href = '/banned';
+      
+      return Promise.reject(new Error('Account banned'));
+    }
+    
+    // Existing 401 handling
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/auth/login';
     }
+    
     return Promise.reject(error);
   }
 );
@@ -74,8 +93,11 @@ export const adminAPI = {
   getAllTransactions: () => api.get('/admin/transactions'),
   
   // Reports & User Safety
-  getAllReports: () => api.get('/admin/reports'),
-  takeAction: (actionData) => api.post('/admin/actions', actionData)
+  // Add these to your adminAPI object in api.js
+
+  // Reports & Disputes Management
+  getAllReports: () => api.get('/reports/admin/reports'),
+  takeAction: (actionData) => api.post('/reports/admin/actions', actionData)
 };
 
 // ✅ FIXED PAYOUT FUNCTIONS - Direct payout endpoints for hosts

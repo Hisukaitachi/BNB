@@ -1,14 +1,13 @@
-// frontend/src/services/adminService.js - FIXED VERSION
+// frontend/src/services/adminService.js - CLEANED VERSION
 import api from './api';
 
 class AdminService {
   /**
-   * Get admin dashboard overview data - FIXED ENDPOINT
+   * Get admin dashboard overview data
    * @returns {Promise<object>} Dashboard data
    */
   async getDashboardOverview() {
     try {
-      // ✅ FIXED: Use the correct endpoint that exists in your backend
       const response = await api.get('/admin/dashboard-stats');
       return response.data.data || {};
     } catch (error) {
@@ -75,6 +74,20 @@ class AdminService {
     }
   }
 
+  /**
+   * Check user ban status
+   * @param {number} userId - User ID
+   * @returns {Promise<object>} Ban status
+   */
+  async checkBanStatus(userId) {
+    try {
+      const response = await api.get(`/admin/check-ban/${userId}`);
+      return response.data.data || {};
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to check ban status');
+    }
+  }
+
   // LISTING MANAGEMENT
   /**
    * Get all listings for admin review
@@ -91,86 +104,19 @@ class AdminService {
   }
 
   /**
-   * Delete listing
+   * Remove listing
    * @param {number} listingId - Listing ID
-   * @param {string} reason - Deletion reason
-   * @returns {Promise<object>} Deletion result
+   * @param {string} reason - Removal reason
+   * @returns {Promise<object>} Removal result
    */
-  async deleteListing(listingId, reason = '') {
+  async removeListing(listingId, reason = '') {
     try {
       const response = await api.delete(`/admin/listings/${listingId}`, { 
         data: { reason } 
       });
       return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to delete listing');
-    }
-  }
-
-  // ✅ FIXED PAYOUT MANAGEMENT - Using correct endpoints
-  /**
-   * Get all payouts
-   * @param {object} params - Query parameters
-   * @returns {Promise<Array>} Payouts list
-   */
-  async getAllPayouts(params = {}) {
-    try {
-      const response = await api.get('/payouts/all', { params });
-      return response.data.data?.payouts || [];
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch payouts');
-    }
-  }
-
-  /**
-   * Get platform earnings - ADDED MISSING METHOD
-   * @returns {Promise<object>} Platform earnings data
-   */
-  async getPlatformEarnings() {
-    try {
-      // Use dashboard stats to get earnings data
-      const dashboardData = await this.getDashboardOverview();
-      
-      // Calculate platform earnings from dashboard stats
-      const platformEarnings = {
-        totalRevenue: dashboardData.totalRevenue || 0,
-        totalCommission: (dashboardData.totalRevenue || 0) * 0.1, // 10% platform fee
-        totalPayouts: dashboardData.totalPayouts || 0,
-        pendingPayouts: dashboardData.pendingPayouts || 0,
-        netEarnings: ((dashboardData.totalRevenue || 0) * 0.1) - (dashboardData.totalPayouts || 0)
-      };
-      
-      return platformEarnings;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch platform earnings');
-    }
-  }
-
-  /**
-   * Get host earnings (admin checking specific host)
-   * @param {number} hostId - Host ID
-   * @returns {Promise<object>} Host earnings
-   */
-  async getHostEarnings(hostId) {
-    try {
-      const response = await api.get(`/admin/earnings/${hostId}`);
-      return response.data || {};
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch host earnings');
-    }
-  }
-
-  /**
-   * Release/process payout
-   * @param {object} payoutData - Payout data
-   * @returns {Promise<object>} Processing result
-   */
-  async releasePayout(payoutData) {
-    try {
-      const response = await api.post('/admin/payouts/release', payoutData);
-      return { success: true, data: response.data };
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to process payout');
+      throw new Error(error.response?.data?.message || 'Failed to remove listing');
     }
   }
 
@@ -206,32 +152,32 @@ class AdminService {
     }
   }
 
-  // REPORT MANAGEMENT
   /**
-   * Get all reports
-   * @param {object} params - Query parameters
-   * @returns {Promise<Array>} Reports list
+   * Update booking status
+   * @param {number} bookingId - Booking ID
+   * @param {string} status - New status
+   * @returns {Promise<object>} Update result
    */
-  async getAllReports(params = {}) {
+  async updateBookingStatus(bookingId, status) {
     try {
-      const response = await api.get('/admin/reports', { params });
-      return response.data.data?.reports || [];
+      const response = await api.put(`/admin/bookings/${bookingId}/status`, { status });
+      return { success: true, data: response.data };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch reports');
+      throw new Error(error.response?.data?.message || 'Failed to update booking status');
     }
   }
 
   /**
-   * Take action on report
-   * @param {object} actionData - Action data
-   * @returns {Promise<object>} Action result
+   * Get booking history
+   * @param {number} bookingId - Booking ID
+   * @returns {Promise<Array>} Booking history
    */
-  async takeAction(actionData) {
+  async getBookingHistory(bookingId) {
     try {
-      const response = await api.post('/admin/actions', actionData);
-      return { success: true, data: response.data };
+      const response = await api.get(`/admin/bookings/${bookingId}/history`);
+      return response.data.data?.history || [];
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to take action');
+      throw new Error(error.response?.data?.message || 'Failed to fetch booking history');
     }
   }
 

@@ -5,6 +5,8 @@ import { AppProvider } from './context/AppContext';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import LandingPage from './pages/LandingPage';
+import BanPage from './pages/BanPage';
+import ClientNotifications from './pages/Notifications';
 import ListingsPage from './pages/listings/ListingsPage';
 import ListingDetailsPage from './pages/listings/ListingDetailsPage';
 import ProfilePage from './pages/profile/ProfilePage';
@@ -76,7 +78,12 @@ function App() {
               <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<LandingPage />} />
-                
+                <Route path="/notifications" element={
+                  <ProtectedRoute>
+                    <ClientNotifications />
+                  </ProtectedRoute>
+                } />
+                <Route path="/banned" element={<BanPage />} />
                 {/* Auth Routes */}
                 <Route 
                   path="/auth/login" 

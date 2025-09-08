@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostReports.jsx - Reports & Disputes for Hosts
+// frontend/src/components/host/HostReports.jsx - Simplified Working Version
 import React, { useState, useEffect } from 'react';
 import { 
   AlertTriangle, 
@@ -7,17 +7,13 @@ import {
   FileText, 
   User, 
   Calendar,
-  MessageSquare,
-  Eye,
   RefreshCw,
   Plus,
   Filter
 } from 'lucide-react';
-import { reportsService, REPORT_TYPES, REPORT_STATUS } from '../../services/reportsService';
 import hostService from '../../services/hostService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { Textarea } from '../ui/Input';
 
 const HostReports = () => {
   const [reports, setReports] = useState([]);
@@ -26,45 +22,27 @@ const HostReports = () => {
   const [showReportForm, setShowReportForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [hostBookings, setHostBookings] = useState([]);
 
   const [reportData, setReportData] = useState({
     reported_user_id: '',
     booking_id: '',
-    type: '',
-    reason: '',
-    description: '',
-    client_name: ''
+    reason: ''
   });
 
   useEffect(() => {
     loadReports();
-    loadHostBookings();
   }, []);
 
   const loadReports = async () => {
     try {
       setLoading(true);
       setError(null);
-      const reportsData = await hostService.getMyReports();
-      setReports(reportsData.map(report => reportsService.formatReport(report)));
+      const reports = await hostService.getMyReports();
+      setReports(reports || []);
     } catch (err) {
-      setError(err.message);
+      setError('Failed to load reports: ' + err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadHostBookings = async () => {
-    try {
-      const bookingsData = await hostService.getHostBookings();
-      // Get completed bookings with client info for reporting
-      const completedBookings = bookingsData.bookings.filter(booking => 
-        ['completed', 'confirmed'].includes(booking.status)
-      );
-      setHostBookings(completedBookings);
-    } catch (error) {
-      console.error('Failed to load bookings for reports:', error);
     }
   };
 
@@ -74,46 +52,48 @@ const HostReports = () => {
       ...prev,
       [name]: value
     }));
-
-    // Auto-fill client info when booking is selected
-    if (name === 'booking_id' && value) {
-      const selectedBooking = hostBookings.find(b => b.booking_id == value);
-      if (selectedBooking) {
-        setReportData(prev => ({
-          ...prev,
-          reported_user_id: selectedBooking.client_id,
-          client_name: selectedBooking.client_name
-        }));
-      }
-    }
   };
 
   const handleSubmitReport = async (e) => {
     e.preventDefault();
     
-    const validation = reportsService.validateReportData(reportData);
-    if (!validation.isValid) {
-      alert(validation.errors.join('\n'));
+    // Validation
+    if (!reportData.reported_user_id || !reportData.reason.trim()) {
+      alert('Please fill in:\n- Client User ID\n- Description');
+      return;
+    }
+
+    if (reportData.reason.trim().length < 10) {
+      alert('Please provide a more detailed description (at least 10 characters)');
       return;
     }
 
     try {
       setSubmitting(true);
-      await hostService.submitReport(reportData);
       
-      // Reset form
-      setReportData({
-        reported_user_id: '',
-        booking_id: '',
-        type: '',
-        reason: '',
-        description: '',
-        client_name: ''
-      });
+      // Prepare the report data - convert empty booking_id to null
+      const reportPayload = {
+        reported_user_id: parseInt(reportData.reported_user_id),
+        booking_id: reportData.booking_id ? parseInt(reportData.booking_id) : null,
+        reason: reportData.reason.trim()
+      };
       
-      setShowReportForm(false);
-      await loadReports(); // Refresh reports
-      alert('Report submitted successfully!');
+      console.log('Submitting report with payload:', reportPayload);
+      
+      const result = await hostService.submitReport(reportPayload);
+      
+      if (result.success) {
+        // Reset form
+        setReportData({
+          reported_user_id: '',
+          booking_id: '',
+          reason: ''
+        });
+        
+        setShowReportForm(false);
+        await loadReports();
+        alert('Report submitted successfully!');
+      }
     } catch (error) {
       alert('Failed to submit report: ' + error.message);
     } finally {
@@ -121,13 +101,26 @@ const HostReports = () => {
     }
   };
 
+  const getStatusBadge = (status) => {
+    const badges = {
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
+      resolved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved' },
+      dismissed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Dismissed' }
+    };
+    
+    const badge = badges[status] || badges.pending;
+    
+    return (
+      <span className={`px-3 py-1 rounded-full text-sm font-medium ${badge.bg} ${badge.text}`}>
+        {badge.label}
+      </span>
+    );
+  };
+
   const filteredReports = reports.filter(report => {
     if (filterStatus === 'all') return true;
     return report.status === filterStatus;
   });
-
-  const reportTypes = reportsService.getReportTypes();
-  const guidelines = reportsService.getReportGuidelines();
 
   if (loading) {
     return (
@@ -178,7 +171,7 @@ const HostReports = () => {
         </div>
         
         <div className="flex space-x-2">
-          {['all', 'pending', 'under_review', 'resolved', 'closed'].map(status => (
+          {['all', 'pending', 'resolved', 'dismissed'].map(status => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
@@ -188,7 +181,7 @@ const HostReports = () => {
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              {status === 'all' ? 'All' : status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
             </button>
           ))}
         </div>
@@ -199,12 +192,12 @@ const HostReports = () => {
         <div className="text-center py-16">
           <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">
-            {filterStatus === 'all' ? 'No reports submitted' : `No ${filterStatus.replace('_', ' ')} reports`}
+            {filterStatus === 'all' ? 'No reports submitted' : `No ${filterStatus} reports`}
           </h3>
           <p className="text-gray-400 mb-6">
             {filterStatus === 'all' 
               ? 'Your submitted reports will appear here' 
-              : `No reports with ${filterStatus.replace('_', ' ')} status found`
+              : `No reports with ${filterStatus} status found`
             }
           </p>
           {filterStatus === 'all' && (
@@ -223,21 +216,25 @@ const HostReports = () => {
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-white">{report.typeLabel}</h3>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${report.statusColor}`}>
-                      {report.statusLabel}
-                    </span>
+                    <h3 className="text-lg font-semibold text-white">Report #{report.id}</h3>
+                    {getStatusBadge(report.status)}
                   </div>
                   
                   <div className="text-sm text-gray-400 space-y-1">
                     <div className="flex items-center">
                       <Calendar className="w-4 h-4 mr-2" />
-                      <span>Submitted {report.formattedDate}</span>
+                      <span>Submitted {new Date(report.created_at).toLocaleDateString()}</span>
                     </div>
                     {report.booking_id && (
                       <div className="flex items-center">
                         <FileText className="w-4 h-4 mr-2" />
                         <span>Booking #{report.booking_id}</span>
+                      </div>
+                    )}
+                    {report.reported_user_name && (
+                      <div className="flex items-center">
+                        <User className="w-4 h-4 mr-2" />
+                        <span>Reported: {report.reported_user_name}</span>
                       </div>
                     )}
                   </div>
@@ -251,49 +248,9 @@ const HostReports = () => {
                 </p>
               </div>
 
-              {report.admin_response && (
-                <div className="mb-4">
-                  <h4 className="text-blue-400 font-medium mb-2">Admin Response:</h4>
-                  <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3">
-                    <p className="text-blue-300 text-sm">{report.admin_response}</p>
-                  </div>
-                </div>
-              )}
-
               <div className="flex items-center justify-between pt-4 border-t border-gray-700">
                 <div className="text-xs text-gray-500">
-                  Report ID: {report.id} • {report.timeAgo}
-                </div>
-                
-                <div className="flex space-x-2">
-                  {report.booking_id && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-gray-400"
-                      onClick={() => {
-                        // TODO: View booking details
-                        console.log('View booking:', report.booking_id);
-                      }}
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View Booking
-                    </Button>
-                  )}
-                  
-                  {report.status === REPORT_STATUS.PENDING && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-gray-400"
-                      onClick={() => {
-                        // TODO: Edit report
-                        console.log('Edit report:', report.id);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  )}
+                  Report ID: {report.id}
                 </div>
               </div>
             </div>
@@ -301,7 +258,7 @@ const HostReports = () => {
         </div>
       )}
 
-      {/* Report Form Modal */}
+      {/* Simple Report Form Modal */}
       {showReportForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -319,122 +276,69 @@ const HostReports = () => {
             <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4 mb-6">
               <h3 className="text-blue-400 font-medium mb-2">Before you report:</h3>
               <ul className="text-blue-300 text-sm space-y-1">
-                {guidelines.map((guideline, index) => (
-                  <li key={index}>• {guideline}</li>
-                ))}
+                <li>• Try to resolve the issue directly with the guest first</li>
+                <li>• Provide specific details about what happened</li>
+                <li>• Include dates, times, and relevant booking information</li>
+                <li>• Be honest and factual in your description</li>
               </ul>
             </div>
 
             <form onSubmit={handleSubmitReport} className="space-y-6">
-              {/* Booking Selection */}
+              {/* Client User ID */}
               <div>
-                <label className="block text-sm text-gray-300 mb-2">Related Booking (Recommended)</label>
-                <select
+                <label className="block text-sm text-gray-300 mb-2">Client User ID *</label>
+                <Input
+                  name="reported_user_id"
+                  type="number"
+                  value={reportData.reported_user_id}
+                  onChange={handleInputChange}
+                  placeholder="Enter client user ID to report"
+                  className="bg-gray-700 border-gray-600 text-white"
+                  required
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  You can find the user ID in your booking details or messages
+                </p>
+              </div>
+
+              {/* Optional Booking ID */}
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Related Booking ID (Optional)</label>
+                <Input
                   name="booking_id"
+                  type="number"
                   value={reportData.booking_id}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                >
-                  <option value="">Select a booking (optional)</option>
-                  {hostBookings.map(booking => (
-                    <option key={booking.booking_id} value={booking.booking_id} className="bg-gray-800">
-                      {booking.title} - {booking.client_name} ({new Date(booking.check_in_date).toLocaleDateString()})
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Enter booking ID if this report relates to a specific booking"
+                  className="bg-gray-700 border-gray-600 text-white"
+                />
               </div>
 
-              {/* Client Selection */}
-              {!reportData.booking_id && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Client User ID *"
-                    name="reported_user_id"
-                    type="number"
-                    value={reportData.reported_user_id}
-                    onChange={handleInputChange}
-                    placeholder="Enter client user ID"
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                  
-                  <Input
-                    label="Client Name (for reference)"
-                    name="client_name"
-                    value={reportData.client_name}
-                    onChange={handleInputChange}
-                    placeholder="Client's name"
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              )}
-
-              {/* Selected Client Info */}
-              {reportData.client_name && (
-                <div className="bg-gray-700 rounded-lg p-3">
-                  <div className="flex items-center text-white">
-                    <User className="w-4 h-4 mr-2" />
-                    <span>Reporting: <strong>{reportData.client_name}</strong></span>
-                  </div>
-                  {reportData.booking_id && (
-                    <div className="flex items-center text-gray-400 text-sm mt-1">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      <span>Booking #{reportData.booking_id}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Report Type */}
+              {/* Description */}
               <div>
-                <label className="block text-sm text-gray-300 mb-2">Report Type *</label>
-                <select
-                  name="type"
-                  value={reportData.type}
+                <label className="block text-sm text-gray-300 mb-2">Detailed Description *</label>
+                <textarea
+                  name="reason"
+                  value={reportData.reason}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                >
-                  <option value="">Select report type</option>
-                  {Object.entries(reportTypes).map(([key, type]) => (
-                    <option key={key} value={key} className="bg-gray-800">
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Please provide specific details about the issue, including dates, times, and what happened..."
+                  rows={6}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white resize-none"
+                  required
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Minimum 10 characters. Be specific and factual.
+                </p>
               </div>
 
-              {/* Type Description */}
-              {reportData.type && (
-                <div className="bg-gray-700 rounded-lg p-4">
-                  <h4 className="text-white font-medium mb-2">{reportTypes[reportData.type].label}</h4>
-                  <p className="text-sm text-gray-300 mb-2">
-                    {reportTypes[reportData.type].description}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    <strong>Examples:</strong> {reportTypes[reportData.type].examples.join(', ')}
-                  </p>
-                </div>
-              )}
-
-              {/* Detailed Reason */}
-              <Textarea
-                label="Detailed Description *"
-                name="reason"
-                value={reportData.reason}
-                onChange={handleInputChange}
-                placeholder="Please provide specific details about the issue, including dates, times, and what happened..."
-                rows={5}
-                className="bg-gray-700 border-gray-600 text-white"
-              />
-
-              {/* Host-specific Tips */}
+              {/* Host Tips */}
               <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4">
-                <h4 className="text-yellow-400 font-medium mb-2">🏠 Host Reporting Tips:</h4>
+                <h4 className="text-yellow-400 font-medium mb-2">Host Reporting Tips:</h4>
                 <ul className="text-yellow-300 text-sm space-y-1">
                   <li>• Include specific dates and times when issues occurred</li>
                   <li>• Mention any property damage with details</li>
                   <li>• Reference house rules that were violated</li>
                   <li>• Include communication attempts made to resolve the issue</li>
-                  <li>• Attach photos of damage if applicable</li>
                 </ul>
               </div>
 
@@ -448,10 +352,7 @@ const HostReports = () => {
                     setReportData({
                       reported_user_id: '',
                       booking_id: '',
-                      type: '',
-                      reason: '',
-                      description: '',
-                      client_name: ''
+                      reason: ''
                     });
                   }}
                 >

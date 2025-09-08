@@ -515,9 +515,6 @@ exports.getNearbyListings = catchAsync(async (req, res, next) => {
   });
 });
 
-// Improved view request functions for listingController.js
-// Replace your existing view functions with these improved versions
-
 exports.requestViewUnit = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   const { listingId } = req.params;

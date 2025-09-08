@@ -379,132 +379,153 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     return next(new AppError('Limit cannot exceed 100 bookings per page', 400));
   }
 
-  const offset = (parseInt(page) - 1) * parseInt(limit);
-  let whereClause = '1=1';
-  const queryParams = [];
-
-  // Filter by status
+  // Validate status if provided
   if (status) {
     const validStatuses = ['pending', 'approved', 'confirmed', 'rejected', 'cancelled', 'completed', 'refunded'];
     if (!validStatuses.includes(status)) {
       return next(new AppError('Invalid booking status', 400));
     }
-    whereClause += ' AND b.status = ?';
-    queryParams.push(status);
   }
 
-  // Filter by host
-  if (host_id && !isNaN(host_id)) {
-    whereClause += ' AND l.host_id = ?';
-    queryParams.push(parseInt(host_id));
-  }
+  try {
+    // Call your simple stored procedure (no parameters)
+    const [result] = await pool.query('CALL sp_get_all_bookings()');
+    
+    // Get all bookings from stored procedure
+    let allBookings = result[0];
 
-  // Filter by client
-  if (client_id && !isNaN(client_id)) {
-    whereClause += ' AND b.client_id = ?';
-    queryParams.push(parseInt(client_id));
-  }
-
-  queryParams.push(parseInt(limit), offset);
-
-  const [result] = await pool.query(`
-    SELECT 
-      b.*, 
-      u.name AS client_name, 
-      u.email AS client_email,
-      l.title AS listing_title,
-      l.host_id,
-      h.name AS host_name,
-      h.email AS host_email,
-      DATEDIFF(b.end_date, b.start_date) as duration_days
-    FROM bookings b
-    JOIN users u ON b.client_id = u.id
-    JOIN listings l ON b.listing_id = l.id
-    JOIN users h ON l.host_id = h.id
-    WHERE ${whereClause}
-    ORDER BY b.created_at DESC
-    LIMIT ? OFFSET ?
-  `, queryParams);
-
-  // Get total count
-  const [countResult] = await pool.query(`
-    SELECT COUNT(*) as total 
-    FROM bookings b
-    JOIN listings l ON b.listing_id = l.id
-    WHERE ${whereClause}
-  `, queryParams.slice(0, -2));
-
-  // Get status distribution
-  const [statusStats] = await pool.query(`
-    SELECT status, COUNT(*) as count
-    FROM bookings b
-    JOIN listings l ON b.listing_id = l.id
-    WHERE ${whereClause.replace(/\bAND b\.status = \?/, '')}
-    GROUP BY status
-  `, queryParams.slice(0, -2).filter((_, index) => index !== queryParams.indexOf(status)));
-  
-  res.status(200).json({
-    status: 'success',
-    results: result.length,
-    data: {
-      bookings: result,
-      statistics: {
-        statusDistribution: statusStats.reduce((acc, stat) => {
-          acc[stat.status] = stat.count;
-          return acc;
-        }, {})
-      },
-      pagination: {
-        total: countResult[0].total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
-      }
+    // Apply filtering manually in JavaScript
+    if (status) {
+      allBookings = allBookings.filter(booking => booking.booking_status === status);
     }
-  });
-});
+    
+    if (host_id && !isNaN(host_id)) {
+      allBookings = allBookings.filter(booking => booking.host_id === parseInt(host_id));
+    }
+    
+    if (client_id && !isNaN(client_id)) {
+      allBookings = allBookings.filter(booking => booking.client_id === parseInt(client_id));
+    }
 
-exports.cancelBooking = catchAsync(async (req, res, next) => {
-  const { bookingId } = req.params;
+    // Apply pagination manually
+    const totalBookings = allBookings.length;
+    const parsedLimit = parseInt(limit);
+    const offset = (parseInt(page) - 1) * parsedLimit;
+    const paginatedBookings = allBookings.slice(offset, offset + parsedLimit);
+
+    // Calculate status distribution from all filtered bookings (excluding current status filter)
+    let bookingsForStats = result[0]; // Start with all bookings again
+    
+    // Apply non-status filters for statistics
+    if (host_id && !isNaN(host_id)) {
+      bookingsForStats = bookingsForStats.filter(booking => booking.host_id === parseInt(host_id));
+    }
+    
+    if (client_id && !isNaN(client_id)) {
+      bookingsForStats = bookingsForStats.filter(booking => booking.client_id === parseInt(client_id));
+    }
+
+    // Create status distribution
+    const statusDistribution = bookingsForStats.reduce((acc, booking) => {
+      const status = booking.booking_status;
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    res.status(200).json({
+      status: 'success',
+      results: paginatedBookings.length,
+      data: {
+        bookings: paginatedBookings,
+        statistics: {
+          statusDistribution: statusDistribution
+        },
+        pagination: {
+          total: totalBookings,
+          page: parseInt(page),
+          limit: parsedLimit,
+          totalPages: Math.ceil(totalBookings / parsedLimit)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getAllBookings:', error);
+    return next(new AppError('Failed to retrieve bookings', 500));
+  }
+});
+// UPDATED - Using Stored Procedures for Booking Management
+
+// Get booking details (using stored procedure)
+exports.getBookingDetails = catchAsync(async (req, res, next) => {
+  const { id: bookingId } = req.params;
 
   if (!bookingId || isNaN(bookingId)) {
     return next(new AppError('Valid booking ID is required', 400));
   }
 
-  const [booking] = await pool.query(
-    `SELECT b.client_id, l.host_id, l.title AS listingTitle, b.date AS bookingDate
-     FROM bookings b
-     JOIN listings l ON b.listing_id = l.id
-     WHERE b.id = ?`,
-    [bookingId]
-  );
-
-  if (!booking.length) {
+  const [result] = await pool.query('CALL sp_get_booking_details(?)', [bookingId]);
+  
+  if (!result[0] || result[0].length === 0) {
     return next(new AppError('Booking not found', 404));
   }
 
-  const { client_id, host_id, listingTitle, bookingDate } = booking[0];
-
-  await pool.query('DELETE FROM bookings WHERE id = ?', [bookingId]);
-
-  await createNotification({
-    userId: client_id,
-    message: `Your booking for "${listingTitle}" on ${bookingDate} has been cancelled by an administrator.`,
-    type: 'booking'
-  });
-
-  await createNotification({
-    userId: host_id,
-    message: `A booking for your listing "${listingTitle}" on ${bookingDate} has been cancelled by an administrator.`,
-    type: 'booking'
-  });
-
   res.status(200).json({
     status: 'success',
-    message: 'Booking cancelled successfully'
+    data: {
+      booking: result[0][0]
+    }
   });
 });
 
+// Cancel booking (using stored procedure) - FIXED
+exports.cancelBooking = catchAsync(async (req, res, next) => {
+  const { bookingId } = req.params;
+  // Fix: Handle case where req.body might be undefined or empty
+  const reason = req.body?.reason || 'Cancelled by administrator';
+
+  if (!bookingId || isNaN(bookingId)) {
+    return next(new AppError('Valid booking ID is required', 400));
+  }
+
+  try {
+    const [result] = await pool.query('CALL sp_cancel_booking(?, ?)', [bookingId, reason]);
+    
+    // Get the booking details from the stored procedure result
+    const bookingDetails = result[0][0];
+
+    // Send notifications to client and host
+    await createNotification({
+      userId: bookingDetails.client_id,
+      message: `Your booking for "${bookingDetails.listing_title}" starting ${new Date(bookingDetails.start_date).toLocaleDateString()} has been cancelled by an administrator. Reason: ${bookingDetails.reason}`,
+      type: 'booking'
+    });
+
+    await createNotification({
+      userId: bookingDetails.host_id,
+      message: `A booking for your listing "${bookingDetails.listing_title}" starting ${new Date(bookingDetails.start_date).toLocaleDateString()} has been cancelled by an administrator.`,
+      type: 'booking'
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Booking cancelled successfully',
+      data: {
+        bookingId: parseInt(bookingId),
+        reason: reason,
+        cancelledAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    if (error.message === 'Booking not found') {
+      return next(new AppError('Booking not found', 404));
+    }
+    throw error;
+  }
+});
+
+// Update booking status (using stored procedure)
 exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   const { id: bookingId } = req.params;
   const { status } = req.body;
@@ -514,37 +535,74 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid booking ID is required', 400));
   }
 
-  const allowedStatuses = ['approved', 'cancelled', 'pending', 'rejected'];
-  if (!allowedStatuses.includes(status)) {
-    return next(new AppError('Invalid status value', 400));
+  if (!status) {
+    return next(new AppError('Status is required', 400));
   }
 
-  const [booking] = await pool.query('SELECT client_id, host_id FROM bookings WHERE id = ?', [bookingId]);
+  try {
+    const [result] = await pool.query('CALL sp_update_booking_status(?, ?, ?)', [bookingId, status, changedBy]);
+    
+    // Get the booking details from the stored procedure result
+    const bookingDetails = result[0][0];
 
-  if (!booking.length) {
-    return next(new AppError('Booking not found', 404));
+    // Send notifications to client and host
+    const clientMessage = `Your booking for "${bookingDetails.listing_title}" status has been updated to "${status}" by an administrator.`;
+    const hostMessage = `A booking for your listing "${bookingDetails.listing_title}" status has been updated to "${status}" by an administrator.`;
+    
+    await createNotification({
+      userId: bookingDetails.client_id,
+      message: clientMessage,
+      type: 'booking'
+    });
+    
+    await createNotification({
+      userId: bookingDetails.host_id,
+      message: hostMessage,
+      type: 'booking'
+    });
+
+    // Emit real-time updates if socket.io is available
+    const io = getIo();
+    if (io) {
+      io.to(`user_${bookingDetails.client_id}`).emit('booking_status_updated', {
+        bookingId: parseInt(bookingId),
+        newStatus: status,
+        message: clientMessage
+      });
+      
+      io.to(`user_${bookingDetails.host_id}`).emit('booking_status_updated', {
+        bookingId: parseInt(bookingId),
+        newStatus: status,
+        message: hostMessage
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: `Booking status updated to ${status}`,
+      data: {
+        bookingId: parseInt(bookingId),
+        newStatus: status,
+        updatedAt: new Date().toISOString(),
+        changedBy: changedBy
+      }
+    });
+
+  } catch (error) {
+    if (error.message === 'Booking not found') {
+      return next(new AppError('Booking not found', 404));
+    }
+    if (error.message === 'Invalid booking status') {
+      return next(new AppError('Invalid booking status', 400));
+    }
+    if (error.message === 'Failed to update booking status') {
+      return next(new AppError('Failed to update booking status', 500));
+    }
+    throw error;
   }
-
-  await pool.query('CALL sp_update_booking_status(?, ?, ?)', [bookingId, status, changedBy]);
-
-  const msg = `Your booking status has been updated to ${status}.`;
-  await createNotification({
-    userId: booking[0].client_id,
-    message: msg,
-    type: 'booking'
-  });
-  await createNotification({
-    userId: booking[0].host_id,
-    message: msg,
-    type: 'booking'
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: `Booking status updated to ${status}`
-  });
 });
 
+// Get booking history (using stored procedure)
 exports.getBookingHistory = catchAsync(async (req, res, next) => {
   const { id: bookingId } = req.params;
   

@@ -1,4 +1,4 @@
-// frontend/src/components/admin/UserManagement.jsx
+// frontend/src/components/admin/UserManagement.jsx - CLEANED VERSION
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -6,19 +6,20 @@ import {
   Filter, 
   Eye, 
   Ban, 
-  UserX,
   Shield,
   RefreshCw,
   MoreHorizontal,
-  Calendar,
   Mail,
-  Phone
+  UserCog
 } from 'lucide-react';
 import adminService from '../../services/adminService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
 const UserManagement = () => {
+  // Temporarily use alert instead of showToast to fix the error
+  const showToast = (message, type) => alert(message);
+  
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,7 @@ const UserManagement = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const [actionLoading, setActionLoading] = useState({});
 
   useEffect(() => {
@@ -72,42 +74,30 @@ const UserManagement = () => {
     // Status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'active') {
-        filtered = filtered.filter(user => user.status === 'active' && !user.is_banned && !user.is_suspended);
+        filtered = filtered.filter(user => !user.is_banned);
       } else if (statusFilter === 'banned') {
         filtered = filtered.filter(user => user.is_banned);
-      } else if (statusFilter === 'suspended') {
-        filtered = filtered.filter(user => user.is_suspended);
-      } else if (statusFilter === 'inactive') {
-        filtered = filtered.filter(user => user.status === 'inactive');
       }
     }
 
     setFilteredUsers(filtered);
   };
 
-  const handleUserAction = async (userId, action) => {
+  const handleUserAction = async (userId, action, additionalData = {}) => {
     try {
       setActionLoading(prev => ({ ...prev, [userId]: action }));
       
       let result;
       switch (action) {
         case 'ban':
-          result = await adminService.banUser(userId);
+          const banReason = additionalData.reason || prompt('Reason for ban (optional):') || 'Violation of terms of service';
+          result = await adminService.banUser(userId, banReason);
           break;
         case 'unban':
           result = await adminService.unbanUser(userId);
           break;
-        case 'suspend':
-          const reason = prompt('Reason for suspension:');
-          if (!reason) return;
-          result = await adminService.suspendUser(userId, reason);
-          break;
-        case 'unsuspend':
-          result = await adminService.unsuspendUser(userId);
-          break;
-        case 'delete':
-          if (!confirm('Are you sure you want to soft delete this user? This action can be reversed.')) return;
-          result = await adminService.softDeleteUser(userId);
+        case 'updateRole':
+          result = await adminService.updateUserRole(userId, additionalData.role);
           break;
         default:
           throw new Error('Invalid action');
@@ -128,13 +118,7 @@ const UserManagement = () => {
     if (user.is_banned) {
       return <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">Banned</span>;
     }
-    if (user.is_suspended) {
-      return <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Suspended</span>;
-    }
-    if (user.status === 'active') {
-      return <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>;
-    }
-    return <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>;
+    return <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>;
   };
 
   const getRoleBadge = (role) => {
@@ -220,9 +204,7 @@ const UserManagement = () => {
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
             <option value="banned">Banned</option>
-            <option value="suspended">Suspended</option>
           </select>
 
           <div className="flex items-center space-x-2 text-sm text-gray-300">
@@ -249,7 +231,7 @@ const UserManagement = () => {
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Role</th>
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Status</th>
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Joined</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Stats</th>
+                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Last Login</th>
                   <th className="text-left py-3 px-6 text-gray-300 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -290,21 +272,12 @@ const UserManagement = () => {
                     </td>
                     <td className="py-4 px-6">
                       <div className="text-sm">
-                        {user.role === 'host' && (
-                          <>
-                            <div className="text-white">{user.listing_count || 0} listings</div>
-                            <div className="text-gray-400">₱{(user.total_earnings || 0).toLocaleString()}</div>
-                          </>
-                        )}
-                        {user.role === 'client' && (
-                          <>
-                            <div className="text-white">{user.booking_count || 0} bookings</div>
-                            <div className="text-gray-400">₱{(user.total_spent || 0).toLocaleString()}</div>
-                          </>
-                        )}
-                        {user.role === 'admin' && (
-                          <div className="text-red-400">Administrator</div>
-                        )}
+                        <div className="text-white">
+                          {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                        </div>
+                        <div className="text-gray-400">
+                          {user.last_login ? new Date(user.last_login).toLocaleTimeString() : ''}
+                        </div>
                       </div>
                     </td>
                     <td className="py-4 px-6">
@@ -344,29 +317,6 @@ const UserManagement = () => {
                           </Button>
                         )}
 
-                        {!user.is_suspended ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-yellow-400 hover:text-yellow-300"
-                            loading={actionLoading[user.id] === 'suspend'}
-                            onClick={() => handleUserAction(user.id, 'suspend')}
-                            disabled={user.role === 'admin'}
-                          >
-                            <UserX className="w-4 h-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-blue-400 hover:text-blue-300"
-                            loading={actionLoading[user.id] === 'unsuspend'}
-                            onClick={() => handleUserAction(user.id, 'unsuspend')}
-                          >
-                            <Users className="w-4 h-4" />
-                          </Button>
-                        )}
-
                         <div className="relative group">
                           <Button
                             size="sm"
@@ -388,26 +338,16 @@ const UserManagement = () => {
                               <span>Copy Email</span>
                             </button>
                             
-                            {user.phone && (
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(user.phone);
-                                  alert('Phone copied to clipboard');
-                                }}
-                                className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-gray-600 w-full text-left"
-                              >
-                                <Phone className="w-4 h-4" />
-                                <span>Copy Phone</span>
-                              </button>
-                            )}
-                            
                             <button
-                              onClick={() => handleUserAction(user.id, 'delete')}
-                              className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:bg-gray-600 w-full text-left"
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowRoleModal(true);
+                              }}
+                              className="flex items-center space-x-2 px-4 py-2 text-blue-400 hover:bg-gray-600 w-full text-left"
                               disabled={user.role === 'admin'}
                             >
-                              <UserX className="w-4 h-4" />
-                              <span>Soft Delete</span>
+                              <UserCog className="w-4 h-4" />
+                              <span>Change Role</span>
                             </button>
                           </div>
                         </div>
@@ -430,6 +370,22 @@ const UserManagement = () => {
             setSelectedUser(null);
           }}
           onAction={handleUserAction}
+        />
+      )}
+
+      {/* Role Change Modal */}
+      {showRoleModal && selectedUser && (
+        <RoleChangeModal 
+          user={selectedUser}
+          onClose={() => {
+            setShowRoleModal(false);
+            setSelectedUser(null);
+          }}
+          onConfirm={(newRole) => {
+            handleUserAction(selectedUser.id, 'updateRole', { role: newRole });
+            setShowRoleModal(false);
+            setSelectedUser(null);
+          }}
         />
       )}
     </div>
@@ -462,12 +418,12 @@ const UserDetailModal = ({ user, onClose, onAction }) => {
                   <span className="text-white ml-2">{user.email}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400">Phone:</span>
-                  <span className="text-white ml-2">{user.phone || 'Not provided'}</span>
-                </div>
-                <div>
                   <span className="text-gray-400">Role:</span>
                   <span className="text-white ml-2 capitalize">{user.role}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">User ID:</span>
+                  <span className="text-white ml-2">{user.id}</span>
                 </div>
                 <div>
                   <span className="text-gray-400">Joined:</span>
@@ -489,24 +445,8 @@ const UserDetailModal = ({ user, onClose, onAction }) => {
               <div className="space-y-3">
                 <div>
                   <span className="text-gray-400">Status:</span>
-                  <span className="text-white ml-2">{user.status}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Banned:</span>
                   <span className={`ml-2 ${user.is_banned ? 'text-red-400' : 'text-green-400'}`}>
-                    {user.is_banned ? 'Yes' : 'No'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Suspended:</span>
-                  <span className={`ml-2 ${user.is_suspended ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {user.is_suspended ? 'Yes' : 'No'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Verified:</span>
-                  <span className={`ml-2 ${user.is_verified ? 'text-green-400' : 'text-yellow-400'}`}>
-                    {user.is_verified ? 'Yes' : 'No'}
+                    {user.is_banned ? 'Banned' : 'Active'}
                   </span>
                 </div>
                 <div>
@@ -517,37 +457,6 @@ const UserDetailModal = ({ user, onClose, onAction }) => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Activity Stats */}
-        <div className="mt-6">
-          <h3 className="text-lg font-medium text-white mb-4">Activity Statistics</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {user.role === 'host' && (
-              <>
-                <div className="bg-gray-700 p-3 rounded-lg text-center">
-                  <div className="text-xl font-bold text-white">{user.listing_count || 0}</div>
-                  <div className="text-gray-400 text-sm">Listings</div>
-                </div>
-                <div className="bg-gray-700 p-3 rounded-lg text-center">
-                  <div className="text-xl font-bold text-green-400">₱{(user.total_earnings || 0).toLocaleString()}</div>
-                  <div className="text-gray-400 text-sm">Total Earnings</div>
-                </div>
-              </>
-            )}
-            {user.role === 'client' && (
-              <>
-                <div className="bg-gray-700 p-3 rounded-lg text-center">
-                  <div className="text-xl font-bold text-white">{user.booking_count || 0}</div>
-                  <div className="text-gray-400 text-sm">Bookings</div>
-                </div>
-                <div className="bg-gray-700 p-3 rounded-lg text-center">
-                  <div className="text-xl font-bold text-blue-400">₱{(user.total_spent || 0).toLocaleString()}</div>
-                  <div className="text-gray-400 text-sm">Total Spent</div>
-                </div>
-              </>
-            )}
           </div>
         </div>
 
@@ -586,6 +495,76 @@ const UserDetailModal = ({ user, onClose, onAction }) => {
               Unban User
             </Button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Role Change Modal Component
+const RoleChangeModal = ({ user, onClose, onConfirm }) => {
+  const [selectedRole, setSelectedRole] = useState(user.role);
+  
+  const roles = [
+    { value: 'client', label: 'Client', description: 'Can book listings' },
+    { value: 'host', label: 'Host', description: 'Can create and manage listings' },
+    { value: 'admin', label: 'Admin', description: 'Full administrative access' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-white">Change User Role</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <p className="text-gray-300 mb-4">
+            Changing role for: <span className="font-medium text-white">{user.name}</span>
+          </p>
+          <p className="text-gray-400 text-sm mb-4">
+            Current role: <span className="capitalize">{user.role}</span>
+          </p>
+          
+          <div className="space-y-3">
+            {roles.map((role) => (
+              <label key={role.value} className="flex items-start space-x-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="role"
+                  value={role.value}
+                  checked={selectedRole === role.value}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="text-white font-medium">{role.label}</div>
+                  <div className="text-gray-400 text-sm">{role.description}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-3">
+          <Button
+            onClick={onClose}
+            variant="outline"
+            className="border-gray-600 text-gray-300"
+          >
+            Cancel
+          </Button>
+          
+          <Button
+            onClick={() => onConfirm(selectedRole)}
+            variant="gradient"
+            disabled={selectedRole === user.role}
+          >
+            Update Role
+          </Button>
         </div>
       </div>
     </div>

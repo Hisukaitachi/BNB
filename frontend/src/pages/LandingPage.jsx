@@ -144,7 +144,7 @@ const LandingPage = () => {
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Why <span className="gradient-text">Horizon</span>?
+              Why <span className="gradient-text">STAY</span>?
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
               We go beyond just accommodation to craft memorable experiences that connect you with unique spaces.

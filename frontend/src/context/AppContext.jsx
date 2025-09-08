@@ -86,12 +86,29 @@ const connectSocket = (userId) => {
     });
 
     newSocket.on('banned', (data) => {
-      showToast(data.message, 'error');
-      setTimeout(() => {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-      }, 3000);
-    });
+  console.log('User banned:', data.message);
+  showToast(data.message, 'error');
+  
+  // Immediate logout - no delay
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  sessionStorage.clear();
+  
+  // Disconnect socket
+  if (socket) {
+    socket.disconnect();
+    setSocket(null);
+  }
+  
+  // Reset states
+  setOnlineUsers([]);
+  setNotifications([]);
+  setUnreadMessages(0);
+  setConnectionStatus('disconnected');
+  
+  // Redirect to ban page
+  window.location.href = '/banned';
+});
 
     newSocket.on('unbanned', (data) => {
       showToast(data.message, 'success');

@@ -1,4 +1,4 @@
-// src/pages/auth/LoginPage.jsx - DARK THEME VERSION
+// src/pages/auth/LoginPage.jsx - ALTERNATIVE SIMPLE VERSION
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
@@ -15,7 +15,6 @@ const LoginPage = () => {
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [googleReady, setGoogleReady] = useState(false);
   
   const { login, error, clearError } = useAuth();
   const navigate = useNavigate();
@@ -23,72 +22,72 @@ const LoginPage = () => {
   
   const from = location.state?.from?.pathname || '/';
 
-  // Initialize Google OAuth
+  // Check for Google OAuth callback on component mount
   useEffect(() => {
-    const initializeGoogle = () => {
-      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      
-      if (!clientId) {
-        console.warn('Google Client ID not configured');
-        return;
-      }
-
-      if (window.google) {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleGoogleCallback,
-          auto_select: false,
-          cancel_on_tap_outside: true
-        });
-        setGoogleReady(true);
-      }
-    };
-
-    if (!window.google) {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.onload = initializeGoogle;
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
-    } else {
-      initializeGoogle();
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const error = urlParams.get('error');
+    
+    if (error) {
+      console.error('Google OAuth error:', error);
+      setErrors({ google: 'Google authentication was cancelled or failed' });
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+    
+    if (code) {
+      console.log('Google OAuth code received:', code);
+      handleGoogleCallback(code);
     }
   }, []);
 
-  const handleGoogleCallback = async (response) => {
+  const handleGoogleCallback = async (code) => {
     setIsGoogleLoading(true);
+    
     try {
-      const backendResponse = await fetch('http://localhost:5000/api/users/google-login', {
+      console.log('Sending Google code to backend:', code);
+      
+      const response = await fetch('http://localhost:5000/api/users/google-login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          token: response.credential
+          code: code,
+          redirectUri: `${window.location.origin}${window.location.pathname}`
         })
       });
 
-      const data = await backendResponse.json();
+      const data = await response.json();
+      console.log('Backend response:', data);
 
-      if (!backendResponse.ok) {
+      if (!response.ok) {
         throw new Error(data.message || 'Google login failed');
       }
 
+      // Store tokens
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
+      // Update auth context
       await login({ 
         email: data.data.user.email, 
         isGoogleLogin: true,
         userData: data.data 
       });
       
+      console.log('Google login successful, navigating to:', from);
+      
+      // Clean up URL before navigation
+      window.history.replaceState({}, document.title, window.location.pathname);
       navigate(from, { replace: true });
       
     } catch (error) {
-      console.error('Google login error:', error);
+      console.error('Google callback error:', error);
       setErrors({ google: error.message || 'Google login failed' });
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
     } finally {
       setIsGoogleLoading(false);
     }
@@ -146,14 +145,36 @@ const LoginPage = () => {
     }
   };
 
+  // Simple redirect-based Google OAuth
   const handleGoogleLogin = () => {
-  // Direct redirect to Google OAuth
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const redirectUri = 'http://localhost:5173/auth/login';
-  const googleUrl = `https://accounts.google.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=email profile`;
-  
-  window.location.href = googleUrl;
-};
+    console.log('Initiating Google OAuth redirect...');
+    
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setErrors({ google: 'Google Client ID not configured' });
+      return;
+    }
+
+    setErrors(prev => ({ ...prev, google: null }));
+    
+    // Build OAuth URL with account selection prompt
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: `${window.location.origin}${window.location.pathname}`,
+      response_type: 'code',
+      scope: 'email profile',
+      access_type: 'offline',
+      prompt: 'select_account'  // This forces the account selection screen
+    });
+    
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    
+    console.log('Redirecting to:', authUrl);
+    console.log('Redirect URI:', `${window.location.origin}${window.location.pathname}`);
+    
+    // Redirect to Google
+    window.location.href = authUrl;
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -174,15 +195,24 @@ const LoginPage = () => {
 
         <div className="bg-gray-800 rounded-xl shadow-xl p-8">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* Global auth error */}
             {error && (
               <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
+            {/* Google-specific error */}
             {errors.google && (
               <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {errors.google}
+              </div>
+            )}
+
+            {/* Show loading message during Google callback */}
+            {isGoogleLoading && (
+              <div className="bg-blue-900/20 border border-blue-500 text-blue-400 px-4 py-3 rounded-lg text-sm">
+                Processing Google login...
               </div>
             )}
 
@@ -268,8 +298,7 @@ const LoginPage = () => {
               variant="outline"
               size="lg"
               onClick={handleGoogleLogin}
-              loading={isGoogleLoading}
-              disabled={!googleReady}
+              disabled={isGoogleLoading}
               className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -290,7 +319,7 @@ const LoginPage = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              {googleReady ? 'Continue with Google' : 'Loading Google...'}
+              {isGoogleLoading ? 'Processing...' : 'Continue with Google'}
             </Button>
           </form>
 
