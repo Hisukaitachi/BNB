@@ -1,4 +1,4 @@
-// backend/services/paymentService.js - REPLACE YOUR EXISTING FILE
+// backend/services/paymentService.js - FIXED webhook verification
 const axios = require('axios');
 const crypto = require('crypto');
 const pool = require('../db');
@@ -10,7 +10,16 @@ if (!KEY) {
   console.warn('PAYMONGO_SECRET_KEY not configured - payment features will be disabled');
 }
 
-const basicAuth = KEY ? `Basic ${Buffer.from(`${KEY}:`).toString('base64')}` : null;
+// Fixed authentication header
+const getAuthHeaders = () => {
+  if (!KEY) {
+    throw new Error('PayMongo not configured');
+  }
+  return {
+    'Authorization': `Basic ${Buffer.from(`${KEY}:`).toString('base64')}`,
+    'Content-Type': 'application/json'
+  };
+};
 
 exports.createPaymentIntent = async ({ bookingId, clientId, hostId, amount, currency = 'PHP' }) => {
   if (!KEY) {
@@ -18,12 +27,13 @@ exports.createPaymentIntent = async ({ bookingId, clientId, hostId, amount, curr
   }
 
   try {
+    // Create Payment Intent payload
     const payload = {
       data: {
         attributes: {
           amount: Math.round(amount * 100), // Convert to centavos
           currency: currency.toUpperCase(),
-          payment_method_allowed: ['card', 'gcash', 'grab_pay'],
+          payment_method_allowed: ['gcash', 'card', 'grab_pay'],
           capture_type: 'automatic',
           description: `Booking #${bookingId} payment`,
           metadata: {
@@ -35,15 +45,17 @@ exports.createPaymentIntent = async ({ bookingId, clientId, hostId, amount, curr
       }
     };
 
+    console.log('Creating PayMongo payment intent...');
+    
+    // Create Payment Intent
     const response = await axios.post(`${API}/payment_intents`, payload, {
-      headers: {
-        'Authorization': basicAuth,
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     const intentData = response.data.data;
     const paymentIntentId = intentData.id;
+
+    console.log('Payment intent created:', paymentIntentId);
 
     // Calculate fees
     const platformFee = parseFloat((amount * 0.10).toFixed(2)); // 10% platform fee
@@ -56,18 +68,49 @@ exports.createPaymentIntent = async ({ bookingId, clientId, hostId, amount, curr
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [bookingId, clientId, hostId, paymentIntentId, amount, currency, platformFee, hostEarnings, 'pending']);
 
+    // Create Checkout Session for the payment intent
+    const checkoutPayload = {
+      data: {
+        attributes: {
+          line_items: [{
+            name: `Booking #${bookingId}`,
+            amount: Math.round(amount * 100),
+            currency: currency.toUpperCase(),
+            quantity: 1
+          }],
+          payment_method_types: ['gcash', 'card', 'grab_pay'],
+          success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?booking_id=${bookingId}`,
+          cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?booking_id=${bookingId}`,
+          description: `Payment for Booking #${bookingId}`,
+          metadata: {
+            booking_id: bookingId.toString(),
+            payment_intent_id: paymentIntentId
+          }
+        }
+      }
+    };
+
+    console.log('Creating checkout session...');
+
+    const checkoutResponse = await axios.post(`${API}/checkout_sessions`, checkoutPayload, {
+      headers: getAuthHeaders()
+    });
+
+    const checkoutSession = checkoutResponse.data.data;
+
     return {
       paymentIntent: {
         id: paymentIntentId,
         client_secret: intentData.attributes.client_key,
         status: intentData.attributes.status,
-        amount: intentData.attributes.amount
+        amount: intentData.attributes.amount,
+        checkout_url: checkoutSession.attributes.checkout_url
       },
       paymentId: result.insertId
     };
 
   } catch (error) {
-    console.error('PayMongo payment intent creation failed:', error.response?.data || error.message);
+    console.error('PayMongo payment creation failed:', error.response?.data || error.message);
     throw new Error('Payment processing unavailable. Please try again later.');
   }
 };
@@ -149,10 +192,7 @@ exports.createRefund = async (paymentIntentId, reason = 'requested_by_customer',
     };
 
     const response = await axios.post(`${API}/refunds`, payload, {
-      headers: {
-        'Authorization': basicAuth,
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     const refund = response.data.data;
@@ -171,29 +211,73 @@ exports.createRefund = async (paymentIntentId, reason = 'requested_by_customer',
   }
 };
 
+// FIXED: Proper PayMongo webhook signature verification
 exports.verifyWebhookSignature = async (rawBody, signature) => {
+  // If webhook secret not configured, log warning but allow in development
   if (!process.env.PAYMONGO_WEBHOOK_SECRET) {
-    console.warn('PAYMONGO_WEBHOOK_SECRET not configured - webhook verification disabled');
-    return true; // Allow in development
+    console.warn('⚠️ PAYMONGO_WEBHOOK_SECRET not configured - webhook verification disabled (UNSAFE for production!)');
+    return true; // Only for development - MUST configure for production
   }
 
   try {
-    const [tPart, v1Part] = signature.split(',');
-    const timestamp = tPart.split('=')[1];
-    const providedSignature = v1Part.split('=')[1];
+    console.log('🔐 Verifying webhook signature...');
+    console.log('Signature header received:', signature);
     
-    const payload = `${timestamp}.${rawBody}`;
+    // PayMongo signature format: "t=timestamp,te=test_signature,li=live_signature"
+    const signatureParts = signature.split(' ');
+    let timestamp = null;
+    let testSignature = null;
+    let liveSignature = null;
+
+    // Parse the signature components
+    signatureParts.forEach(part => {
+      const [key, value] = part.split('=');
+      if (key === 't') {
+        timestamp = value;
+      } else if (key === 'te') {
+        testSignature = value;
+      } else if (key === 'li') {
+        liveSignature = value;
+      }
+    });
+
+    console.log('Parsed signature components:', { 
+      hasTimestamp: !!timestamp, 
+      hasTestSig: !!testSignature, 
+      hasLiveSig: !!liveSignature 
+    });
+
+    // Use test signature if available (for test mode), otherwise use live signature
+    const signatureToVerify = testSignature || liveSignature;
+
+    if (!timestamp || !signatureToVerify) {
+      console.error('❌ Missing required signature components');
+      return false;
+    }
+
+    // Construct the signed payload: timestamp.raw_body
+    const signedPayload = `${timestamp}.${rawBody}`;
+    
+    // Calculate expected signature using HMAC-SHA256
     const expectedSignature = crypto
       .createHmac('sha256', process.env.PAYMONGO_WEBHOOK_SECRET)
-      .update(payload)
+      .update(signedPayload)
       .digest('hex');
 
+    console.log('Signature comparison:', {
+      received: signatureToVerify.substring(0, 10) + '...',
+      expected: expectedSignature.substring(0, 10) + '...',
+      match: signatureToVerify === expectedSignature
+    });
+
+    // Compare signatures (use timing-safe comparison to prevent timing attacks)
     return crypto.timingSafeEqual(
-      Buffer.from(providedSignature, 'hex'),
-      Buffer.from(expectedSignature, 'hex')
+      Buffer.from(signatureToVerify),
+      Buffer.from(expectedSignature)
     );
+
   } catch (error) {
-    console.error('Webhook signature verification failed:', error);
+    console.error('❌ Webhook signature verification error:', error);
     return false;
   }
 };

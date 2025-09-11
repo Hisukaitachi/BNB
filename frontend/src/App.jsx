@@ -18,7 +18,15 @@ import MyBookings from './pages/booking/MyBookings';
 import FavoritesPage from './pages/favorites/FavoritesPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import MessagesPage from './pages/messaging/MessagesPage';
+
+// Payment Pages
 import PaymentPage from './pages/payment/PaymentPage';
+import PaymentStatus from './pages/payment/PaymentStatus';
+import PaymentHistory from './pages/payment/PaymentHistory';
+import PaymentFlowTest from './pages/payment/PaymentFlowTest';
+import PaymentSuccessPage from './pages/payment/PaymentSuccessPage';
+import PaymentCancelPage from './pages/payment/PaymentCancelPage';
+import PaymentReceiptPage from './pages/payment/PaymentReceiptPage';
 
 import HostDashboard from './pages/host/HostDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -160,15 +168,19 @@ function App() {
                   } 
                 />
                 
-                <Route 
-                  path="/payment" 
-                  element={
-                    <ProtectedRoute>
-                      <PaymentPage />
-                    </ProtectedRoute>
-                  } 
-                />
-
+                {/* Payment Routes */}
+                <Route path="/payment" element={<PaymentPage />} />
+                <Route path="/payment/status" element={<PaymentStatus />} />
+                <Route path="/payment/history" element={<PaymentHistory />} />
+                <Route path="/payment/test" element={
+                  <ProtectedRoute requireRole="admin">
+                    <PaymentFlowTest />
+                  </ProtectedRoute>
+                } />
+                <Route path="/payment/success" element={<PaymentSuccessPage />} />
+                <Route path="/payment/cancel" element={<PaymentCancelPage />} />
+                <Route path="/payment/:bookingId/receipt" element={<PaymentReceiptPage />} />
+                
                 {/* Host Routes */}
                 <Route 
                   path="/host/*" 

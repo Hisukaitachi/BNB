@@ -156,17 +156,50 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     connection.release();
   }
 });
+
 exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
 
   await autoCompleteBookings(); // Auto-fix statuses first
-  const [rows] = await pool.query('CALL sp_get_bookings_by_client(?)', [clientId]);
+  
+  // UPDATED QUERY: Include payment information matching your table structure
+  const [rows] = await pool.query(`
+    SELECT 
+      b.id,
+      b.listing_id,
+      b.client_id,
+      b.start_date,
+      b.end_date,
+      b.total_price,
+      b.status,
+      b.created_at,
+      b.updated_at,
+      l.title,
+      l.location,
+      l.price_per_night,
+      u.name AS host_name,
+      u.id AS host_id,
+      p.id AS payment_id,
+      p.status AS payment_status,
+      p.payment_intent_id,
+      p.amount AS payment_amount,
+      p.platform_fee,
+      p.host_earnings,
+      p.payout_status,
+      p.created_at AS payment_created_at
+    FROM bookings b
+    JOIN listings l ON b.listing_id = l.id
+    JOIN users u ON l.host_id = u.id
+    LEFT JOIN payments p ON b.id = p.booking_id
+    WHERE b.client_id = ?
+    ORDER BY b.created_at DESC
+  `, [clientId]);
 
   res.status(200).json({
     status: 'success',
-    results: rows[0].length,
+    results: rows.length,
     data: {
-      bookings: rows[0]
+      bookings: rows
     }
   });
 });
@@ -193,11 +226,14 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
       b.end_date AS check_out_date,    
       b.total_price,
       l.host_id,
-      h.name AS host_name
+      h.name AS host_name,
+      p.status AS payment_status,
+      p.amount AS payment_amount
     FROM bookings b
     JOIN listings l ON l.id = b.listing_id
     JOIN users u ON u.id = b.client_id
     JOIN users h ON h.id = l.host_id
+    LEFT JOIN payments p ON b.id = p.booking_id
     WHERE l.host_id = ?
     ORDER BY b.created_at DESC
   `, [hostId]);
@@ -210,6 +246,7 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
     }
   });
 });
+
 exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
   
@@ -273,6 +310,7 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
   });
 });
 
+// UPDATED: Enhanced booking status update with payment flow logic
 exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const userRole = req.user.role;
@@ -292,11 +330,12 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     return next(new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400));
   }
 
-  // Enhanced query to get all needed data
+  // Enhanced query to get all needed data including payment info
   const [rows] = await pool.query(`
-    SELECT b.*, l.host_id, l.title 
+    SELECT b.*, l.host_id, l.title, p.status AS payment_status
     FROM bookings b 
     JOIN listings l ON b.listing_id = l.id 
+    LEFT JOIN payments p ON b.id = p.booking_id
     WHERE b.id = ?
   `, [id]);
 
@@ -323,8 +362,9 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     if (booking.host_id !== userId) {
       return next(new AppError('You can only manage bookings for your listings', 403));
     }
-    if (!['confirmed', 'rejected'].includes(status)) {
-      return next(new AppError('Hosts can only confirm or reject bookings', 403));
+    // UPDATED: Hosts can approve or reject pending bookings
+    if (booking.status === 'pending' && !['approved', 'rejected'].includes(status)) {
+      return next(new AppError('Hosts can only approve or reject pending bookings', 403));
     }
     if (['completed', 'refunded', 'cancelled'].includes(booking.status)) {
       return next(new AppError('Cannot modify this booking status', 400));
@@ -332,13 +372,13 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   }
 
   // Business logic validation
-  if (status === 'confirmed' && booking.status !== 'pending') {
-    return next(new AppError('Only pending bookings can be confirmed', 400));
+  if (status === 'approved' && booking.status !== 'pending') {
+    return next(new AppError('Only pending bookings can be approved', 400));
   }
 
   let notificationsToSend = [];
 
-  // Notification logic with enhanced messaging
+  // UPDATED notification logic for the new flow
   if (userRole === 'client' && status === 'cancelled') {
     notificationsToSend.push({
       userId: booking.host_id,
@@ -347,17 +387,24 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
-  if ((userRole === 'host' || userRole === 'admin') && (status === 'confirmed' || status === 'rejected')) {
+  // NEW: When host approves, notify client about payment requirement
+  if (userRole === 'host' && status === 'approved') {
     notificationsToSend.push({
       userId: booking.client_id,
-      message: status === 'confirmed'
-        ? `✅ Your booking for '${booking.title}' has been approved by the host.`
-        : `❌ Your booking for '${booking.title}' has been declined by the host.`,
-      type: status === 'confirmed' ? 'booking_approved' : 'booking_declined'
+      message: `🎉 Your booking for '${booking.title}' has been approved! Please complete payment to confirm your reservation.`,
+      type: 'booking_approved_payment_required'
     });
   }
 
-  if (userRole === 'admin' && !['cancelled', 'confirmed', 'rejected'].includes(status)) {
+  if (userRole === 'host' && status === 'rejected') {
+    notificationsToSend.push({
+      userId: booking.client_id,
+      message: `❌ Your booking request for '${booking.title}' has been declined by the host.`,
+      type: 'booking_declined'
+    });
+  }
+
+  if (userRole === 'admin' && !['cancelled', 'approved', 'rejected'].includes(status)) {
     notificationsToSend.push({
       userId: booking.client_id,
       message: `Admin changed your booking for '${booking.title}' to '${status}'.`,
@@ -391,7 +438,8 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
       previousStatus: booking.status,
       newStatus: status,
       updatedBy: userRole,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      requiresPayment: status === 'approved' // NEW: Indicate if payment is now required
     }
   });
 });
@@ -417,7 +465,7 @@ exports.getBookingHistory = catchAsync(async (req, res, next) => {
       history
     }
   });
-})
+});
 
 // exports.markAsCompleted = async (req, res) => {
 //   const bookingId = req.params.id;

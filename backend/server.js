@@ -1,4 +1,4 @@
-// backend/server.js - FIXED VERSION with simplified CORS
+// backend/server.js - FIXED VERSION with webhook handling
 require('dotenv').config({ path: __dirname + '/.env' });
 
 const express = require('express');
@@ -51,7 +51,36 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Body parsing middleware
+// =========================================================
+// WEBHOOK RAW BODY HANDLING - MUST BE BEFORE BODY PARSERS!
+// =========================================================
+console.log('🔐 Setting up webhook raw body handler...');
+
+// Capture raw body for PayMongo webhook signature verification
+app.use('/api/payments/webhook', 
+  express.raw({ type: 'application/json' }),
+  (req, res, next) => {
+    // Store raw body as string for signature verification
+    req.rawBody = req.body.toString('utf-8');
+    console.log('📦 Webhook raw body captured, length:', req.rawBody.length);
+    
+    // Parse JSON for use in controller
+    try {
+      req.body = JSON.parse(req.rawBody);
+      console.log('✅ Webhook body parsed successfully');
+    } catch (e) {
+      console.error('❌ Failed to parse webhook body:', e.message);
+      req.body = {};
+    }
+    next();
+  }
+);
+
+// =========================================================
+// REGULAR BODY PARSING - AFTER WEBHOOK HANDLER
+// =========================================================
+
+// Body parsing middleware for all other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -148,8 +177,8 @@ app.get('/api', (req, res) => {
   });
 });
 
-// 404 handler for undefined routes  
-app.use('/{*catchAll}', (req, res, next) => {
+// 404 handler for undefined routes - FIXED to avoid path-to-regexp error
+app.use((req, res, next) => {
   const error = new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404);
   next(error);
 });
@@ -173,6 +202,7 @@ server.listen(PORT, () => {
   console.log('📧 Email:', process.env.EMAIL_USER ? '✅ Configured' : '❌ Missing');
   console.log('🔍 Google OAuth:', process.env.GOOGLE_CLIENT_ID ? '✅ Configured' : '⚠️  Optional');
   console.log('💳 PayMongo:', process.env.PAYMONGO_SECRET_KEY ? '✅ Configured' : '⚠️  Optional');
+  console.log('🔒 PayMongo Webhook:', process.env.PAYMONGO_WEBHOOK_SECRET ? '✅ Configured' : '❌ Missing');
   console.log('🌍 Geocoding:', process.env.OPENCAGE_API_KEY ? '✅ Configured' : '⚠️  Optional');
   console.log('📦 Database:', 'Loading...');
   

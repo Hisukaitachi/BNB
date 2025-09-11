@@ -10,6 +10,7 @@ import {
   Eye,
   Clock
 } from 'lucide-react';
+import HostBookings from './HostBookings';
 import Button from '../ui/Button';
 
 const DashboardOverview = ({ data, onRefresh }) => {

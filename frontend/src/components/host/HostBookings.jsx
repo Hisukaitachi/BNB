@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostBookings.jsx - Manage Bookings (Approve/Decline)
+// frontend/src/components/host/HostBookings.jsx - FIXED status handling
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -64,8 +64,12 @@ const HostBookings = () => {
             : booking
         ));
         
-        // Show success message
-        alert(`Booking ${newStatus} successfully`);
+        // Show success message based on the new payment flow
+        if (newStatus === 'approved') {
+          alert('Booking approved! The guest will now be able to make payment to confirm their reservation.');
+        } else {
+          alert(`Booking ${newStatus} successfully`);
+        }
       }
       
     } catch (error) {
@@ -75,9 +79,10 @@ const HostBookings = () => {
     }
   };
 
+  // ✅ FIXED: Change 'confirmed' to 'approved'
   const handleApprove = (bookingId) => {
-    if (confirm('Approve this booking request?')) {
-      updateBookingStatus(bookingId, 'confirmed');
+    if (confirm('Approve this booking request? The guest will then need to complete payment to confirm their reservation.')) {
+      updateBookingStatus(bookingId, 'approved'); // ✅ Changed from 'confirmed' to 'approved'
     }
   };
 
@@ -89,6 +94,7 @@ const HostBookings = () => {
   const getStatusBadge = (status) => {
     const statusConfig = {
       pending: { color: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
+      approved: { color: 'bg-blue-100 text-blue-800', label: 'Approved (Awaiting Payment)' }, // ✅ Updated label
       confirmed: { color: 'bg-green-100 text-green-800', label: 'Confirmed' },
       rejected: { color: 'bg-red-100 text-red-800', label: 'Rejected' },
       cancelled: { color: 'bg-gray-100 text-gray-800', label: 'Cancelled' },
@@ -108,7 +114,7 @@ const HostBookings = () => {
     return bookings.filter(booking => 
       booking.check_in_date && 
       booking.check_in_date.split('T')[0] === today &&
-      booking.status === 'confirmed'
+      ['confirmed', 'approved'].includes(booking.status) // ✅ Include both confirmed and approved
     ).length;
   };
 
@@ -152,11 +158,12 @@ const HostBookings = () => {
         </div>
       </div>
 
-      {/* Filter Tabs */}
+      {/* Updated Filter Tabs */}
       <div className="flex space-x-2 border-b border-gray-700">
         {[
           { key: 'all', label: 'All Bookings', count: bookings.length },
           { key: 'pending', label: 'Pending', count: getPendingBookingsCount() },
+          { key: 'approved', label: 'Approved', count: bookings.filter(b => b.status === 'approved').length }, // ✅ Added approved tab
           { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'confirmed').length },
           { key: 'completed', label: 'Completed', count: bookings.filter(b => b.status === 'completed').length }
         ].map(tab => (
@@ -202,7 +209,8 @@ const HostBookings = () => {
             
             return (
               <div key={booking.booking_id} className={`bg-gray-800 rounded-xl p-6 border ${
-                booking.status === 'pending' ? 'border-yellow-500' : 'border-gray-700'
+                booking.status === 'pending' ? 'border-yellow-500' : 
+                booking.status === 'approved' ? 'border-blue-500' : 'border-gray-700'
               }`}>
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
@@ -211,6 +219,18 @@ const HostBookings = () => {
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusBadge.color}`}>
                         {statusBadge.label}
                       </span>
+                      
+                      {/* ✅ NEW: Payment status indicator */}
+                      {booking.status === 'approved' && (
+                        <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
+                          Awaiting Payment
+                        </span>
+                      )}
+                      {booking.payment_status === 'succeeded' && (
+                        <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                          Paid
+                        </span>
+                      )}
                     </div>
                     
                     <div className="flex items-center text-gray-400 space-x-4 text-sm">
@@ -225,6 +245,15 @@ const HostBookings = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* ✅ NEW: Special message for approved bookings */}
+                {booking.status === 'approved' && !booking.payment_status && (
+                  <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
+                    <p className="text-blue-400 text-sm">
+                      💳 This booking has been approved. The guest can now complete payment to confirm their reservation.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div className="flex items-center text-gray-300">
@@ -260,6 +289,10 @@ const HostBookings = () => {
                     <div>
                       <p className="text-sm text-gray-400">Total</p>
                       <p className="font-medium">₱{Number(booking.total_price).toLocaleString()}</p>
+                      {/* ✅ NEW: Show earnings info */}
+                      {booking.payment_status === 'succeeded' && (
+                        <p className="text-xs text-green-400">Your earnings: ₱{Number(booking.total_price * 0.9).toLocaleString()}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -316,10 +349,18 @@ const HostBookings = () => {
                     </div>
                   )}
 
-                  {['confirmed', 'approved'].includes(booking.status) && (
+                  {booking.status === 'approved' && (
+                    <div className="text-right">
+                      <div className="bg-blue-900/20 text-blue-400 px-3 py-2 rounded-lg text-sm">
+                        ✓ Approved - Awaiting Payment
+                      </div>
+                    </div>
+                  )}
+
+                  {['confirmed'].includes(booking.status) && (
                     <div className="text-right">
                       <div className="bg-green-900/20 text-green-400 px-3 py-2 rounded-lg text-sm">
-                        ✓ Active Booking
+                        ✓ Confirmed & Paid
                       </div>
                     </div>
                   )}
@@ -356,7 +397,7 @@ const HostBookings = () => {
   );
 };
 
-// Booking Details Modal Component
+// ✅ UPDATED: Booking Details Modal with correct actions
 const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -501,13 +542,13 @@ const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* ✅ FIXED: Actions for pending bookings */}
             {booking.status === 'pending' && (
               <div>
                 <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
                 <div className="space-y-3">
                   <Button
-                    onClick={() => onStatusUpdate(booking.booking_id, 'confirmed')}
+                    onClick={() => onStatusUpdate(booking.booking_id, 'approved')} // ✅ Changed from 'confirmed' to 'approved'
                     variant="gradient"
                     size="lg"
                     className="w-full"

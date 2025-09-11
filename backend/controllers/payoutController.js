@@ -68,7 +68,46 @@ exports.getReceivedPayoutsByHost = async (req, res) => {
   }
 };
 
+// Add these to your payoutController.js:
 
+exports.requestPayout = async (req, res) => {
+  const hostId = req.user.id;
+  const { amount, payment_method, bank_details } = req.body;
+
+  try {
+    // Create payout request (status = 'pending')
+    const [result] = await pool.query(
+      "INSERT INTO payouts (host_id, amount, payment_method, bank_details, status, created_at) VALUES (?, ?, ?, ?, 'pending', NOW())",
+      [hostId, amount, payment_method, JSON.stringify(bank_details)]
+    );
+
+    res.status(201).json({ 
+      message: "Payout request submitted successfully", 
+      payoutId: result.insertId 
+    });
+  } catch (err) {
+    console.error("Error requesting payout:", err);
+    res.status(400).json({ message: err.sqlMessage || err.message });
+  }
+};
+
+exports.rejectPayout = async (req, res) => {
+  const { payout_id, reason } = req.body;
+
+  try {
+    const [result] = await pool.query(
+      "UPDATE payouts SET status = 'rejected', rejection_reason = ?, updated_at = NOW() WHERE id = ?",
+      [reason, payout_id]
+    );
+
+    res.status(200).json({ 
+      message: "Payout rejected successfully"
+    });
+  } catch (err) {
+    console.error("Error rejecting payout:", err);
+    res.status(400).json({ message: err.sqlMessage || err.message });
+  }
+};
 // controllers/payoutController.js
 // exports.getHostPayoutTotal = async (req, res) => {
 //   try {

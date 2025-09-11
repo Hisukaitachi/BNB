@@ -140,13 +140,17 @@ export const bookingAPI = {
 export const paymentAPI = {
   // Create payment intent for GCash
   createPaymentIntent: (bookingId) => 
-    api.post('/payments/create-intent', { bookingId }),
+    api.post('/payments/create-payment-intent', { bookingId }),
   
   // Get payment status
   getPaymentStatus: (bookingId) => api.get(`/payments/booking/${bookingId}`),
   
   // Get payment history
   getMyPayments: () => api.get('/payments/my-payments'),
+
+  // NEW: Verify payment status directly with PayMongo
+  verifyStatus: (bookingId) => 
+    api.post('/payments/verify-status', { bookingId }),
   
   // Test payment config
   testConfig: () => api.get('/payments/test-config')

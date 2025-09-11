@@ -1,4 +1,4 @@
-// src/services/bookingService.js - Complete booking functionality
+// src/services/bookingService.js - Updated with payment support
 import { bookingAPI } from './api';
 
 export const BOOKING_STATUS = {
@@ -30,8 +30,8 @@ class BookingService {
   }
 
   /**
-   * Get client's bookings - My Bookings
-   * @returns {Promise<Array>} User bookings
+   * Get client's bookings with payment status - My Bookings
+   * @returns {Promise<Array>} User bookings with payment info
    */
   async getMyBookings() {
     try {
@@ -192,7 +192,7 @@ class BookingService {
   }
 
   /**
-   * Get booking summary with status formatting
+   * Get booking summary with status formatting - UPDATED WITH PAYMENT INFO
    * @param {object} booking - Booking object
    * @returns {object} Formatted booking summary
    */
@@ -206,14 +206,55 @@ class BookingService {
       [BOOKING_STATUS.COMPLETED]: 'text-gray-500'
     };
 
+    // NEW: Check if booking needs payment
+    const needsPayment = booking.status === 'approved' && (!booking.payment_status || booking.payment_status === 'failed');
+    const hasPaymentPending = booking.payment_status === 'pending';
+    const isPaymentSucceeded = booking.payment_status === 'succeeded';
+
     return {
       ...booking,
       statusColor: statusColors[booking.status] || 'text-gray-500',
       formattedDates: `${new Date(booking.start_date).toLocaleDateString()} - ${new Date(booking.end_date).toLocaleDateString()}`,
       formattedPrice: `₱${Number(booking.total_price).toLocaleString()}`,
-      canCancel: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED].includes(booking.status),
-      canReview: booking.status === BOOKING_STATUS.COMPLETED
+      
+      // Updated action flags with payment logic
+      canCancel: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED].includes(booking.status) && !isPaymentSucceeded,
+      canReview: booking.status === BOOKING_STATUS.COMPLETED && !booking.review_submitted,
+      
+      // NEW: Payment-related flags
+      needsPayment,
+      hasPaymentPending,
+      isPaymentSucceeded,
+      payment_status: booking.payment_status || null,
+      payment_id: booking.payment_id || null
     };
+  }
+
+  /**
+   * NEW: Check if booking requires payment
+   * @param {object} booking - Booking object
+   * @returns {boolean} True if payment is needed
+   */
+  needsPayment(booking) {
+    return booking.status === 'approved' && (!booking.payment_status || booking.payment_status === 'failed');
+  }
+
+  /**
+   * NEW: Check if payment is in progress
+   * @param {object} booking - Booking object
+   * @returns {boolean} True if payment is pending
+   */
+  hasPaymentPending(booking) {
+    return booking.payment_status === 'pending';
+  }
+
+  /**
+   * NEW: Check if payment is completed
+   * @param {object} booking - Booking object
+   * @returns {boolean} True if payment succeeded
+   */
+  isPaymentCompleted(booking) {
+    return booking.payment_status === 'succeeded';
   }
 }
 

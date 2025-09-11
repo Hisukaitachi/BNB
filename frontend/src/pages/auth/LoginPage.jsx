@@ -1,5 +1,5 @@
-// src/pages/auth/LoginPage.jsx - ALTERNATIVE SIMPLE VERSION
-import { useState, useEffect } from 'react';
+// src/pages/auth/LoginPage.jsx - SIMPLIFIED WITHOUT GOOGLE OAUTH
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -14,84 +14,12 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   
   const { login, error, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
   const from = location.state?.from?.pathname || '/';
-
-  // Check for Google OAuth callback on component mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
-    
-    if (error) {
-      console.error('Google OAuth error:', error);
-      setErrors({ google: 'Google authentication was cancelled or failed' });
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-    
-    if (code) {
-      console.log('Google OAuth code received:', code);
-      handleGoogleCallback(code);
-    }
-  }, []);
-
-  const handleGoogleCallback = async (code) => {
-    setIsGoogleLoading(true);
-    
-    try {
-      console.log('Sending Google code to backend:', code);
-      
-      const response = await fetch('http://localhost:5000/api/users/google-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: code,
-          redirectUri: `${window.location.origin}${window.location.pathname}`
-        })
-      });
-
-      const data = await response.json();
-      console.log('Backend response:', data);
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Google login failed');
-      }
-
-      // Store tokens
-      localStorage.setItem('token', data.data.token);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
-
-      // Update auth context
-      await login({ 
-        email: data.data.user.email, 
-        isGoogleLogin: true,
-        userData: data.data 
-      });
-      
-      console.log('Google login successful, navigating to:', from);
-      
-      // Clean up URL before navigation
-      window.history.replaceState({}, document.title, window.location.pathname);
-      navigate(from, { replace: true });
-      
-    } catch (error) {
-      console.error('Google callback error:', error);
-      setErrors({ google: error.message || 'Google login failed' });
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } finally {
-      setIsGoogleLoading(false);
-    }
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -145,35 +73,9 @@ const LoginPage = () => {
     }
   };
 
-  // Simple redirect-based Google OAuth
+  // Temporary simple Google redirect - for testing only
   const handleGoogleLogin = () => {
-    console.log('Initiating Google OAuth redirect...');
-    
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      setErrors({ google: 'Google Client ID not configured' });
-      return;
-    }
-
-    setErrors(prev => ({ ...prev, google: null }));
-    
-    // Build OAuth URL with account selection prompt
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: `${window.location.origin}${window.location.pathname}`,
-      response_type: 'code',
-      scope: 'email profile',
-      access_type: 'offline',
-      prompt: 'select_account'  // This forces the account selection screen
-    });
-    
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    
-    console.log('Redirecting to:', authUrl);
-    console.log('Redirect URI:', `${window.location.origin}${window.location.pathname}`);
-    
-    // Redirect to Google
-    window.location.href = authUrl;
+    alert('Google OAuth temporarily disabled due to timing issues. Please use email/password login or create an account.');
   };
 
   return (
@@ -199,20 +101,6 @@ const LoginPage = () => {
             {error && (
               <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {error}
-              </div>
-            )}
-
-            {/* Google-specific error */}
-            {errors.google && (
-              <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg text-sm">
-                {errors.google}
-              </div>
-            )}
-
-            {/* Show loading message during Google callback */}
-            {isGoogleLoading && (
-              <div className="bg-blue-900/20 border border-blue-500 text-blue-400 px-4 py-3 rounded-lg text-sm">
-                Processing Google login...
               </div>
             )}
 
@@ -298,8 +186,7 @@ const LoginPage = () => {
               variant="outline"
               size="lg"
               onClick={handleGoogleLogin}
-              disabled={isGoogleLoading}
-              className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
+              className="w-full border-gray-600 text-gray-300 hover:bg-gray-700 opacity-50"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path
@@ -319,7 +206,7 @@ const LoginPage = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              {isGoogleLoading ? 'Processing...' : 'Continue with Google'}
+              Continue with Google (Temporarily Disabled)
             </Button>
           </form>
 
@@ -332,6 +219,14 @@ const LoginPage = () => {
               >
                 Sign up here
               </Link>
+            </p>
+          </div>
+
+          {/* Note about Google OAuth */}
+          <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500 rounded-lg">
+            <p className="text-xs text-yellow-400">
+              Note: Google OAuth is temporarily disabled due to development environment timing issues. 
+              Please use email/password authentication or create a new account.
             </p>
           </div>
         </div>

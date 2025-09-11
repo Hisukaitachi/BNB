@@ -1,4 +1,4 @@
-// src/services/paymentService.js - Payment Method (GCash) Integration
+// src/services/paymentService.js - Fixed for PayMongo GCash Integration
 import { paymentAPI } from './api';
 
 export const PAYMENT_STATUS = {
@@ -16,7 +16,7 @@ export const PAYMENT_METHODS = {
 
 class PaymentService {
   /**
-   * Create payment intent - Initialize GCash payment
+   * Create payment intent and redirect to PayMongo
    * @param {number} bookingId - Booking ID
    * @returns {Promise<object>} Payment intent data
    */
@@ -24,64 +24,78 @@ class PaymentService {
     try {
       const response = await paymentAPI.createPaymentIntent(bookingId);
       
-      return {
+      const paymentData = {
         success: true,
         paymentId: response.data.data?.paymentId,
         paymentIntent: response.data.data?.paymentIntent,
         booking: response.data.data?.booking
       };
+
+      // IMPORTANT: Check if we have a checkout URL from PayMongo
+      if (paymentData.paymentIntent?.checkout_url) {
+        // Redirect to PayMongo checkout page (GCash, Card, etc.)
+        window.location.href = paymentData.paymentIntent.checkout_url;
+      }
+      
+      return paymentData;
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to create payment');
     }
   }
 
   /**
-   * Process GCash payment
+   * Process payment with redirect to PayMongo
    * @param {object} paymentData - Payment processing data
    * @returns {Promise<object>} Payment result
    */
-  async processGCashPayment(paymentData) {
+  async processPayment(paymentData) {
     try {
-      // For GCash integration, you would typically:
-      // 1. Redirect to GCash payment page
-      // 2. Handle callback/webhook
-      // 3. Verify payment status
+      const { paymentIntent } = paymentData;
       
-      const { paymentIntent, paymentMethod = PAYMENT_METHODS.GCASH } = paymentData;
-      
-      // Simulate GCash payment flow
-      if (paymentMethod === PAYMENT_METHODS.GCASH) {
-        // Redirect to GCash payment page
-        const gcashUrl = this.buildGCashPaymentUrl(paymentIntent);
+      // Check if we have the checkout URL from backend
+      if (paymentIntent?.checkout_url) {
+        // Redirect to PayMongo checkout page
+        window.location.href = paymentIntent.checkout_url;
         
         return {
           success: true,
-          redirectUrl: gcashUrl,
-          paymentMethod: 'gcash'
+          redirectUrl: paymentIntent.checkout_url,
+          message: 'Redirecting to payment page...'
         };
       }
       
-      throw new Error('Unsupported payment method');
+      // Fallback if no checkout URL
+      throw new Error('No payment URL received from server');
     } catch (error) {
       throw new Error(error.message || 'Payment processing failed');
     }
   }
 
   /**
-   * Build GCash payment URL (example implementation)
-   * @param {object} paymentIntent - Payment intent data
-   * @returns {string} GCash payment URL
+   * Handle payment button click
+   * @param {number} bookingId - Booking ID to pay for
+   * @returns {Promise<void>}
    */
-  buildGCashPaymentUrl(paymentIntent) {
-    // This would be the actual GCash integration
-    // For now, return a placeholder URL
-    const baseUrl = 'https://api.paymongo.com/v1/checkout_sessions';
-    const params = new URLSearchParams({
-      client_key: paymentIntent.client_secret,
-      payment_intent_id: paymentIntent.id
-    });
-    
-    return `${baseUrl}?${params.toString()}`;
+  async initiatePayment(bookingId) {
+    try {
+      // Show loading state
+      console.log('Initiating payment for booking:', bookingId);
+      
+      // Create payment intent
+      const response = await paymentAPI.createPaymentIntent(bookingId);
+      const { paymentIntent } = response.data.data;
+      
+      if (paymentIntent?.checkout_url) {
+        // Redirect to PayMongo checkout
+        console.log('Redirecting to PayMongo:', paymentIntent.checkout_url);
+        window.location.href = paymentIntent.checkout_url;
+      } else {
+        throw new Error('Payment URL not received');
+      }
+    } catch (error) {
+      console.error('Payment initiation failed:', error);
+      throw error;
+    }
   }
 
   /**
@@ -108,6 +122,40 @@ class PaymentService {
       return response.data.data?.payments || [];
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to fetch payment history');
+    }
+  }
+
+  /**
+   * Check payment status after redirect back from PayMongo
+   * @param {string} bookingId - Booking ID from URL params
+   * @returns {Promise<object>} Payment verification result
+   */
+  async verifyPaymentAfterRedirect(bookingId) {
+    try {
+      // Get payment status from backend
+      const payment = await this.getPaymentStatus(bookingId);
+      
+      if (payment.status === PAYMENT_STATUS.SUCCEEDED) {
+        return {
+          success: true,
+          message: 'Payment successful!',
+          payment
+        };
+      } else if (payment.status === PAYMENT_STATUS.PENDING) {
+        return {
+          success: false,
+          message: 'Payment is still processing. Please wait...',
+          payment
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Payment failed or was cancelled',
+          payment
+        };
+      }
+    } catch (error) {
+      throw new Error('Failed to verify payment status');
     }
   }
 
@@ -142,41 +190,8 @@ class PaymentService {
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-      }),
-      paymentMethodLabel: this.getPaymentMethodLabel(payment.currency)
+      })
     };
-  }
-
-  /**
-   * Get payment method label
-   * @param {string} currency - Payment currency
-   * @returns {string} Payment method label
-   */
-  getPaymentMethodLabel(currency) {
-    const methods = {
-      'PHP': 'GCash',
-      'USD': 'Card',
-      default: 'Online Payment'
-    };
-    
-    return methods[currency] || methods.default;
-  }
-
-  /**
-   * Handle payment webhook (for backend integration)
-   * @param {object} webhookData - Webhook data
-   * @returns {Promise<boolean>} Processing result
-   */
-  async handlePaymentWebhook(webhookData) {
-    try {
-      // This would be handled by your backend
-      // Frontend just needs to listen for real-time updates
-      console.log('Payment webhook received:', webhookData);
-      return true;
-    } catch (error) {
-      console.error('Webhook processing error:', error);
-      return false;
-    }
   }
 
   /**
@@ -212,20 +227,18 @@ class PaymentService {
    * @returns {object} Fee breakdown
    */
   calculatePaymentFees(amount) {
-    const gcashFee = Math.ceil(amount * 0.025); // 2.5% GCash fee
-    const platformFee = Math.ceil(amount * 0.03); // 3% platform fee
-    const total = amount + gcashFee + platformFee;
+    const platformFee = Math.ceil(amount * 0.10); // 10% platform fee (matching backend)
+    const hostEarnings = amount - platformFee;
     
     return {
       baseAmount: amount,
-      gcashFee,
       platformFee,
-      totalFees: gcashFee + platformFee,
-      totalAmount: total,
+      hostEarnings,
+      totalAmount: amount,
       breakdown: {
         'Booking Amount': amount,
-        'GCash Processing Fee': gcashFee,
-        'Platform Fee': platformFee
+        'Platform Fee (10%)': platformFee,
+        'Host Earnings': hostEarnings
       }
     };
   }

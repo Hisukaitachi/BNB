@@ -458,63 +458,61 @@ const ListingDetailPage = () => {
   };
 
   const handleBooking = async () => {
-    if (!isAuthenticated) {
-      navigate('/auth/login', { state: { from: location } });
-      return;
-    }
+  if (!isAuthenticated) {
+    navigate('/auth/login', { state: { from: location } });
+    return;
+  }
 
-    if (!bookingData.startDate || !bookingData.endDate) {
-      alert('Please select check-in and check-out dates');
-      return;
-    }
+  if (!bookingData.startDate || !bookingData.endDate) {
+    alert('Please select check-in and check-out dates');
+    return;
+  }
 
-    if (totalPrice <= 0) {
-      alert('Please select valid dates');
-      return;
-    }
+  if (totalPrice <= 0) {
+    alert('Please select valid dates');
+    return;
+  }
 
-    if (availabilityMessage.includes('❌')) {
-      alert('Selected dates are not available. Please choose different dates.');
-      return;
-    }
+  if (availabilityMessage.includes('❌')) {
+    alert('Selected dates are not available. Please choose different dates.');
+    return;
+  }
 
-    try {
-      setIsBookingLoading(true);
+  try {
+    setIsBookingLoading(true);
+    
+    const bookingResult = await bookingService.createBooking({
+      listing_id: listing.id,
+      start_date: bookingData.startDate,
+      end_date: bookingData.endDate,
+      total_price: totalPrice
+    });
+
+    if (bookingResult.success) {
+      // Show success message without immediate payment
+      alert(`Booking request submitted successfully! 
       
-      const bookingResult = await bookingService.createBooking({
-        listing_id: listing.id,
-        start_date: bookingData.startDate,
-        end_date: bookingData.endDate,
-        total_price: totalPrice
-      });
+Your request has been sent to the host for approval. You will receive a notification once they respond, and payment instructions will be provided if your booking is approved.
 
-      if (bookingResult.success) {
-        alert('Booking request submitted successfully! Redirecting to payment...');
-        
-        try {
-          const paymentResult = await paymentService.createPaymentIntent(bookingResult.bookingId);
-          
-          if (paymentResult.success && paymentResult.paymentIntent) {
-            navigate('/payment', { 
-              state: { 
-                bookingId: bookingResult.bookingId,
-                paymentIntent: paymentResult.paymentIntent 
-              } 
-            });
-          }
-        } catch (paymentError) {
-          console.error('Payment setup failed:', paymentError);
-          navigate('/my-bookings');
-        }
-      }
+Booking Details:
+- Dates: ${bookingData.startDate} to ${bookingData.endDate}
+- Total: ₱${totalPrice.toLocaleString()}
+- Status: Pending Host Approval
+
+You can track your booking status in "My Bookings".`);
       
-    } catch (error) {
-      console.error('Booking failed:', error);
-      alert('Booking failed: ' + error.message);
-    } finally {
-      setIsBookingLoading(false);
+      // Redirect to bookings page to track status
+      navigate('/my-bookings');
     }
-  };
+    
+  } catch (error) {
+    console.error('Booking failed:', error);
+    alert('Booking failed: ' + error.message);
+  } finally {
+    setIsBookingLoading(false);
+  }
+};
+
 
   const handleContactHost = () => {
     if (!isAuthenticated) {
@@ -939,7 +937,7 @@ const ListingDetailPage = () => {
                     className="w-full"
                     disabled={!bookingData.startDate || !bookingData.endDate || totalPrice <= 0 || availabilityMessage.includes('❌')}
                   >
-                    {!isAuthenticated ? 'Sign in to Book' : 'Request to Book'}
+                    {!isAuthenticated ? 'Sign in to Book' : 'Submit Booking Request'}
                   </Button>
                   
                   <Button 
@@ -964,7 +962,7 @@ const ListingDetailPage = () => {
 
                 <div className="mt-4 text-center">
                   <p className="text-xs text-gray-500">
-                    You won't be charged yet
+                    No payment required until host approves your request
                   </p>
                 </div>
               </div>

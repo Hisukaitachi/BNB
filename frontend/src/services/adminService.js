@@ -295,6 +295,82 @@ class AdminService {
       display: `${isPositive ? '+' : '-'}${Math.abs(change).toFixed(1)}%`
     };
   }
+
+
+  /**
+   * Get platform earnings data
+   * @returns {Promise<object>} Platform earnings
+   */
+  async getPlatformEarnings() {
+    try {
+      const response = await api.get('/admin/dashboard-stats');
+      const dashboardData = response.data.data || {};
+      
+      // Transform dashboard data to earnings format
+      return {
+        totalRevenue: dashboardData.totalRevenue || 0,
+        totalCommission: dashboardData.platformRevenue || 0,
+        totalBookings: dashboardData.totalBookings || 0,
+        averageCommissionRate: 10, // Your 10% platform fee
+        monthlyGrowth: dashboardData.monthlyGrowth || 0,
+        revenueGrowth: dashboardData.revenueGrowth || 0,
+        topHosts: dashboardData.topHosts || [],
+        revenueChart: dashboardData.monthlyChart || [],
+        commissionChart: dashboardData.commissionBreakdown || []
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch platform earnings');
+    }
+  }
+
+  /**
+   * Get all payouts for admin management
+   * @returns {Promise<Array>} All payouts
+   */
+  async getAllPayouts() {
+    try {
+      const response = await api.get('/payouts/all');
+      return response.data.payouts || [];
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch payouts');
+    }
+  }
+
+  /**
+   * Process/approve a payout
+   * @param {number} payoutId - Payout ID  
+   * @returns {Promise<object>} Process result
+   */
+  async processPayout(payoutId) {
+    try {
+      // This should call your actual payout controller
+      const response = await api.post('/payouts/release', {
+        payout_id: payoutId,
+        action: 'approve'
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to process payout');
+    }
+  }
+
+  /**
+   * Reject a payout
+   * @param {number} payoutId - Payout ID
+   * @param {string} reason - Rejection reason
+   * @returns {Promise<object>} Reject result
+   */
+  async rejectPayout(payoutId, reason) {
+    try {
+      const response = await api.post('/payouts/reject', {
+        payout_id: payoutId,
+        reason: reason
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to reject payout');
+    }
+  }
 }
 
 export default new AdminService();

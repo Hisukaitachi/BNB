@@ -1,11 +1,14 @@
-// src/components/booking/MyBookings.jsx - My Bookings Component
+// src/components/booking/MyBookings.jsx - Updated with Pay Now functionality
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, DollarSign, MessageSquare, Star, X } from 'lucide-react';
+import { Calendar, Clock, MapPin, DollarSign, MessageSquare, Star, X, CreditCard } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import bookingService, { BOOKING_STATUS } from '../../services/bookingService';
 import reviewService from '../../services/reviewService';
+import { paymentAPI } from '../../services/api';
 import Button from '../../components/ui/Button';
 
 const MyBookings = () => {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,6 +16,7 @@ const MyBookings = () => {
   const [showCancelModal, setShowCancelModal] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(null); // Track which booking is being processed for payment
 
   useEffect(() => {
     loadBookings();
@@ -56,6 +60,44 @@ const MyBookings = () => {
     }
   };
 
+  // NEW: Handle payment initiation for approved bookings
+  const handlePayNow = async (booking) => {
+    try {
+      setProcessingPayment(booking.id);
+      
+      // Create payment intent
+      const response = await paymentAPI.createPaymentIntent(booking.id);
+      
+      if (response.data.status === 'success') {
+        // Navigate to payment page with the payment intent data
+        navigate('/payment', {
+          state: {
+            bookingId: booking.id,
+            paymentIntent: response.data.data.paymentIntent,
+            booking: response.data.data.booking
+          }
+        });
+      } else {
+        throw new Error('Failed to create payment intent');
+      }
+    } catch (error) {
+      console.error('Payment initiation failed:', error);
+      alert('Failed to initiate payment: ' + error.message);
+    } finally {
+      setProcessingPayment(null);
+    }
+  };
+
+  // NEW: Check if booking needs payment
+  const needsPayment = (booking) => {
+    return booking.status === 'approved' && !booking.payment_status;
+  };
+
+  // NEW: Check if payment is pending
+  const hasPaymentPending = (booking) => {
+    return booking.payment_status === 'pending';
+  };
+
   const filteredBookings = bookings.filter(booking => {
     if (filter === 'all') return true;
     return booking.status === filter;
@@ -72,6 +114,20 @@ const MyBookings = () => {
     };
     
     return configs[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  // NEW: Get payment status badge
+  const getPaymentStatusBadge = (booking) => {
+    if (hasPaymentPending(booking)) {
+      return <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800 ml-2">Payment Pending</span>;
+    }
+    if (booking.payment_status === 'succeeded') {
+      return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">Paid</span>;
+    }
+    if (needsPayment(booking)) {
+      return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 ml-2">Payment Required</span>;
+    }
+    return null;
   };
 
   if (loading) {
@@ -101,6 +157,7 @@ const MyBookings = () => {
           {[
             { key: 'all', label: 'All' },
             { key: BOOKING_STATUS.PENDING, label: 'Pending' },
+            { key: BOOKING_STATUS.APPROVED, label: 'Approved' },
             { key: BOOKING_STATUS.CONFIRMED, label: 'Confirmed' },
             { key: BOOKING_STATUS.COMPLETED, label: 'Completed' }
           ].map(({ key, label }) => (
@@ -139,10 +196,39 @@ const MyBookings = () => {
                     <span>Hosted by {booking.host_name}</span>
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(booking.status)}`}>
-                  {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                </span>
+                <div className="flex items-center">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(booking.status)}`}>
+                    {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                  </span>
+                  {getPaymentStatusBadge(booking)}
+                </div>
               </div>
+
+              {/* NEW: Payment Required Alert */}
+              {needsPayment(booking) && (
+                <div className="bg-orange-900/20 border border-orange-600 rounded-lg p-4 mb-4">
+                  <div className="flex items-center">
+                    <CreditCard className="w-5 h-5 text-orange-400 mr-3" />
+                    <div>
+                      <p className="text-orange-400 font-medium">Payment Required</p>
+                      <p className="text-orange-300 text-sm">Your booking has been approved! Complete payment to confirm your reservation.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* NEW: Payment Pending Alert */}
+              {hasPaymentPending(booking) && (
+                <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4 mb-4">
+                  <div className="flex items-center">
+                    <Clock className="w-5 h-5 text-blue-400 mr-3" />
+                    <div>
+                      <p className="text-blue-400 font-medium">Payment Processing</p>
+                      <p className="text-blue-300 text-sm">Your payment is being processed. You'll receive confirmation shortly.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="flex items-center text-gray-300">
@@ -179,6 +265,33 @@ const MyBookings = () => {
                     >
                       <Star className="w-4 h-4 mr-2" />
                       Leave Review
+                    </Button>
+                  )}
+
+                  {/* NEW: Pay Now Button */}
+                  {needsPayment(booking) && (
+                    <Button
+                      size="sm"
+                      variant="gradient"
+                      loading={processingPayment === booking.id}
+                      onClick={() => handlePayNow(booking)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      {processingPayment === booking.id ? 'Processing...' : 'Pay Now'}
+                    </Button>
+                  )}
+
+                  {/* NEW: View Payment Button for paid bookings */}
+                  {booking.payment_status === 'succeeded' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-green-600 text-green-400"
+                      onClick={() => navigate(`/payment/${booking.id}/receipt`)}
+                    >
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      View Receipt
                     </Button>
                   )}
                 </div>
@@ -256,7 +369,7 @@ const MyBookings = () => {
   );
 };
 
-// Review Modal Component
+// Review Modal Component (unchanged)
 const ReviewModal = ({ booking, onSubmit, onClose }) => {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');

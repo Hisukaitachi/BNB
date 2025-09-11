@@ -689,6 +689,29 @@ async updateListing(listingId, updateData) {
 
     return Object.values(dailyStats).sort((a, b) => a.date.localeCompare(b.date));
   }
+
+  /**
+   * Request payout from available earnings
+   * @param {object} payoutData - Payout request data
+   * @returns {Promise<object>} Request result
+   */
+  async requestPayout(payoutData) {
+    try {
+      const response = await api.post('/payouts/request', {
+        amount: payoutData.amount,
+        payment_method: payoutData.payment_method || 'bank_transfer',
+        bank_details: payoutData.bank_details
+      });
+      
+      return {
+        success: true,
+        data: response.data,
+        message: 'Payout request submitted successfully'
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to request payout');
+    }
+  }
 }
 
 export default new HostService();

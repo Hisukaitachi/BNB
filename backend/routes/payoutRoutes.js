@@ -12,4 +12,8 @@ router.get('/all', payoutController.getAllPayouts);
 // ✅ Use auth token to get logged-in host's earnings
 router.get('/host/earnings', authenticateToken, payoutController.getHostEarnings);
 router.get("/my-received", authenticateToken, payoutController.getReceivedPayoutsByHost);
+
+// Reject and Request 
+router.post('/request', authenticateToken, payoutController.requestPayout);
+router.post('/reject', authenticateToken, payoutController.rejectPayout);
 module.exports = router;
