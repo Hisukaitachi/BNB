@@ -1,19 +1,22 @@
-// backend/routes/payoutRoutes.js - Fixed with correct auth import
 const express = require('express');
 const router = express.Router();
 const payoutController = require('../controllers/payoutController');
-const { authenticateToken } = require('../middleware/auth'); // ✅ Import the specific function
+const { authenticateToken } = require('../middleware/auth');
 
-// Admin actions
-router.post('/release', payoutController.releasePayout);
-router.get('/all', payoutController.getAllPayouts);
+// Admin actions (need auth too!)
+router.post('/release', authenticateToken, payoutController.releasePayout);
+router.get('/all', authenticateToken, payoutController.getAllPayouts);
+router.post('/reject', authenticateToken, payoutController.rejectPayout); // Added missing route
+router.get('/stats', authenticateToken, payoutController.getPayoutStats);
 
-// Host views their payouts
-// ✅ Use auth token to get logged-in host's earnings
+// Admin payout management
+router.post('/:payout_id/approve', authenticateToken, payoutController.approvePayout);
+router.post('/:payout_id/complete', authenticateToken, payoutController.completePayout);
+
+// Host endpoints
 router.get('/host/earnings', authenticateToken, payoutController.getHostEarnings);
-router.get("/my-received", authenticateToken, payoutController.getReceivedPayoutsByHost);
-
-// Reject and Request 
+router.get('/my-received', authenticateToken, payoutController.getReceivedPayoutsByHost);
 router.post('/request', authenticateToken, payoutController.requestPayout);
-router.post('/reject', authenticateToken, payoutController.rejectPayout);
+router.get('/balance', authenticateToken, payoutController.getAvailableBalance);
+
 module.exports = router;

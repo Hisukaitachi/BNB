@@ -100,15 +100,21 @@ export const adminAPI = {
   takeAction: (actionData) => api.post('/reports/admin/actions', actionData)
 };
 
-// ✅ FIXED PAYOUT FUNCTIONS - Direct payout endpoints for hosts
+// PAYOUT FUNCTIONS (fixed paths and added missing routes)
 export const payoutAPI = {
-  // For hosts to check their own earnings
-  getMyEarnings: () => api.get('/payouts/host/earnings'),
-  getMyPayouts: () => api.get('/payouts/my-received'),
-  
-  // For admin use via adminAPI above
+  // Host endpoints
+  requestPayout: (data) => api.post('/payouts/request', data),
+  getMyEarnings: () => api.get('/payouts/host/earnings'), // Fixed path
+  getAvailableBalance: () => api.get('/payouts/balance'),
+  getReceivedPayouts: () => api.get('/payouts/my-received'), // Added this
+
+  // Admin endpoints
   getAllPayouts: () => api.get('/payouts/all'),
-  releasePayout: (payoutData) => api.post('/payouts/release', payoutData)
+  approvePayout: (id, data) => api.post(`/payouts/${id}/approve`, data),
+  completePayout: (id, data) => api.post(`/payouts/${id}/complete`, data),
+  rejectPayout: (data) => api.post('/payouts/reject', data),
+  getPayoutStats: () => api.get('/payouts/stats'),
+  releasePayout: (data) => api.post('/payouts/release', data) // Added for admin
 };
 
 // BOOKING FUNCTIONS (unchanged)

@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostEarnings.jsx - Earnings & Payouts Management
+// frontend/src/components/host/HostEarnings.jsx - Updated with Payout System
 import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
@@ -10,19 +10,32 @@ import {
   Wallet,
   BarChart3,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Info,
+  CheckCircle
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import hostService from '../../services/hostService';
+import { payoutAPI } from '../../services/api';
 import Button from '../ui/Button';
 
 const HostEarnings = () => {
   const [earningsData, setEarningsData] = useState(null);
+  const [balance, setBalance] = useState(null);
   const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [timeRange, setTimeRange] = useState('month'); // week, month, year
+  const [timeRange, setTimeRange] = useState('month');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [payoutForm, setPayoutForm] = useState({
+    amount: '',
+    payment_method: 'bank_transfer',
+    bank_details: {
+      account_name: '',
+      account_number: '',
+      bank_name: ''
+    }
+  });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadEarningsData();
@@ -33,15 +46,30 @@ const HostEarnings = () => {
       setLoading(true);
       setError(null);
       
-      const [earnings, payoutHistory] = await Promise.all([
-        hostService.getHostEarnings(),
-        hostService.getReceivedPayouts()
+      // Fetch all data in parallel
+      const [earningsResponse, balanceResponse] = await Promise.all([
+        payoutAPI.getMyEarnings(),
+        payoutAPI.getAvailableBalance()
       ]);
       
-      setEarningsData(earnings);
-      setPayouts(payoutHistory);
+      // Extract data from responses
+      const earningsInfo = earningsResponse.data;
+      const balanceInfo = balanceResponse.data;
+      
+      setEarningsData(earningsInfo);
+      setBalance(balanceInfo.data?.balance || balanceInfo.balance);
+      setPayouts(earningsInfo.payouts || []);
+      
+      // Set default payout amount to available balance
+      if (balanceInfo.data?.balance?.available_for_payout) {
+        setPayoutForm(prev => ({
+          ...prev,
+          amount: balanceInfo.data.balance.available_for_payout.toString()
+        }));
+      }
     } catch (err) {
-      setError(err.message);
+      console.error('Error loading earnings:', err);
+      setError(err.response?.data?.message || err.message);
     } finally {
       setLoading(false);
     }
@@ -49,38 +77,71 @@ const HostEarnings = () => {
 
   const handleRequestPayout = async () => {
     try {
-      // TODO: Implement payout request
-      alert('Payout request feature coming soon!');
-      setShowPayoutModal(false);
+      setSubmitting(true);
+      
+      // Validate form
+      if (!payoutForm.amount || parseFloat(payoutForm.amount) < 500) {
+        alert('Minimum payout amount is ₱500');
+        return;
+      }
+      
+      if (payoutForm.payment_method === 'bank_transfer') {
+        if (!payoutForm.bank_details.account_name || 
+            !payoutForm.bank_details.account_number || 
+            !payoutForm.bank_details.bank_name) {
+          alert('Please fill in all bank details');
+          return;
+        }
+      } else if (payoutForm.payment_method === 'gcash') {
+        if (!payoutForm.bank_details.account_number) {
+          alert('Please enter your GCash number');
+          return;
+        }
+      }
+      
+      // Submit payout request
+      const response = await payoutAPI.requestPayout({
+        amount: parseFloat(payoutForm.amount),
+        payment_method: payoutForm.payment_method,
+        bank_details: payoutForm.bank_details
+      });
+      
+      if (response.data.status === 'success') {
+        alert('Payout request submitted successfully! Processing time: 2-3 business days.');
+        setShowPayoutModal(false);
+        loadEarningsData(); // Refresh data
+      }
     } catch (error) {
-      alert('Failed to request payout: ' + error.message);
+      alert('Failed to request payout: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const getPayoutStatusBadge = (status) => {
     const configs = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
-      processing: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Processing' },
-      completed: { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
-      failed: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' }
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: <Calendar className="w-3 h-3 mr-1" />, label: 'Pending' },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-800', icon: <RefreshCw className="w-3 h-3 mr-1" />, label: 'Processing' },
+      completed: { bg: 'bg-green-100', text: 'text-green-800', icon: <CheckCircle className="w-3 h-3 mr-1" />, label: 'Completed' },
+      rejected: { bg: 'bg-red-100', text: 'text-red-800', icon: <AlertTriangle className="w-3 h-3 mr-1" />, label: 'Rejected' },
+      failed: { bg: 'bg-red-100', text: 'text-red-800', icon: <AlertTriangle className="w-3 h-3 mr-1" />, label: 'Failed' }
     };
     
     const config = configs[status] || configs.pending;
     
     return (
       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.icon}
         {config.label}
       </span>
     );
   };
 
-  // Prepare chart data
-  const chartData = earningsData?.monthlyBreakdown ? 
-    Object.entries(earningsData.monthlyBreakdown).map(([month, amount]) => ({
-      month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-      earnings: amount,
-      monthKey: month
-    })).reverse() : [];
+  // Calculate totals from balance data
+  const totalEarnings = balance?.total_earned || earningsData?.totalEarnings || 0;
+  const availableForPayout = balance?.available_for_payout || 0;
+  const pendingPayout = balance?.pending_payout || 0;
+  const totalWithdrawn = balance?.total_withdrawn || 0;
 
   if (loading) {
     return (
@@ -116,16 +177,6 @@ const HostEarnings = () => {
         </div>
         
         <div className="flex space-x-3">
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="bg-gray-800 border border-gray-600 text-white rounded-lg px-4 py-2"
-          >
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="year">This Year</option>
-          </select>
-          
           <Button onClick={loadEarningsData} variant="outline" className="border-gray-600">
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
@@ -133,16 +184,16 @@ const HostEarnings = () => {
         </div>
       </div>
 
-      {/* Earnings Overview */}
+      {/* Earnings Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Total Earnings</p>
+              <p className="text-sm text-gray-400">Total Earned</p>
               <p className="text-2xl font-bold text-white">
-                ₱{earningsData?.totalEarnings?.toLocaleString() || 0}
+                ₱{totalEarnings.toLocaleString()}
               </p>
-              <p className="text-xs text-green-400 mt-1">All time</p>
+              <p className="text-xs text-green-400 mt-1">Lifetime earnings</p>
             </div>
             <div className="p-3 rounded-full bg-green-600/20">
               <DollarSign className="w-6 h-6 text-green-400" />
@@ -153,9 +204,9 @@ const HostEarnings = () => {
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Available for Payout</p>
+              <p className="text-sm text-gray-400">Available</p>
               <p className="text-2xl font-bold text-white">
-                ₱{earningsData?.pendingPayout?.toLocaleString() || 0}
+                ₱{availableForPayout.toLocaleString()}
               </p>
               <p className="text-xs text-blue-400 mt-1">Ready to withdraw</p>
             </div>
@@ -168,14 +219,14 @@ const HostEarnings = () => {
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Paid Out</p>
+              <p className="text-sm text-gray-400">Pending</p>
               <p className="text-2xl font-bold text-white">
-                ₱{earningsData?.paidOut?.toLocaleString() || 0}
+                ₱{pendingPayout.toLocaleString()}
               </p>
-              <p className="text-xs text-purple-400 mt-1">Total withdrawn</p>
+              <p className="text-xs text-yellow-400 mt-1">Being processed</p>
             </div>
-            <div className="p-3 rounded-full bg-purple-600/20">
-              <CreditCard className="w-6 h-6 text-purple-400" />
+            <div className="p-3 rounded-full bg-yellow-600/20">
+              <RefreshCw className="w-6 h-6 text-yellow-400" />
             </div>
           </div>
         </div>
@@ -183,25 +234,25 @@ const HostEarnings = () => {
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">This Month</p>
+              <p className="text-sm text-gray-400">Withdrawn</p>
               <p className="text-2xl font-bold text-white">
-                ₱{(earningsData?.monthlyBreakdown?.[new Date().toISOString().slice(0, 7)] || 0).toLocaleString()}
+                ₱{totalWithdrawn.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-400 mt-1">Current month</p>
+              <p className="text-xs text-purple-400 mt-1">Total paid out</p>
             </div>
-            <div className="p-3 rounded-full bg-orange-600/20">
-              <TrendingUp className="w-6 h-6 text-orange-400" />
+            <div className="p-3 rounded-full bg-purple-600/20">
+              <CreditCard className="w-6 h-6 text-purple-400" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Request Payout Button */}
-      {earningsData?.pendingPayout > 0 && (
+      {availableForPayout >= 500 && (
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl p-6 text-center">
           <h3 className="text-xl font-bold text-white mb-2">Ready for Payout</h3>
           <p className="text-green-100 mb-4">
-            You have ₱{earningsData.pendingPayout.toLocaleString()} available for withdrawal
+            You have ₱{availableForPayout.toLocaleString()} available for withdrawal
           </p>
           <Button 
             onClick={() => setShowPayoutModal(true)}
@@ -214,50 +265,18 @@ const HostEarnings = () => {
         </div>
       )}
 
-      {/* Earnings Chart */}
-      {chartData.length > 0 && (
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold text-white">Earnings Trend</h3>
-            <div className="flex items-center space-x-2 text-sm text-gray-400">
-              <BarChart3 className="w-4 h-4" />
-              <span>Last 12 months</span>
+      {/* Minimum Payout Notice */}
+      {availableForPayout > 0 && availableForPayout < 500 && (
+        <div className="bg-yellow-900/20 border border-yellow-600 rounded-xl p-6">
+          <div className="flex items-start space-x-3">
+            <Info className="w-5 h-5 text-yellow-500 mt-0.5" />
+            <div>
+              <h4 className="text-yellow-500 font-semibold mb-1">Below Minimum Payout</h4>
+              <p className="text-gray-300 text-sm">
+                You have ₱{availableForPayout.toLocaleString()} available, but the minimum payout amount is ₱500.
+                Continue earning to reach the minimum threshold.
+              </p>
             </div>
-          </div>
-          
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#9CA3AF" 
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#9CA3AF" 
-                  fontSize={12}
-                  tickFormatter={(value) => `₱${value.toLocaleString()}`}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: '#1F2937',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    color: '#F3F4F6'
-                  }}
-                  formatter={(value) => [`₱${value.toLocaleString()}`, 'Earnings']}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="earnings" 
-                  stroke="#8B5CF6" 
-                  strokeWidth={3}
-                  dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
           </div>
         </div>
       )}
@@ -266,18 +285,6 @@ const HostEarnings = () => {
       <div className="bg-gray-800 rounded-xl p-6">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold text-white">Payout History</h3>
-          <Button
-            size="sm"
-            variant="ghost" 
-            className="text-gray-400"
-            onClick={() => {
-              // TODO: Export payouts to CSV
-              console.log('Export payouts');
-            }}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
         </div>
 
         {payouts.length === 0 ? (
@@ -295,41 +302,26 @@ const HostEarnings = () => {
                   <th className="text-left py-3 text-gray-400 font-medium">Amount</th>
                   <th className="text-left py-3 text-gray-400 font-medium">Method</th>
                   <th className="text-left py-3 text-gray-400 font-medium">Status</th>
-                  <th className="text-left py-3 text-gray-400 font-medium">Actions</th>
+                  <th className="text-left py-3 text-gray-400 font-medium">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {payouts.map((payout) => (
                   <tr key={payout.id} className="border-b border-gray-700/50">
                     <td className="py-4 text-white">
-                      {new Date(payout.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
+                      {new Date(payout.created_at || payout.requested_at).toLocaleDateString()}
                     </td>
                     <td className="py-4 text-white font-semibold">
                       ₱{Number(payout.amount).toLocaleString()}
                     </td>
                     <td className="py-4 text-gray-300">
-                      {payout.payout_method || 'Bank Transfer'}
+                      {payout.payment_method || 'Bank Transfer'}
                     </td>
                     <td className="py-4">
                       {getPayoutStatusBadge(payout.status)}
                     </td>
-                    <td className="py-4">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-gray-400"
-                        onClick={() => {
-                          // TODO: View payout details
-                          console.log('View payout:', payout.id);
-                        }}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        Details
-                      </Button>
+                    <td className="py-4 text-gray-400 text-xs">
+                      {payout.rejection_reason || '-'}
                     </td>
                   </tr>
                 ))}
@@ -341,30 +333,110 @@ const HostEarnings = () => {
 
       {/* Payout Request Modal */}
       {showPayoutModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-white mb-4">Request Payout</h3>
             
             <div className="mb-6">
-              <div className="bg-gray-700 rounded-lg p-4 text-center">
-                <p className="text-gray-400 text-sm">Available Amount</p>
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm mb-2">Available Balance</p>
                 <p className="text-2xl font-bold text-green-400">
-                  ₱{earningsData?.pendingPayout?.toLocaleString() || 0}
+                  ₱{availableForPayout.toLocaleString()}
                 </p>
               </div>
             </div>
 
-            <div className="mb-6">
+            <div className="mb-4">
+              <label className="block text-sm text-gray-300 mb-2">Payout Amount</label>
+              <input
+                type="number"
+                min="500"
+                max={availableForPayout}
+                value={payoutForm.amount}
+                onChange={(e) => setPayoutForm(prev => ({ ...prev, amount: e.target.value }))}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                placeholder="Enter amount (min ₱500)"
+              />
+            </div>
+
+            <div className="mb-4">
               <label className="block text-sm text-gray-300 mb-2">Payout Method</label>
-              <select className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white">
-                <option value="bank">Bank Transfer</option>
+              <select 
+                value={payoutForm.payment_method}
+                onChange={(e) => setPayoutForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+              >
+                <option value="bank_transfer">Bank Transfer</option>
                 <option value="gcash">GCash</option>
               </select>
             </div>
 
+            {payoutForm.payment_method === 'bank_transfer' && (
+              <>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-300 mb-2">Account Name</label>
+                  <input
+                    type="text"
+                    value={payoutForm.bank_details.account_name}
+                    onChange={(e) => setPayoutForm(prev => ({ 
+                      ...prev, 
+                      bank_details: { ...prev.bank_details, account_name: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                    placeholder="Juan Dela Cruz"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-300 mb-2">Account Number</label>
+                  <input
+                    type="text"
+                    value={payoutForm.bank_details.account_number}
+                    onChange={(e) => setPayoutForm(prev => ({ 
+                      ...prev, 
+                      bank_details: { ...prev.bank_details, account_number: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                    placeholder="1234567890"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-300 mb-2">Bank Name</label>
+                  <input
+                    type="text"
+                    value={payoutForm.bank_details.bank_name}
+                    onChange={(e) => setPayoutForm(prev => ({ 
+                      ...prev, 
+                      bank_details: { ...prev.bank_details, bank_name: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                    placeholder="BDO, BPI, Metrobank, etc."
+                  />
+                </div>
+              </>
+            )}
+
+            {payoutForm.payment_method === 'gcash' && (
+              <div className="mb-4">
+                <label className="block text-sm text-gray-300 mb-2">GCash Number</label>
+                <input
+                  type="text"
+                  value={payoutForm.bank_details.account_number}
+                  onChange={(e) => setPayoutForm(prev => ({ 
+                    ...prev, 
+                    bank_details: { ...prev.bank_details, account_number: e.target.value }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  placeholder="09123456789"
+                />
+              </div>
+            )}
+
             <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-6">
               <p className="text-blue-400 text-sm">
-                ⓘ Payouts are processed within 2-3 business days. A small processing fee may apply.
+                <Info className="w-4 h-4 inline mr-1" />
+                Payouts are processed within 2-3 business days. Please ensure your details are correct.
               </p>
             </div>
 
@@ -373,6 +445,7 @@ const HostEarnings = () => {
                 variant="outline"
                 className="flex-1 border-gray-600 text-gray-300"
                 onClick={() => setShowPayoutModal(false)}
+                disabled={submitting}
               >
                 Cancel
               </Button>
@@ -380,8 +453,9 @@ const HostEarnings = () => {
                 variant="gradient"
                 className="flex-1"
                 onClick={handleRequestPayout}
+                disabled={submitting}
               >
-                Request Payout
+                {submitting ? 'Processing...' : 'Request Payout'}
               </Button>
             </div>
           </div>
