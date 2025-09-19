@@ -139,7 +139,18 @@ export const bookingAPI = {
   getBookedDates: (listingId) => api.get(`/bookings/booked-dates/${listingId}`),
   
   // Get bookings by listing
-  getBookingsByListing: (listingId) => api.get(`/bookings/listing/${listingId}`)
+  getBookingsByListing: (listingId) => api.get(`/bookings/listing/${listingId}`),
+
+  // Update customer information with ID upload
+  updateCustomerInfo: (bookingId, formData) => {
+    return api.post(`/bookings/${bookingId}/customer-info`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Get customer verification info for a booking (host only)
+  getBookingCustomerInfo: (bookingId) => 
+    api.get(`/bookings/${bookingId}/customer-info`)
 };
 
 // PAYMENT FUNCTIONS (unchanged)

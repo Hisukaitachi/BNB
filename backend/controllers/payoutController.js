@@ -3,7 +3,7 @@ const pool = require('../db');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 const { createNotification } = require('./notificationsController');
-// Release a payout (existing function with catchAsync)
+
 exports.releasePayout = catchAsync(async (req, res, next) => {
   const { host_id, booking_id, amount } = req.body;
 

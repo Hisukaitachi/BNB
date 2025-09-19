@@ -79,18 +79,21 @@ exports.createPaymentIntent = async ({ bookingId, clientId, hostId, amount, curr
             quantity: 1
           }],
           payment_method_types: ['gcash', 'card', 'grab_pay'],
+          // IMPORTANT: Update these URLs to match your routes
           success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?booking_id=${bookingId}`,
           cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?booking_id=${bookingId}`,
           description: `Payment for Booking #${bookingId}`,
           metadata: {
             booking_id: bookingId.toString(),
+            client_id: clientId.toString(),
+            host_id: hostId.toString(),
             payment_intent_id: paymentIntentId
           }
         }
       }
     };
 
-    console.log('Creating checkout session...');
+    console.log('Creating checkout session with success URL:', checkoutPayload.data.attributes.success_url);
 
     const checkoutResponse = await axios.post(`${API}/checkout_sessions`, checkoutPayload, {
       headers: getAuthHeaders()

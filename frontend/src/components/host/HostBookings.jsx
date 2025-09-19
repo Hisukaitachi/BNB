@@ -3,16 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
-  MapPin, 
   DollarSign, 
   User, 
   Check, 
   X, 
   MessageSquare,
   Eye,
-  MoreHorizontal,
-  Filter,
-  RefreshCw
+  RefreshCw,
+  Shield,        // Add this
+  FileText,      // Add this
+  AlertCircle  
 } from 'lucide-react';
 import Button from '../ui/Button';
 import { bookingAPI } from '../../services/api';
@@ -401,9 +401,12 @@ const HostBookings = () => {
 const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState(null);
+  const [loadingCustomerInfo, setLoadingCustomerInfo] = useState(false);
 
   useEffect(() => {
     loadBookingHistory();
+    loadCustomerInfo();
   }, [booking.booking_id]);
 
   const loadBookingHistory = async () => {
@@ -418,6 +421,41 @@ const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
     }
   };
 
+ const loadCustomerInfo = async () => {
+  try {
+    setLoadingCustomerInfo(true);
+    const response = await bookingAPI.getBookingCustomerInfo(booking.booking_id);
+    
+    if (response.data.data?.customerInfo) {
+      // Check if customerInfo is a string (needs parsing) or already an object
+      const customerData = response.data.data.customerInfo;
+      
+      if (typeof customerData === 'string') {
+        try {
+          setCustomerInfo(JSON.parse(customerData));
+        } catch (parseError) {
+          console.error('Failed to parse customer info string:', parseError);
+          setCustomerInfo(null);
+        }
+      } else if (typeof customerData === 'object') {
+        // It's already an object, no need to parse
+        setCustomerInfo(customerData);
+      } else {
+        console.log('Customer info is neither string nor object:', customerData);
+        setCustomerInfo(null);
+      }
+    } else {
+      console.log('No customer info available for booking:', booking.booking_id);
+      setCustomerInfo(null);
+    }
+  } catch (error) {
+    console.error('Failed to load customer info:', error);
+    setCustomerInfo(null);
+  } finally {
+    setLoadingCustomerInfo(false);
+  }
+};
+
   const calculateDuration = () => {
     const checkIn = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
@@ -430,7 +468,6 @@ const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
     const diffTime = checkIn - today;
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -485,6 +522,81 @@ const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
                     <p className="text-gray-400 text-sm">Guest</p>
                   </div>
                 </div>
+
+              {/* Customer Verified Info */}
+                {customerInfo ? (
+                  <div className="space-y-3 border-t border-gray-600 pt-4">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-400">Full Name</span>
+                        <p className="text-white font-medium">{customerInfo.fullName}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Email</span>
+                        <p className="text-white font-medium">{customerInfo.email}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Phone</span>
+                        <p className="text-white font-medium">{customerInfo.phone}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Birth Date</span>
+                        <p className="text-white font-medium">
+                          {new Date(customerInfo.birthDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Address Info */}
+                    <div className="pt-3 border-t border-gray-600">
+                      <span className="text-gray-400 text-sm">Address</span>
+                      <p className="text-white text-sm">
+                        {customerInfo.address}, {customerInfo.city}
+                        {customerInfo.postalCode && `, ${customerInfo.postalCode}`}
+                        {customerInfo.country && `, ${customerInfo.country}`}
+                      </p>
+                    </div>
+
+                    {/* Emergency Contact */}
+                    {customerInfo.emergencyContact && (
+                      <div className="pt-3 border-t border-gray-600">
+                        <span className="text-gray-400 text-sm">Emergency Contact</span>
+                        <p className="text-white text-sm">
+                          {customerInfo.emergencyContact} - {customerInfo.emergencyPhone}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ID Type */}
+                    {customerInfo.idType && (
+                      <div className="pt-3 border-t border-gray-600">
+                        <span className="text-gray-400 text-sm">ID Verification</span>
+                        <div className="flex items-center mt-1">
+                          <FileText className="w-4 h-4 text-green-400 mr-2" />
+                          <span className="text-white text-sm">
+                            {customerInfo.idType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                          <span className="ml-2 text-xs text-green-400">Verified</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-t border-gray-600 pt-4">
+                    {loadingCustomerInfo ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-600/30 rounded-lg p-3">
+                        <div className="flex items-center text-yellow-400 text-sm">
+                          <AlertCircle className="w-4 h-4 mr-2" />
+                          <span>Customer verification pending</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="flex space-x-2">
                   <Button
@@ -602,6 +714,8 @@ const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
                 )}
               </div>
             </div>
+
+            
           </div>
         </div>
       </div>

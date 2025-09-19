@@ -141,7 +141,7 @@ exports.createPaymentIntent = catchAsync(async (req, res, next) => {
       console.error('Development auto-confirm error:', error);
       // Don't throw - this is non-critical development helper
     }
-  }, 15000); // 15 seconds delay
+  }, 90000); // 90 seconds delay
 }
   } catch (error) {
     console.error('Payment intent creation failed:', error);
