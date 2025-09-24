@@ -13,6 +13,8 @@ import ProfilePage from './pages/profile/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import PublicProfilePage from './pages/profile/PublicProfilePage';
+
 
 import MyBookings from './pages/booking/MyBookings';
 import FavoritesPage from './pages/favorites/FavoritesPage';
@@ -132,6 +134,8 @@ function App() {
                   } 
                 />
                 
+                <Route path="/profile/:userId" element={<PublicProfilePage />} /> 
+
                 <Route 
                   path="/my-bookings" 
                   element={
@@ -167,7 +171,7 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
+
                 {/* Payment Routes */}
                 <Route path="/payment" element={<PaymentPage />} />
                 <Route path="/payment/status" element={<PaymentStatus />} />

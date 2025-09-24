@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { viewRequestAPI } from '../../services/api';
 import Button from '../ui/Button';
+import UserProfileLink from '../ui/UserProfileLink';
 
 const ViewRequests = () => {
   const navigate = useNavigate();
@@ -201,8 +202,9 @@ const ViewRequests = () => {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredRequests.map((request) => (
+      <div className="space-y-4">
+        {filteredRequests.map((request) => {
+          return (
             <div key={request.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-gray-600 transition-colors">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
@@ -213,9 +215,16 @@ const ViewRequests = () => {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                     {/* Client Information */}
-                    <div className="flex items-center text-gray-400">
-                      <User className="w-4 h-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">{request.client_name}</span>
+                    <div className="flex items-center space-x-2 text-gray-400 text-sm mt-1">
+                      <span>Requested by</span>
+                      <UserProfileLink
+                        userId={request.client_id}
+                        name={request.client_name}
+                        role="client"
+                        size="sm"
+                        showAvatar={false}
+                        className="text-white hover:text-purple-400"
+                      />
                     </div>
                     <div className="flex items-center text-gray-400">
                       <Mail className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -323,8 +332,9 @@ const ViewRequests = () => {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
       )}
 
       {/* Response Modal */}

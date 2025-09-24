@@ -1,5 +1,5 @@
 // src/services/reviewService.js - Reviews and Feedback System
-import { reviewAPI } from './api';
+import { reviewAPI, userAPI } from './api';
 
 export const REVIEW_TYPES = {
   HOST: 'host',
@@ -67,6 +67,22 @@ class ReviewService {
     };
   } catch (error) {
     throw new Error(error.response?.data?.message || 'Failed to fetch listing reviews');
+  }
+}
+
+  async getUserReviews(userId) {
+  try {
+    const response = await userAPI.getUserReviews(userId);
+    
+    console.log('API response:', response); // Debug log
+    
+    // Fix the response structure
+    return {
+      received: response.data.data?.reviews || [],  // Add the missing 'data' level
+      statistics: response.data.data?.statistics || {}
+    };
+  } catch (error) {
+    throw new Error('Failed to fetch user reviews');
   }
 }
 

@@ -610,6 +610,7 @@ exports.getViewRequests = catchAsync(async (req, res, next) => {
       u.name as client_name,
       u.email as client_email,
       u.phone as client_phone,
+      u.id as client_id,
       l.title as listing_title,
       l.location as listing_location
     FROM view_requests vr

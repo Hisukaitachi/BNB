@@ -418,3 +418,100 @@ exports.checkMyBanStatus = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Get public profile (limited info for other users to view)
+exports.getPublicProfile = catchAsync(async (req, res, next) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return next(new AppError('User ID is required', 400));
+  }
+
+  const [rows] = await pool.query(
+    'SELECT id, name, role, bio, location, is_verified, created_at FROM users WHERE id = ? AND is_banned = 0',
+    [userId]
+  );
+
+  if (rows.length === 0) {
+    return next(new AppError('User not found or unavailable', 404));
+  }
+
+  const user = rows[0];
+  
+  // Debug: Log the user data to see what we're getting
+  console.log('Public profile data:', user);
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        bio: user.bio || null, // Handle null bio
+        location: user.location || null, // Handle null location
+        isVerified: user.is_verified === 1,
+        created_at: user.created_at, // Make sure this field name matches your frontend
+        memberSince: user.created_at // Add this alias for clarity
+      }
+    }
+  });
+});
+
+// Get user's public reviews (reviews about this user)
+exports.getUserReviews = catchAsync(async (req, res, next) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return next(new AppError('User ID is required', 400));
+  }
+
+  // Check if user exists
+  const [userExists] = await pool.query('SELECT id FROM users WHERE id = ?', [userId]);
+  if (userExists.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  try {
+    // Updated query with JOIN to get reviewer name
+    const [reviews] = await pool.query(`
+      SELECT 
+        r.id,
+        r.rating,
+        r.comment,
+        r.created_at,
+        r.booking_id,
+        r.reviewer_id,
+        u.name as reviewer_name
+      FROM reviews r
+      JOIN users u ON r.reviewer_id = u.id
+      WHERE r.reviewee_id = ?
+      ORDER BY r.created_at DESC
+      LIMIT 10
+    `, [userId]);
+
+    // Simple stats
+    const [stats] = await pool.query(`
+      SELECT 
+        COUNT(*) as totalReviews,
+        AVG(rating) as averageRating
+      FROM reviews 
+      WHERE reviewee_id = ?
+    `, [userId]);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        reviews: reviews || [],
+        statistics: {
+          totalReviews: stats[0]?.totalReviews || 0,
+          averageRating: parseFloat(stats[0]?.averageRating) || 0
+        }
+      }
+    });
+
+  } catch (dbError) {
+    console.error('Database error in getUserReviews:', dbError);
+    return next(new AppError('Database error occurred', 500));
+  }
+});

@@ -229,24 +229,27 @@ const MessagesPage = () => {
   }, [contextMenu.visible, showEmojiPicker]);
 
   // Initialize socket service and handle URL params
-  useEffect(() => {
-    if (user && !socket) {
-      connectSocket(user.id);
-    }
+useEffect(() => {
+  if (user && !socket) {
+    connectSocket(user.id);
+  }
 
-    if (socket) {
-      messageService.setSocket(socket);
-    }
+  if (socket) {
+    messageService.setSocket(socket);
+  }
 
-    loadConversations();
-    
-    const targetUserId = searchParams.get('user');
-    const initialMessage = searchParams.get('message');
-    
-    if (targetUserId && user) {
-      handleDirectUserMessage(parseInt(targetUserId), initialMessage);
-    }
-  }, [socket, user, searchParams]);
+  loadConversations();
+  
+  // Check for both host and client parameters
+  const hostId = searchParams.get('host');
+  const clientId = searchParams.get('client');
+  const targetUserId = hostId || clientId; // Use whichever one exists
+  const initialMessage = searchParams.get('message');
+  
+  if (targetUserId && user) {
+    handleDirectUserMessage(parseInt(targetUserId), initialMessage);
+  }
+}, [socket, user, searchParams]);
 
   // Socket listeners
   useEffect(() => {

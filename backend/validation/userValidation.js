@@ -111,6 +111,13 @@ const userRoleSchema = Joi.object({
     })
 });
 
+const publicProfileSchema = Joi.object({
+  userId: Joi.string().pattern(/^\d+$/).required()
+    .messages({
+      'string.pattern.base': 'User ID must be a valid number',
+      'any.required': 'User ID is required'
+    })
+});
 module.exports = {
   registerSchema,
   loginSchema,
@@ -119,5 +126,6 @@ module.exports = {
   resetPasswordSchema,
   updateProfileSchema,
   changePasswordSchema,
-  userRoleSchema
+  userRoleSchema,
+  publicProfileSchema
 };

@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostBookings.jsx - FIXED status handling
+// frontend/src/components/host/HostBookings.jsx - Refactored and responsive
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -10,12 +10,13 @@ import {
   MessageSquare,
   Eye,
   RefreshCw,
-  Shield,        // Add this
-  FileText,      // Add this
-  AlertCircle  
+  Star
 } from 'lucide-react';
 import Button from '../ui/Button';
 import { bookingAPI } from '../../services/api';
+import BookingCard from './comphb/BookingCard';
+import BookingDetailsModal from './comphb/BookingDetailsModal';
+import GuestReviewModal from './comphb/GuestReviewModal';
 
 const HostBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -25,6 +26,7 @@ const HostBookings = () => {
   const [actionLoading, setActionLoading] = useState({});
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   useEffect(() => {
     loadHostBookings();
@@ -57,19 +59,20 @@ const HostBookings = () => {
       const response = await bookingAPI.updateBookingStatus(bookingId, newStatus);
       
       if (response.data.status === 'success') {
-        // Update local state
         setBookings(prev => prev.map(booking => 
           booking.booking_id === bookingId 
             ? { ...booking, status: newStatus }
             : booking
         ));
         
-        // Show success message based on the new payment flow
-        if (newStatus === 'approved') {
-          alert('Booking approved! The guest will now be able to make payment to confirm their reservation.');
-        } else {
-          alert(`Booking ${newStatus} successfully`);
-        }
+        const statusMessages = {
+          approved: 'Booking approved! The guest will now be able to make payment to confirm their reservation.',
+          arrived: 'Booking marked as arrived. The guest is now checked in.',
+          completed: 'Booking marked as completed.',
+          default: `Booking ${newStatus} successfully`
+        };
+        
+        alert(statusMessages[newStatus] || statusMessages.default);
       }
       
     } catch (error) {
@@ -79,43 +82,29 @@ const HostBookings = () => {
     }
   };
 
-  // ✅ FIXED: Change 'confirmed' to 'approved'
-  const handleApprove = (bookingId) => {
-    if (confirm('Approve this booking request? The guest will then need to complete payment to confirm their reservation.')) {
-      updateBookingStatus(bookingId, 'approved'); // ✅ Changed from 'confirmed' to 'approved'
-    }
-  };
-
-  const handleDecline = (bookingId) => {
-    const reason = prompt('Please provide a reason for declining (optional):');
-    updateBookingStatus(bookingId, 'rejected', reason || 'Host declined');
-  };
-
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      pending: { color: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
-      approved: { color: 'bg-blue-100 text-blue-800', label: 'Approved (Awaiting Payment)' }, // ✅ Updated label
-      confirmed: { color: 'bg-green-100 text-green-800', label: 'Confirmed' },
-      rejected: { color: 'bg-red-100 text-red-800', label: 'Rejected' },
-      cancelled: { color: 'bg-gray-100 text-gray-800', label: 'Cancelled' },
-      completed: { color: 'bg-purple-100 text-purple-800', label: 'Completed' }
+  const getFilterCounts = () => {
+    return {
+      all: bookings.length,
+      pending: bookings.filter(b => b.status === 'pending').length,
+      approved: bookings.filter(b => b.status === 'approved').length,
+      confirmed: bookings.filter(b => b.status === 'confirmed').length,
+      arrived: bookings.filter(b => b.status === 'arrived').length,
+      completed: bookings.filter(b => b.status === 'completed').length
     };
-    
-    const config = statusConfig[status] || statusConfig.pending;
-    return config;
   };
 
-  const getPendingBookingsCount = () => {
-    return bookings.filter(booking => booking.status === 'pending').length;
-  };
-
-  const getTodaysCheckIns = () => {
+  const getStats = () => {
     const today = new Date().toISOString().split('T')[0];
-    return bookings.filter(booking => 
-      booking.check_in_date && 
-      booking.check_in_date.split('T')[0] === today &&
-      ['confirmed', 'approved'].includes(booking.status) // ✅ Include both confirmed and approved
-    ).length;
+    return {
+      total: bookings.length,
+      pending: bookings.filter(b => b.status === 'pending').length,
+      checkingInToday: bookings.filter(b => 
+        b.check_in_date && 
+        b.check_in_date.split('T')[0] === today &&
+        ['confirmed', 'approved'].includes(b.status)
+      ).length,
+      currentlyStaying: bookings.filter(b => b.status === 'arrived').length
+    };
   };
 
   if (loading) {
@@ -135,251 +124,90 @@ const HostBookings = () => {
     );
   }
 
+  const stats = getStats();
+  const filterCounts = getFilterCounts();
+
   return (
-    <div className="space-y-6">
-      {/* Header with Stats */}
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
         <div>
-          <h1 className="text-3xl font-bold text-white">Manage Bookings</h1>
-          <p className="text-gray-400">
-            {bookings.length} total bookings • {getPendingBookingsCount()} pending • {getTodaysCheckIns()} checking in today
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Manage Bookings</h1>
+          <p className="text-sm sm:text-base text-gray-400 mt-1">
+            {stats.total} total • {stats.pending} pending • {stats.checkingInToday} checking in today • {stats.currentlyStaying} staying
           </p>
         </div>
         
-        <div className="flex items-center space-x-4">
-          <Button
-            onClick={loadHostBookings}
-            variant="outline"
-            className="border-gray-600 text-gray-300"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
+        <Button
+          onClick={loadHostBookings}
+          variant="outline"
+          className="border-gray-600 text-gray-300 w-full sm:w-auto"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
-      {/* Updated Filter Tabs */}
-      <div className="flex space-x-2 border-b border-gray-700">
-        {[
-          { key: 'all', label: 'All Bookings', count: bookings.length },
-          { key: 'pending', label: 'Pending', count: getPendingBookingsCount() },
-          { key: 'approved', label: 'Approved', count: bookings.filter(b => b.status === 'approved').length }, // ✅ Added approved tab
-          { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'confirmed').length },
-          { key: 'completed', label: 'Completed', count: bookings.filter(b => b.status === 'completed').length }
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 rounded-t-lg transition flex items-center space-x-2 ${
-              filter === tab.key
-                ? 'bg-purple-600 text-white border-b-2 border-purple-600'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-            }`}
-          >
-            <span>{tab.label}</span>
-            {tab.count > 0 && (
-              <span className={`px-2 py-1 rounded-full text-xs ${
-                filter === tab.key 
-                  ? 'bg-purple-700 text-purple-100' 
-                  : 'bg-gray-700 text-gray-300'
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Filter Tabs */}
+      <div className="overflow-x-auto">
+        <div className="flex space-x-2 border-b border-gray-700 min-w-max">
+          {[
+            { key: 'all', label: 'All', count: filterCounts.all },
+            { key: 'pending', label: 'Pending', count: filterCounts.pending },
+            { key: 'approved', label: 'Approved', count: filterCounts.approved },
+            { key: 'confirmed', label: 'Confirmed', count: filterCounts.confirmed },
+            { key: 'arrived', label: 'Arrived', count: filterCounts.arrived },
+            { key: 'completed', label: 'Completed', count: filterCounts.completed }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={`px-3 sm:px-4 py-2 rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap ${
+                filter === tab.key
+                  ? 'bg-purple-600 text-white border-b-2 border-purple-600'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <span className="text-sm sm:text-base">{tab.label}</span>
+              {tab.count > 0 && (
+                <span className={`px-2 py-1 rounded-full text-xs ${
+                  filter === tab.key 
+                    ? 'bg-purple-700 text-purple-100' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Bookings List */}
       {bookings.length === 0 ? (
-        <div className="text-center py-16">
-          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-white mb-2">
-            {filter === 'all' ? 'No bookings yet' : `No ${filter} bookings`}
-          </h3>
-          <p className="text-gray-400">
-            {filter === 'pending' ? 'New booking requests will appear here' : 'Bookings will appear here as guests make reservations'}
-          </p>
-        </div>
+        <EmptyState filter={filter} />
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {bookings.map((booking) => {
-            const statusBadge = getStatusBadge(booking.status);
-            const isLoading = actionLoading[booking.booking_id];
-            
-            return (
-              <div key={booking.booking_id} className={`bg-gray-800 rounded-xl p-6 border ${
-                booking.status === 'pending' ? 'border-yellow-500' : 
-                booking.status === 'approved' ? 'border-blue-500' : 'border-gray-700'
-              }`}>
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-xl font-semibold text-white">{booking.title}</h3>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusBadge.color}`}>
-                        {statusBadge.label}
-                      </span>
-                      
-                      {/* ✅ NEW: Payment status indicator */}
-                      {booking.status === 'approved' && (
-                        <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
-                          Awaiting Payment
-                        </span>
-                      )}
-                      {booking.payment_status === 'succeeded' && (
-                        <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-                          Paid
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center text-gray-400 space-x-4 text-sm">
-                      <div className="flex items-center">
-                        <User className="w-4 h-4 mr-1" />
-                        <span>Guest: {booking.client_name}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span>Booking #{booking.booking_id}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ✅ NEW: Special message for approved bookings */}
-                {booking.status === 'approved' && !booking.payment_status && (
-                  <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
-                    <p className="text-blue-400 text-sm">
-                      💳 This booking has been approved. The guest can now complete payment to confirm their reservation.
-                    </p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="flex items-center text-gray-300">
-                    <Calendar className="w-5 h-5 mr-3 text-purple-400" />
-                    <div>
-                      <p className="text-sm text-gray-400">Check-in</p>
-                      <p className="font-medium">
-                        {new Date(booking.check_in_date).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short', 
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center text-gray-300">
-                    <Calendar className="w-5 h-5 mr-3 text-purple-400" />
-                    <div>
-                      <p className="text-sm text-gray-400">Check-out</p>
-                      <p className="font-medium">
-                        {new Date(booking.check_out_date).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short', 
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center text-gray-300">
-                    <DollarSign className="w-5 h-5 mr-3 text-green-400" />
-                    <div>
-                      <p className="text-sm text-gray-400">Total</p>
-                      <p className="font-medium">₱{Number(booking.total_price).toLocaleString()}</p>
-                      {/* ✅ NEW: Show earnings info */}
-                      {booking.payment_status === 'succeeded' && (
-                        <p className="text-xs text-green-400">Your earnings: ₱{Number(booking.total_price * 0.9).toLocaleString()}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-between items-center">
-                  <div className="flex space-x-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-gray-600 text-gray-300"
-                      onClick={() => {
-                        setSelectedBooking(booking);
-                        setShowDetailsModal(true);
-                      }}
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      View Details
-                    </Button>
-                    
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-purple-500 text-purple-400"
-                      onClick={() => window.open(`/messages?client=${booking.client_id}`, '_blank')}
-                    >
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Message Guest
-                    </Button>
-                  </div>
-
-                  {/* Status-specific actions */}
-                  {booking.status === 'pending' && (
-                    <div className="flex space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
-                        onClick={() => handleDecline(booking.booking_id)}
-                        loading={isLoading}
-                      >
-                        <X className="w-4 h-4 mr-2" />
-                        Decline
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="gradient"
-                        onClick={() => handleApprove(booking.booking_id)}
-                        loading={isLoading}
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Approve
-                      </Button>
-                    </div>
-                  )}
-
-                  {booking.status === 'approved' && (
-                    <div className="text-right">
-                      <div className="bg-blue-900/20 text-blue-400 px-3 py-2 rounded-lg text-sm">
-                        ✓ Approved - Awaiting Payment
-                      </div>
-                    </div>
-                  )}
-
-                  {['confirmed'].includes(booking.status) && (
-                    <div className="text-right">
-                      <div className="bg-green-900/20 text-green-400 px-3 py-2 rounded-lg text-sm">
-                        ✓ Confirmed & Paid
-                      </div>
-                    </div>
-                  )}
-
-                  {booking.status === 'completed' && (
-                    <div className="text-right">
-                      <div className="bg-purple-900/20 text-purple-400 px-3 py-2 rounded-lg text-sm">
-                        ✓ Completed
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="space-y-4">
+          {bookings.map((booking) => (
+            <BookingCard
+              key={booking.booking_id}
+              booking={booking}
+              isLoading={actionLoading[booking.booking_id]}
+              onUpdateStatus={updateBookingStatus}
+              onViewDetails={(booking) => {
+                setSelectedBooking(booking);
+                setShowDetailsModal(true);
+              }}
+              onOpenReview={(booking) => {
+                setSelectedBooking(booking);
+                setShowReviewModal(true);
+              }}
+            />
+          ))}
         </div>
       )}
 
-      {/* Booking Details Modal */}
+      {/* Modals */}
       {showDetailsModal && selectedBooking && (
         <BookingDetailsModal 
           booking={selectedBooking}
@@ -393,334 +221,38 @@ const HostBookings = () => {
           }}
         />
       )}
+
+      {showReviewModal && selectedBooking && (
+        <GuestReviewModal
+          booking={selectedBooking}
+          onClose={() => {
+            setShowReviewModal(false);
+            setSelectedBooking(null);
+          }}
+          onReviewSubmitted={() => {
+            setShowReviewModal(false);
+            setSelectedBooking(null);
+            alert('Review submitted successfully!');
+          }}
+        />
+      )}
     </div>
   );
 };
 
-// ✅ UPDATED: Booking Details Modal with correct actions
-const BookingDetailsModal = ({ booking, onClose, onStatusUpdate }) => {
-  const [history, setHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [customerInfo, setCustomerInfo] = useState(null);
-  const [loadingCustomerInfo, setLoadingCustomerInfo] = useState(false);
-
-  useEffect(() => {
-    loadBookingHistory();
-    loadCustomerInfo();
-  }, [booking.booking_id]);
-
-  const loadBookingHistory = async () => {
-    try {
-      setLoadingHistory(true);
-      const response = await bookingAPI.getBookingHistory(booking.booking_id);
-      setHistory(response.data.data?.history || []);
-    } catch (error) {
-      console.error('Failed to load booking history:', error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
- const loadCustomerInfo = async () => {
-  try {
-    setLoadingCustomerInfo(true);
-    const response = await bookingAPI.getBookingCustomerInfo(booking.booking_id);
-    
-    if (response.data.data?.customerInfo) {
-      // Check if customerInfo is a string (needs parsing) or already an object
-      const customerData = response.data.data.customerInfo;
-      
-      if (typeof customerData === 'string') {
-        try {
-          setCustomerInfo(JSON.parse(customerData));
-        } catch (parseError) {
-          console.error('Failed to parse customer info string:', parseError);
-          setCustomerInfo(null);
-        }
-      } else if (typeof customerData === 'object') {
-        // It's already an object, no need to parse
-        setCustomerInfo(customerData);
-      } else {
-        console.log('Customer info is neither string nor object:', customerData);
-        setCustomerInfo(null);
-      }
-    } else {
-      console.log('No customer info available for booking:', booking.booking_id);
-      setCustomerInfo(null);
-    }
-  } catch (error) {
-    console.error('Failed to load customer info:', error);
-    setCustomerInfo(null);
-  } finally {
-    setLoadingCustomerInfo(false);
-  }
-};
-
-  const calculateDuration = () => {
-    const checkIn = new Date(booking.check_in_date);
-    const checkOut = new Date(booking.check_out_date);
-    return Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-  };
-
-  const getDaysUntilCheckIn = () => {
-    const checkIn = new Date(booking.check_in_date);
-    const today = new Date();
-    const diffTime = checkIn - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Booking Details</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Booking Information */}
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Booking Information</h3>
-              <div className="bg-gray-700 rounded-lg p-4 space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Booking ID</span>
-                  <span className="text-white font-medium">#{booking.booking_id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Property</span>
-                  <span className="text-white font-medium">{booking.title}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Duration</span>
-                  <span className="text-white font-medium">{calculateDuration()} nights</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Total Amount</span>
-                  <span className="text-green-400 font-medium">₱{Number(booking.total_price).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Days until check-in</span>
-                  <span className="text-white font-medium">
-                    {getDaysUntilCheckIn() > 0 ? `${getDaysUntilCheckIn()} days` : 'Today'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Guest Information */}
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Guest Information</h3>
-              <div className="bg-gray-700 rounded-lg p-4">
-                <div className="flex items-center space-x-4 mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-                    <User className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-semibold">{booking.client_name}</h4>
-                    <p className="text-gray-400 text-sm">Guest</p>
-                  </div>
-                </div>
-
-              {/* Customer Verified Info */}
-                {customerInfo ? (
-                  <div className="space-y-3 border-t border-gray-600 pt-4">
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-gray-400">Full Name</span>
-                        <p className="text-white font-medium">{customerInfo.fullName}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Email</span>
-                        <p className="text-white font-medium">{customerInfo.email}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Phone</span>
-                        <p className="text-white font-medium">{customerInfo.phone}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Birth Date</span>
-                        <p className="text-white font-medium">
-                          {new Date(customerInfo.birthDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Address Info */}
-                    <div className="pt-3 border-t border-gray-600">
-                      <span className="text-gray-400 text-sm">Address</span>
-                      <p className="text-white text-sm">
-                        {customerInfo.address}, {customerInfo.city}
-                        {customerInfo.postalCode && `, ${customerInfo.postalCode}`}
-                        {customerInfo.country && `, ${customerInfo.country}`}
-                      </p>
-                    </div>
-
-                    {/* Emergency Contact */}
-                    {customerInfo.emergencyContact && (
-                      <div className="pt-3 border-t border-gray-600">
-                        <span className="text-gray-400 text-sm">Emergency Contact</span>
-                        <p className="text-white text-sm">
-                          {customerInfo.emergencyContact} - {customerInfo.emergencyPhone}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* ID Type */}
-                    {customerInfo.idType && (
-                      <div className="pt-3 border-t border-gray-600">
-                        <span className="text-gray-400 text-sm">ID Verification</span>
-                        <div className="flex items-center mt-1">
-                          <FileText className="w-4 h-4 text-green-400 mr-2" />
-                          <span className="text-white text-sm">
-                            {customerInfo.idType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                          <span className="ml-2 text-xs text-green-400">Verified</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-t border-gray-600 pt-4">
-                    {loadingCustomerInfo ? (
-                      <div className="flex items-center justify-center py-4">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-600/30 rounded-lg p-3">
-                        <div className="flex items-center text-yellow-400 text-sm">
-                          <AlertCircle className="w-4 h-4 mr-2" />
-                          <span>Customer verification pending</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-purple-500 text-purple-400 flex-1"
-                    onClick={() => window.open(`/messages?client=${booking.client_id}`, '_blank')}
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Send Message
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Dates & Actions */}
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Dates & Status</h3>
-              <div className="bg-gray-700 rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-600 rounded-lg">
-                  <div className="flex items-center">
-                    <Calendar className="w-5 h-5 text-green-400 mr-3" />
-                    <div>
-                      <p className="text-sm text-gray-400">Check-in</p>
-                      <p className="text-white font-medium">
-                        {new Date(booking.check_in_date).toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gray-600 rounded-lg">
-                  <div className="flex items-center">
-                    <Calendar className="w-5 h-5 text-red-400 mr-3" />
-                    <div>
-                      <p className="text-sm text-gray-400">Check-out</p>
-                      <p className="text-white font-medium">
-                        {new Date(booking.check_out_date).toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ✅ FIXED: Actions for pending bookings */}
-            {booking.status === 'pending' && (
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <Button
-                    onClick={() => onStatusUpdate(booking.booking_id, 'approved')} // ✅ Changed from 'confirmed' to 'approved'
-                    variant="gradient"
-                    size="lg"
-                    className="w-full"
-                  >
-                    <Check className="w-5 h-5 mr-2" />
-                    Approve Booking
-                  </Button>
-                  
-                  <Button
-                    onClick={() => onStatusUpdate(booking.booking_id, 'rejected')}
-                    variant="outline"
-                    size="lg"
-                    className="w-full border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
-                  >
-                    <X className="w-5 h-5 mr-2" />
-                    Decline Booking
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Booking History */}
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Booking History</h3>
-              <div className="bg-gray-700 rounded-lg p-4 max-h-64 overflow-y-auto">
-                {loadingHistory ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
-                  </div>
-                ) : history.length === 0 ? (
-                  <p className="text-gray-400 text-center py-4">No history available</p>
-                ) : (
-                  <div className="space-y-3">
-                    {history.map((entry, index) => (
-                      <div key={index} className="flex items-center space-x-3">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                        <div>
-                          <p className="text-white text-sm">
-                            Status changed to <span className="font-medium">{entry.new_status}</span>
-                          </p>
-                          <p className="text-gray-400 text-xs">
-                            {new Date(entry.changed_at).toLocaleString()} by {entry.changed_by_name}
-                          </p>
-                          {entry.note && (
-                            <p className="text-gray-300 text-xs italic mt-1">{entry.note}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+// Empty State Component
+const EmptyState = ({ filter }) => (
+  <div className="text-center py-12 sm:py-16">
+    <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
+    <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">
+      {filter === 'all' ? 'No bookings yet' : `No ${filter} bookings`}
+    </h3>
+    <p className="text-sm sm:text-base text-gray-400 max-w-md mx-auto">
+      {filter === 'pending' ? 'New booking requests will appear here' : 
+       filter === 'arrived' ? 'Guests who have arrived will appear here' :
+       'Bookings will appear here as guests make reservations'}
+    </p>
+  </div>
+);
 
 export default HostBookings;

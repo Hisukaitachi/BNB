@@ -371,10 +371,13 @@ export const userAPI = {
   updateProfile: (data) => api.put('/users/me', data),
   changePassword: (data) => api.put('/users/me/change-password', data),
   
+  // Public profiles - ADD THESE
+  getPublicProfile: (userId) => api.get(`/users/${userId}/public`),
+  getUserReviews: (userId) => api.get(`/users/${userId}/reviews`),
+  
   // Status checks
   checkMyBanStatus: () => api.get('/users/check-my-ban')
 };
-
 // HEALTH CHECK FUNCTIONS (unchanged)
 export const healthAPI = {
   // Basic health check

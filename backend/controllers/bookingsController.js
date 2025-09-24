@@ -14,27 +14,36 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('Listing ID, start date, end date, and total price are required', 400));
   }
 
-  // Enhanced date validation
-  const startDate = new Date(start_date);
-  const endDate = new Date(end_date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Simple string-based date validation (avoids timezone issues)
+  const todayString = new Date().toISOString().split('T')[0];
 
-  // Check for invalid dates
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    return next(new AppError('Invalid date format provided', 400));
+  // Validate date format (YYYY-MM-DD)
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(start_date) || !dateRegex.test(end_date)) {
+    return next(new AppError('Invalid date format. Use YYYY-MM-DD format', 400));
   }
 
-  if (startDate < today) {
+  // Check if dates are valid
+  const startDate = new Date(start_date);
+  const endDate = new Date(end_date);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return next(new AppError('Invalid date values provided', 400));
+  }
+
+  // Check if start date is in the past
+  if (start_date < todayString) {
     return next(new AppError('Start date cannot be in the past', 400));
   }
 
-  if (endDate <= startDate) {
+  // Check if end date is after start date
+  if (end_date <= start_date) {
     return next(new AppError('End date must be after start date', 400));
   }
 
-  // Check minimum and maximum booking duration
+  // Calculate booking duration
   const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+  
+  // Check minimum and maximum booking duration
   if (daysDifference > 365) {
     return next(new AppError('Booking cannot exceed 365 days', 400));
   }
@@ -60,12 +69,12 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('You cannot book your own listing', 400));
   }
 
-  // CRITICAL FIX: Check for booking conflicts with proper date logic
+  // Check for booking conflicts with consistent date format
   const [conflicts] = await pool.query(`
     SELECT id, start_date, end_date, status
     FROM bookings
     WHERE listing_id = ?
-      AND status IN ('pending', 'approved', 'confirmed')
+      AND status IN ('pending', 'approved', 'confirmed', 'arrived')
       AND NOT (end_date <= ? OR start_date >= ?)
   `, [listing_id, start_date, end_date]);
 
@@ -80,15 +89,15 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     ));
   }
 
-  // Validate pricing against listing price (with tolerance for discounts)
-  const expectedPrice = listing.price_per_night * daysDifference;
-  const priceTolerance = expectedPrice * 0.2; // 20% tolerance for discounts
+  // Validate pricing against listing price (with tolerance for discounts/fees)
+  const expectedBasePrice = listing.price_per_night * daysDifference;
+  const priceTolerance = expectedBasePrice * 0.3; // 30% tolerance for fees, taxes, discounts
   
-  if (total_price > expectedPrice + priceTolerance) {
+  if (total_price > expectedBasePrice + priceTolerance) {
     return next(new AppError('Price exceeds maximum allowed amount', 400));
   }
   
-  if (total_price < expectedPrice - priceTolerance) {
+  if (total_price < expectedBasePrice - priceTolerance) {
     return next(new AppError('Price is below minimum allowed amount', 400));
   }
 
@@ -97,11 +106,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
-    // Double-check for conflicts within transaction
+    // Double-check for conflicts within transaction with consistent date format
     const [finalConflictCheck] = await connection.query(`
       SELECT id FROM bookings
       WHERE listing_id = ?
-        AND status IN ('pending', 'approved', 'confirmed')
+        AND status IN ('pending', 'approved', 'confirmed', 'arrived')
         AND NOT (end_date <= ? OR start_date >= ?)
       FOR UPDATE
     `, [listing_id, start_date, end_date]);
@@ -111,7 +120,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       return next(new AppError('Selected dates are no longer available', 409));
     }
 
-    // Create the booking
+    // Create the booking with consistent date format
     const [result] = await connection.query(
       'INSERT INTO bookings (listing_id, client_id, start_date, end_date, total_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
       [listing_id, clientId, start_date, end_date, total_price, 'pending']
@@ -120,7 +129,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     await connection.commit();
 
     // Notify host
-    const { createNotification } = require('./notificationsController');
     await createNotification({
       userId: listing.host_id,
       message: `New booking request for '${listing.title}' from ${req.user.name}`,
@@ -276,7 +284,7 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
     SELECT start_date, end_date, status
     FROM bookings
     WHERE listing_id = ? 
-      AND status IN ('pending', 'approved', 'confirmed')
+      AND status IN ('pending', 'approved', 'confirmed', 'arrived')
     ORDER BY start_date ASC
   `, [listingId]);
 
@@ -325,7 +333,8 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('Status is required', 400));
   }
 
-  const validStatuses = ['pending', 'approved', 'confirmed', 'rejected', 'cancelled', 'completed'];
+  // UPDATED: Added 'arrived' to valid statuses
+  const validStatuses = ['pending', 'approved', 'confirmed', 'rejected', 'cancelled', 'completed', 'arrived'];
   if (!validStatuses.includes(status)) {
     return next(new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400));
   }
@@ -362,12 +371,24 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     if (booking.host_id !== userId) {
       return next(new AppError('You can only manage bookings for your listings', 403));
     }
-    // UPDATED: Hosts can approve or reject pending bookings
+    
+    // UPDATED: Enhanced host permissions with arrived status
     if (booking.status === 'pending' && !['approved', 'rejected'].includes(status)) {
       return next(new AppError('Hosts can only approve or reject pending bookings', 403));
     }
-    if (['completed', 'refunded', 'cancelled'].includes(booking.status)) {
-      return next(new AppError('Cannot modify this booking status', 400));
+    
+    // NEW: Allow hosts to mark confirmed bookings as arrived (only)
+    if (booking.status === 'confirmed' && !['arrived', 'cancelled'].includes(status)) {
+      return next(new AppError('Confirmed bookings can only be marked as arrived or cancelled', 403));
+    }
+    
+    // UPDATED: Remove manual completion from arrived bookings - auto-complete only
+    if (booking.status === 'arrived' && !['completed', 'cancelled'].includes(status)) {
+      return next(new AppError('Arrived bookings can only be marked as completed or cancelled', 403));
+    }
+    
+    if (['completed', 'refunded'].includes(booking.status)) {
+      return next(new AppError('Cannot modify completed or refunded bookings', 400));
     }
   }
 
@@ -375,10 +396,34 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   if (status === 'approved' && booking.status !== 'pending') {
     return next(new AppError('Only pending bookings can be approved', 400));
   }
+  
+  // NEW: Validation for arrived status with date check
+  if (status === 'arrived' && booking.status !== 'confirmed') {
+    return next(new AppError('Only confirmed bookings can be marked as arrived', 400));
+  }
+  
+  // NEW: Check if today is the check-in date for arrivals
+  if (status === 'arrived' && booking.status === 'confirmed') {
+  const today = new Date().toISOString().split('T')[0];
+  const checkInDate = booking.start_date.toISOString().split('T')[0];
+  
+  // Allow arrivals on check-in day or the day after (for late arrivals)
+  const checkInDay = new Date(checkInDate);
+  const dayAfterCheckIn = new Date(checkInDay.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  
+  if (today !== checkInDate && today !== dayAfterCheckIn) {
+    return next(new AppError('Guests can only be marked as arrived on their check-in date or the day after', 400));
+  }
+}
+  
+  // UPDATED: Remove manual completion validation - only auto-complete allowed
+  if (status === 'completed' && !['arrived', 'confirmed'].includes(booking.status)) {
+    return next(new AppError('Only arrived or confirmed bookings can be marked as completed', 400));
+  }
 
   let notificationsToSend = [];
 
-  // UPDATED notification logic for the new flow
+  // UPDATED notification logic with arrived status
   if (userRole === 'client' && status === 'cancelled') {
     notificationsToSend.push({
       userId: booking.host_id,
@@ -387,7 +432,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
-  // NEW: When host approves, notify client about payment requirement
+  // When host approves, notify client about payment requirement
   if (userRole === 'host' && status === 'approved') {
     notificationsToSend.push({
       userId: booking.client_id,
@@ -404,7 +449,26 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
-  if (userRole === 'admin' && !['cancelled', 'approved', 'rejected'].includes(status)) {
+  // NEW: Notification for arrived status
+  if (userRole === 'host' && status === 'arrived') {
+    notificationsToSend.push({
+      userId: booking.client_id,
+      message: `🏠 Welcome! Your host has confirmed your arrival at '${booking.title}'. Enjoy your stay!`,
+      type: 'booking_arrived'
+    });
+  }
+
+  if (userRole === 'host' && status === 'completed') {
+  notificationsToSend.push({
+    userId: booking.client_id,
+    message: `✅ Your stay at '${booking.title}' has been marked as completed. Thank you for choosing our property!`,
+    type: 'booking_completed'
+  });
+}
+
+  // REMOVED: Manual completion notification - only auto-complete now
+
+  if (userRole === 'admin' && !['cancelled', 'approved', 'rejected', 'arrived', 'completed'].includes(status)) {
     notificationsToSend.push({
       userId: booking.client_id,
       message: `Admin changed your booking for '${booking.title}' to '${status}'.`,
@@ -439,7 +503,10 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
       newStatus: status,
       updatedBy: userRole,
       updatedAt: new Date().toISOString(),
-      requiresPayment: status === 'approved' // NEW: Indicate if payment is now required
+      requiresPayment: status === 'approved',
+      isCheckedIn: status === 'arrived',
+      isCompleted: status === 'completed',
+      willAutoComplete: status === 'arrived' && status !== 'completed'
     }
   });
 });

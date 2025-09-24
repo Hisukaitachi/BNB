@@ -13,11 +13,14 @@ import {
   Filter,
   RefreshCw,
   X,
-  CheckCircle
+  CheckCircle,
+  Check,
+  AlertTriangle
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import { BOOKING_STATUS } from '../../services/bookingService';
 import Button from '../ui/Button';
+import UserProfileLink from '../ui/UserProfileLink';
 
 const HostCalendar = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -160,6 +163,18 @@ const HostCalendar = () => {
       pendingBookings: currentMonthBookings.filter(b => b.status === BOOKING_STATUS.PENDING).length
     };
   }, [calendarData.bookings, currentMonth]);
+
+  // Handle booking actions
+  const handleBookingAction = async (bookingId, newStatus) => {
+    try {
+      // Add your booking action logic here
+      console.log(`Updating booking ${bookingId} to status ${newStatus}`);
+      // Reload calendar data after action
+      await loadCalendarData();
+    } catch (error) {
+      console.error('Failed to update booking:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -363,7 +378,17 @@ const HostCalendar = () => {
                 <div className="space-y-2">
                   {getTodaysCheckIns().map(booking => (
                     <div key={booking.id} className="bg-gray-700 rounded-lg p-3">
-                      <p className="text-white font-medium">{booking.clientName}</p>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="text-gray-400 text-sm">Guest:</span>
+                        <UserProfileLink
+                          userId={booking.extendedProps?.clientId}
+                          name={booking.clientName}
+                          role="client"
+                          size="sm"
+                          showAvatar={false}
+                          className="text-white font-medium"
+                        />
+                      </div>
                       <p className="text-gray-400 text-sm">{booking.title}</p>
                     </div>
                   ))}
@@ -378,7 +403,17 @@ const HostCalendar = () => {
                 <div className="space-y-2">
                   {getTodaysCheckOuts().map(booking => (
                     <div key={booking.id} className="bg-gray-700 rounded-lg p-3">
-                      <p className="text-white font-medium">{booking.clientName}</p>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="text-gray-400 text-sm">Guest:</span>
+                        <UserProfileLink
+                          userId={booking.extendedProps?.clientId}
+                          name={booking.clientName}
+                          role="client"
+                          size="sm"
+                          showAvatar={false}
+                          className="text-white font-medium"
+                        />
+                      </div>
                       <p className="text-gray-400 text-sm">{booking.title}</p>
                     </div>
                   ))}
@@ -419,9 +454,17 @@ const HostCalendar = () => {
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h3 className="text-white font-semibold">{booking.title}</h3>
-                        <div className="flex items-center text-gray-400 text-sm mt-1">
-                          <User className="w-4 h-4 mr-1" />
-                          <span>{booking.clientName}</span>
+                        <div className="flex items-center space-x-2 text-gray-400 text-sm mt-1">
+                          <User className="w-4 h-4" />
+                          <span>Guest:</span>
+                          <UserProfileLink
+                            userId={booking.extendedProps?.clientId}
+                            name={booking.clientName}
+                            role="client"
+                            size="sm"
+                            showAvatar={false}
+                            className="text-white hover:text-purple-400"
+                          />
                         </div>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs text-white ${getBookingColor(booking.status)}`}>

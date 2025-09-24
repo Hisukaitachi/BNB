@@ -14,7 +14,8 @@ const {
   resetPasswordSchema,
   updateProfileSchema,
   changePasswordSchema,
-  userRoleSchema
+  userRoleSchema,
+  publicProfileSchema
 } = require('../validation/userValidation');
 
 // Google OAuth routes - ADDED
@@ -53,4 +54,7 @@ router.put('/:id/demote', validate(userRoleSchema), usersController.demoteToClie
 // Status check route
 router.get("/check-my-ban", authenticateToken, usersController.checkMyBanStatus);
 
+// Public user info routes
+router.get('/:userId/public', authenticateToken, validate(publicProfileSchema), usersController.getPublicProfile);
+router.get('/:userId/reviews', authenticateToken, validate(publicProfileSchema), usersController.getUserReviews);
 module.exports = router;
