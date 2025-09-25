@@ -92,8 +92,11 @@ export const adminAPI = {
   processRefund: (transactionId) => api.post(`/admin/refund/${transactionId}`),
   getAllTransactions: () => api.get('/admin/transactions'),
   
-  // Reports & User Safety
-  // Add these to your adminAPI object in api.js
+  // Reservation Management
+  getAllReservations: (params) => api.get('/admin/reservations', { params }),
+  getReservationDetails: (reservationId) => api.get(`/admin/reservations/${reservationId}`),
+  cancelReservationAdmin: (reservationId, reason) => api.patch(`/admin/reservations/${reservationId}/cancel`, { reason }),
+  getReservationStats: () => api.get('/admin/reservations/stats'),
 
   // Reports & Disputes Management
   getAllReports: () => api.get('/reports/admin/reports'),
@@ -151,6 +154,50 @@ export const bookingAPI = {
   // Get customer verification info for a booking (host only)
   getBookingCustomerInfo: (bookingId) => 
     api.get(`/bookings/${bookingId}/customer-info`)
+};
+
+export const reservationAPI = {
+  // Create a new reservation
+  createReservation: (reservationData) => {
+    return api.post('/reservations', reservationData);
+  },
+
+  // Get user's reservations (client view)
+  getMyReservations: (params = {}) => {
+    return api.get('/reservations/my-reservations', { params });
+  },
+
+  // Get host's reservations
+  getHostReservations: (params = {}) => {
+    return api.get('/reservations/host-reservations', { params });
+  },
+
+  // Get reservation details
+  getReservationDetails: (reservationId) => {
+    return api.get(`/reservations/${reservationId}`);
+  },
+
+  // Update reservation status (confirm, cancel, etc.)
+  updateReservationStatus: (reservationId, status, notes = '') => {
+    return api.patch(`/reservations/${reservationId}/status`, { status, notes });
+  },
+
+  // Cancel reservation
+  cancelReservation: (reservationId, reason = '') => {
+    return api.patch(`/reservations/${reservationId}/cancel`, { reason });
+  },
+
+  // Get available dates for a listing
+  getAvailableDates: (listingId, months = 3) => {
+    return api.get(`/reservations/listing/${listingId}/availability`, { 
+      params: { months } 
+    });
+  },
+
+  // Search reservations with filters
+  searchReservations: (filters) => {
+    return api.get('/reservations/search', { params: filters });
+  }
 };
 
 // PAYMENT FUNCTIONS (unchanged)
@@ -355,7 +402,7 @@ export const roleAPI = {
 
 // USER FUNCTIONS (unchanged)
 export const userAPI = {
-  // Authentication
+  // Existing authentication functions...
   register: (userData) => api.post('/users/register', userData),
   login: (credentials) => api.post('/users/login', credentials),
   verifyEmail: (email, code) => api.post('/users/verify-email', { email, code }),
@@ -371,7 +418,18 @@ export const userAPI = {
   updateProfile: (data) => api.put('/users/me', data),
   changePassword: (data) => api.put('/users/me/change-password', data),
   
-  // Public profiles - ADD THESE
+  // NEW: Profile Picture Management
+  uploadProfilePicture: (file) => {
+    const formData = new FormData();
+    formData.append('profilePicture', file);
+    return api.post('/users/profile-picture', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  deleteProfilePicture: () => api.delete('/users/profile-picture'),
+  
+  // Public profiles
   getPublicProfile: (userId) => api.get(`/users/${userId}/public`),
   getUserReviews: (userId) => api.get(`/users/${userId}/reviews`),
   
