@@ -6,11 +6,16 @@ const fs = require('fs');
 // Ensure uploads directories exist
 const uploadDir = 'uploads';
 const messagesDir = 'uploads/messages';
+const profilePicturesDir = 'uploads/profile-pictures';
+
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 if (!fs.existsSync(messagesDir)) {
   fs.mkdirSync(messagesDir, { recursive: true });
+}
+if (!fs.existsSync(profilePicturesDir)) {
+  fs.mkdirSync(profilePicturesDir, { recursive: true });
 }
 
 // Storage configuration for regular uploads (listings)
@@ -89,34 +94,80 @@ const messageUpload = multer({
   }
 });
 
-// Export configurations
+const profilePictureStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log('Profile picture upload - saving to uploads/profile-pictures/');
+    // Ensure profile pictures directory exists
+    if (!fs.existsSync(profilePicturesDir)) {
+      fs.mkdirSync(profilePicturesDir, { recursive: true });
+      console.log('Created profile-pictures directory');
+    }
+    cb(null, 'uploads/profile-pictures/');
+  },
+  filename: function (req, file, cb) {
+    // Use user ID in filename for easy identification
+    const userId = req.user ? req.user.id : 'unknown';
+    const uniqueName = `profile-${userId}-${Date.now()}${path.extname(file.originalname)}`;
+    console.log('Profile picture saved as:', uniqueName);
+    cb(null, uniqueName);
+  }
+});
+
+// File filter specifically for profile pictures (only images)
+const profilePictureFilter = function (req, file, cb) {
+  console.log('Profile picture multer received file:', {
+    fieldname: file.fieldname,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size
+  });
+
+  // Only allow image types for profile pictures (Sharp will convert them all to JPEG)
+  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/tiff'];
+
+  if (allowedImageTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    console.error('Profile picture file type not allowed:', file.mimetype);
+    cb(new Error(`Profile picture must be an image. Allowed types: ${allowedImageTypes.join(', ')}`), false);
+  }
+};
+
+// Multer instance for profile pictures
+const profilePictureUpload = multer({
+  storage: profilePictureStorage,
+  fileFilter: profilePictureFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max file size for profile pictures
+    files: 1, // Only 1 profile picture at a time
+    fields: 10,
+    fieldNameSize: 100,
+    fieldSize: 1024 * 1024
+  }
+});
+
+// Add to your exports at the bottom of the file:
 module.exports = {
-  // For single image upload (legacy)
+  // Existing exports...
   uploadSingle: upload.single('image'),
-  
-  // For listing uploads (4 images + 1 video)
   uploadFields: upload.fields([
     { name: 'images', maxCount: 4 },
     { name: 'video', maxCount: 1 }
   ]),
-  
-  // FIXED: For message media uploads using dedicated message storage
   uploadMessageMedia: messageUpload.fields([
     { name: 'media', maxCount: 20 }
   ]),
-  
-  // For any media files in messages (alternative)
   uploadMessageAny: messageUpload.any(),
-  
-  // Legacy support for single image
   uploadFieldsLegacy: upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'video', maxCount: 1 }
   ]),
-  
-  // For any files (up to 20) - using regular storage
   uploadAny: upload.any(),
+  upload,
+
+  // NEW: Profile picture upload
+  uploadProfilePicture: profilePictureUpload.single('profilePicture'),
   
-  // Export the base upload for backwards compatibility
-  upload
+  // Alternative: if you want to use 'avatar' as field name
+  uploadAvatar: profilePictureUpload.single('avatar')
 };

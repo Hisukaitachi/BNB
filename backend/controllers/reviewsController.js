@@ -165,8 +165,12 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
 
   const [reviews] = await pool.query(`
     SELECT r.*, 
-           u1.name AS reviewer_name, 
+           u1.name AS reviewer_name,
+           u1.profile_picture AS reviewer_profile_picture,  -- ADD THIS
+           u1.role AS reviewer_role,  -- ADD THIS
            u2.name AS reviewee_name,
+           u2.profile_picture AS reviewee_profile_picture,  -- ADD THIS
+           u2.role AS reviewee_role,  -- ADD THIS
            b.start_date,
            b.end_date,
            l.title AS listing_title
@@ -203,8 +207,7 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
 });
 
 exports.getReviewsForListing = catchAsync(async (req, res, next) => {
-  // FIXED: Use req.params.id instead of req.params.listingId
-  const listingId = req.params.id; // Changed from req.params.listingId
+  const listingId = req.params.id;
   const { page = 1, limit = 10, rating } = req.query;
   
   if (!listingId || isNaN(listingId)) {
@@ -236,6 +239,8 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
   const [rows] = await pool.query(`
     SELECT r.*, 
            u.name AS reviewer_name,
+           u.profile_picture AS reviewer_profile_picture,  -- ADD THIS
+           u.role AS reviewer_role,  -- ADD THIS
            b.start_date,
            b.end_date
     FROM reviews r
@@ -311,6 +316,8 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
     writtenQuery = pool.query(`
       SELECT r.*, 
              u.name AS reviewee_name,
+             u.profile_picture AS reviewee_profile_picture,  -- ADD THIS
+             u.role AS reviewee_role,  -- ADD THIS
              b.start_date,
              b.end_date,
              l.title AS listing_title
@@ -328,6 +335,8 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
     receivedQuery = pool.query(`
       SELECT r.*, 
              u.name AS reviewer_name,
+             u.profile_picture AS reviewer_profile_picture,  -- ADD THIS
+             u.role AS reviewer_role,  -- ADD THIS
              b.start_date,
              b.end_date,
              l.title AS listing_title
@@ -353,14 +362,14 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
     results.received = received;
   }
 
-  // Get counts
+  // Get counts and average rating for received reviews
   const [writtenCount] = await pool.query(
     'SELECT COUNT(*) as total FROM reviews WHERE reviewer_id = ?',
     [userId]
   );
 
-  const [receivedCount] = await pool.query(
-    'SELECT COUNT(*) as total FROM reviews WHERE reviewee_id = ?',
+  const [receivedStats] = await pool.query(
+    'SELECT COUNT(*) as total, AVG(rating) as averageRating FROM reviews WHERE reviewee_id = ?',
     [userId]
   );
 
@@ -370,7 +379,8 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
       ...results,
       statistics: {
         totalWritten: writtenCount[0].total,
-        totalReceived: receivedCount[0].total
+        totalReceived: receivedStats[0].total,
+        averageRating: parseFloat(receivedStats[0].averageRating || 0)
       },
       pagination: {
         page: parseInt(page),

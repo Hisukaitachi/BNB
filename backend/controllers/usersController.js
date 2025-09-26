@@ -2,9 +2,42 @@
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const sharp = require('sharp');
+const fs = require('fs').promises;
 const { sendVerificationCode, sendResetCode } = require('../utils/emailService');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
+
+const generateProfilePictureSizes = async (inputPath, outputDir, baseFilename) => {
+  const sizes = {
+    thumbnail: { width: 100, height: 100 },
+    small: { width: 200, height: 200 },
+    medium: { width: 400, height: 400 }
+  };
+
+  const generatedFiles = {};
+
+  for (const [sizeName, dimensions] of Object.entries(sizes)) {
+    const filename = `${baseFilename}-${sizeName}.jpg`;
+    const outputPath = path.join(outputDir, filename);
+
+    await sharp(inputPath)
+      .resize(dimensions.width, dimensions.height, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .jpeg({
+        quality: sizeName === 'thumbnail' ? 90 : 85,
+        progressive: true
+      })
+      .toFile(outputPath);
+
+    generatedFiles[sizeName] = `/uploads/profile-pictures/${filename}`;
+  }
+
+  return generatedFiles;
+};
 
 exports.createUser = catchAsync(async (req, res, next) => {
   const { name, email, password } = req.body;
@@ -261,6 +294,139 @@ exports.getMyProfile = catchAsync(async (req, res, next) => {
   });
 });
 
+exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('Please select a profile picture', 400));
+  }
+
+  const userId = req.user.id;
+  
+  try {
+    // Get current profile picture to delete old files
+    const [currentUser] = await pool.query(
+      'SELECT profile_picture FROM users WHERE id = ?',
+      [userId]
+    );
+
+    // Generate base filename without extension
+    const baseFilename = `profile-${userId}-${Date.now()}`;
+    
+    // Generate multiple sizes
+    const profilePictures = await generateProfilePictureSizes(
+      req.file.path, 
+      req.file.destination, 
+      baseFilename
+    );
+
+    // Delete original uploaded file
+    await fs.unlink(req.file.path);
+    console.log('Original uploaded image processed and deleted');
+
+    // Store the medium size as the main profile picture
+    const profilePictureUrl = profilePictures.medium;
+
+    // Update database with new profile picture
+    const [result] = await pool.query(
+      'UPDATE users SET profile_picture = ?, updated_at = NOW() WHERE id = ?',
+      [profilePictureUrl, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return next(new AppError('User not found', 404));
+    }
+
+    // Delete old profile pictures if they exist
+    if (currentUser[0]?.profile_picture) {
+      // Delete all old sizes
+      const oldBasePath = currentUser[0].profile_picture.replace('-medium.jpg', '');
+      const sizesToDelete = ['thumbnail', 'small', 'medium'];
+      
+      for (const size of sizesToDelete) {
+        const oldImagePath = path.join(__dirname, '..', `${oldBasePath}-${size}.jpg`);
+        try {
+          await fs.unlink(oldImagePath);
+          console.log(`Old profile picture deleted: ${size}`);
+        } catch (error) {
+          console.log(`Old profile picture ${size} not found:`, error.message);
+        }
+      }
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile picture updated successfully',
+      data: {
+        profilePicture: profilePictureUrl,
+        // Optionally return all sizes for frontend flexibility
+        profilePictures: profilePictures
+      }
+    });
+
+  } catch (error) {
+    // Clean up uploaded file on error
+    if (req.file) {
+      try {
+        await fs.unlink(req.file.path);
+        console.log('Cleaned up failed upload file');
+      } catch (cleanupError) {
+        console.error('Error cleaning up file:', cleanupError);
+      }
+    }
+    throw error;
+  }
+});
+
+// Updated delete function to handle multiple sizes
+exports.deleteProfilePicture = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+
+  // Get current profile picture
+  const [user] = await pool.query(
+    'SELECT profile_picture FROM users WHERE id = ?',
+    [userId]
+  );
+
+  if (user.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  const currentProfilePicture = user[0].profile_picture;
+
+  if (!currentProfilePicture) {
+    return next(new AppError('No profile picture to delete', 400));
+  }
+
+  try {
+    // Delete all sizes
+    const basePath = currentProfilePicture.replace('-medium.jpg', '');
+    const sizesToDelete = ['thumbnail', 'small', 'medium'];
+    
+    for (const size of sizesToDelete) {
+      const imagePath = path.join(__dirname, '..', `${basePath}-${size}.jpg`);
+      try {
+        await fs.unlink(imagePath);
+        console.log(`Profile picture deleted: ${size}`);
+      } catch (error) {
+        console.log(`Profile picture ${size} not found:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.log('Error deleting profile picture files:', error.message);
+    // Continue with database update even if files don't exist
+  }
+
+  // Update database to remove profile picture
+  await pool.query(
+    'UPDATE users SET profile_picture = NULL, updated_at = NOW() WHERE id = ?',
+    [userId]
+  );
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Profile picture deleted successfully'
+  });
+});
+
 exports.updateMyProfile = catchAsync(async (req, res, next) => {
   const { name, phone, bio, location } = req.body;
   const userId = req.user.id;
@@ -309,16 +475,17 @@ exports.updateMyProfile = catchAsync(async (req, res, next) => {
     return next(new AppError('User not found', 404));
   }
 
+  // Get updated user data including profile picture
+  const [updatedUser] = await pool.query(
+    'SELECT name, phone, bio, location, profile_picture FROM users WHERE id = ?',
+    [userId]
+  );
+
   res.status(200).json({
     status: 'success',
     message: 'Profile updated successfully',
     data: {
-      updatedFields: {
-        ...(name && { name }),
-        ...(phone && { phone }),
-        ...(bio && { bio }),
-        ...(location && { location })
-      }
+      user: updatedUser[0]
     }
   });
 });
@@ -428,7 +595,7 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
   }
 
   const [rows] = await pool.query(
-    'SELECT id, name, role, bio, location, is_verified, created_at FROM users WHERE id = ? AND is_banned = 0',
+    'SELECT id, name, role, bio, location, profile_picture, is_verified, created_at FROM users WHERE id = ? AND is_banned = 0',
     [userId]
   );
 
@@ -438,9 +605,6 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
 
   const user = rows[0];
   
-  // Debug: Log the user data to see what we're getting
-  console.log('Public profile data:', user);
-  
   res.status(200).json({
     status: 'success',
     data: {
@@ -448,11 +612,12 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
         id: user.id,
         name: user.name,
         role: user.role,
-        bio: user.bio || null, // Handle null bio
-        location: user.location || null, // Handle null location
+        bio: user.bio || null,
+        location: user.location || null,
+        profilePicture: user.profile_picture || null,
         isVerified: user.is_verified === 1,
-        created_at: user.created_at, // Make sure this field name matches your frontend
-        memberSince: user.created_at // Add this alias for clarity
+        created_at: user.created_at,
+        memberSince: user.created_at
       }
     }
   });
@@ -473,7 +638,7 @@ exports.getUserReviews = catchAsync(async (req, res, next) => {
   }
 
   try {
-    // Updated query with JOIN to get reviewer name
+    // Updated query with JOIN to get reviewer name AND profile picture
     const [reviews] = await pool.query(`
       SELECT 
         r.id,
@@ -482,7 +647,9 @@ exports.getUserReviews = catchAsync(async (req, res, next) => {
         r.created_at,
         r.booking_id,
         r.reviewer_id,
-        u.name as reviewer_name
+        u.name as reviewer_name,
+        u.profile_picture as reviewer_profile_picture,  -- Add this
+        u.role as reviewer_role  -- Add this if you want role too
       FROM reviews r
       JOIN users u ON r.reviewer_id = u.id
       WHERE r.reviewee_id = ?

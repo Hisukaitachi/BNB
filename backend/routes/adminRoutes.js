@@ -61,4 +61,10 @@ router.get('/transactions', adminController.getAllTransactions);
 router.get('/reports', reportsController.getAllReports);
 router.post('/actions', reportsController.adminTakeAction);
 
+//Reservation Management
+router.get('/reservations', adminController.getAllReservations);
+router.get('/reservations/:id', adminController.getReservationDetails);  
+router.patch('/reservations/:reservationId/cancel', adminController.cancelReservationAdmin);
+router.get('/reservations/stats', adminController.getReservationStats);
+
 module.exports = router;

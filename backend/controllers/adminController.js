@@ -708,6 +708,221 @@ exports.getDashboardStats = catchAsync(async (req, res, next) => {
   }
 });
 
+exports.getAllReservations = catchAsync(async (req, res, next) => {
+    const { page = 1, limit = 50, status, listing_id } = req.query;
+    
+    if (parseInt(limit) > 100) {
+        return next(new AppError('Limit cannot exceed 100 reservations per page', 400));
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereClause = '1=1';
+    const queryParams = [];
+
+    if (status) {
+        whereClause += ' AND r.status = ?';
+        queryParams.push(status);
+    }
+
+    if (listing_id) {
+        whereClause += ' AND r.listing_id = ?';
+        queryParams.push(listing_id);
+    }
+
+    queryParams.push(parseInt(limit), offset);
+
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location,
+            uc.name as client_name,
+            uc.email as client_email,
+            uh.name as host_name,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        JOIN users uc ON r.client_id = uc.id
+        JOIN users uh ON r.host_id = uh.id
+        WHERE ${whereClause}
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+    `, queryParams);
+
+    const [countResult] = await pool.query(`
+        SELECT COUNT(*) as total FROM reservations r WHERE ${whereClause}
+    `, queryParams.slice(0, -2));
+
+    res.status(200).json({
+        status: 'success',
+        results: reservations.length,
+        data: {
+            reservations,
+            pagination: {
+                total: countResult[0].total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+            }
+        }
+    });
+});
+
+exports.getReservationDetails = catchAsync(async (req, res, next) => {
+    const { id } = req.params;
+
+    if (!id || isNaN(id)) {
+        return next(new AppError('Valid reservation ID is required', 400));
+    }
+
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location as listing_location,
+            l.image_url,
+            uc.name as client_name,
+            uc.email as client_email,
+            uh.name as host_name,
+            uh.email as host_email,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        JOIN users uc ON r.client_id = uc.id
+        JOIN users uh ON r.host_id = uh.id
+        WHERE r.id = ?
+    `, [id]);
+
+    if (!reservations.length) {
+        return next(new AppError('Reservation not found', 404));
+    }
+
+    const reservation = reservations[0];
+
+    // Get reservation history
+    const [history] = await pool.query(`
+        SELECT rh.*, u.name as user_name
+        FROM reservation_history rh
+        LEFT JOIN users u ON rh.user_id = u.id
+        WHERE rh.reservation_id = ?
+        ORDER BY rh.created_at DESC
+    `, [id]);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            reservation,
+            history
+        }
+    });
+});
+
+exports.cancelReservationAdmin = catchAsync(async (req, res, next) => {
+    const { reservationId } = req.params;
+    const { reason } = req.body;
+    const adminId = req.user.id;
+
+    if (!reason) {
+        return next(new AppError('Cancellation reason is required', 400));
+    }
+
+    const [reservations] = await pool.query(
+        'SELECT * FROM reservations WHERE id = ?', [reservationId]
+    );
+
+    if (!reservations.length) {
+        return next(new AppError('Reservation not found', 404));
+    }
+
+    const reservation = reservations[0];
+
+    if (['cancelled', 'completed'].includes(reservation.status)) {
+        return next(new AppError('Cannot cancel this reservation', 400));
+    }
+
+    await pool.query('CALL sp_update_reservation_status(?, ?, ?, ?)', [
+        reservationId, adminId, 'cancelled', `Admin cancellation: ${reason}`
+    ]);
+
+    // Notify both parties
+    await createNotification({
+        userId: reservation.client_id,
+        message: `Your reservation has been cancelled by administration. Reason: ${reason}`,
+        type: 'admin_cancellation'
+    });
+
+    await createNotification({
+        userId: reservation.host_id,
+        message: `A reservation for your listing has been cancelled by administration.`,
+        type: 'admin_cancellation'
+    });
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Reservation cancelled by admin',
+        data: {
+            reservationId: parseInt(reservationId),
+            reason,
+            cancelledAt: new Date().toISOString()
+        }
+    });
+});
+
+exports.getReservationStats = catchAsync(async (req, res, next) => {
+    const [stats] = await pool.query(`
+        SELECT 
+            COUNT(*) as total_reservations,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
+            COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed,
+            COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+            COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
+            SUM(CASE WHEN status IN ('confirmed', 'completed') THEN total_amount ELSE 0 END) as confirmed_revenue,
+            AVG(total_amount) as average_booking_value,
+            COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today_reservations,
+            COUNT(CASE WHEN WEEK(created_at) = WEEK(CURDATE()) THEN 1 END) as this_week_reservations
+        FROM reservations
+    `);
+
+    // Get monthly trend
+    const [monthlyTrend] = await pool.query(`
+        SELECT 
+            DATE_FORMAT(created_at, '%Y-%m') as month,
+            COUNT(*) as reservations,
+            SUM(total_amount) as revenue
+        FROM reservations 
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+        ORDER BY month DESC
+        LIMIT 12
+    `);
+
+    // Get top performing listings
+    const [topListings] = await pool.query(`
+        SELECT 
+            l.id,
+            l.title,
+            l.location,
+            COUNT(r.id) as reservation_count,
+            SUM(r.total_amount) as total_revenue,
+            AVG(r.total_amount) as avg_reservation_value
+        FROM listings l
+        JOIN reservations r ON l.id = r.listing_id
+        WHERE r.status IN ('confirmed', 'completed')
+        GROUP BY l.id, l.title, l.location
+        ORDER BY reservation_count DESC
+        LIMIT 10
+    `);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            summary: stats[0],
+            monthlyTrend,
+            topListings
+        }
+    });
+});
+
 // PAYOUTS
 exports.processPayout = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;

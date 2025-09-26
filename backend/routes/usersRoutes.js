@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const usersController = require('../controllers/usersController');
 const googleAuthController = require('../controllers/googleAuthController'); // ADDED
+const { uploadProfilePicture } = require('../middleware/multer');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 
@@ -39,6 +40,9 @@ router.put('/:id/promote-admin', validate(userRoleSchema), async (req, res) => {
 router.get('/me', authenticateToken, usersController.getMyProfile);
 router.put('/me', authenticateToken, validate(updateProfileSchema), usersController.updateMyProfile);
 router.put('/me/change-password', authenticateToken, validate(changePasswordSchema), usersController.changePassword);
+// Protected profile picture routes
+router.post('/profile-picture', authenticateToken, uploadProfilePicture, usersController.uploadProfilePicture);
+router.delete('/profile-picture', authenticateToken, usersController.deleteProfilePicture);
 
 // Public routes with validation
 router.post('/forgot-password', validate(forgotPasswordSchema), usersController.sendResetPasswordCode);

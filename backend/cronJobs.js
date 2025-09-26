@@ -1,6 +1,7 @@
 // cronJobs.js - Enhanced with Automated Payouts
 const cron = require("node-cron");
 const autoCompleteBookings = require("./utils/autoCompleteBookings");
+const autoCompleteReservations = require("./utils/autoCompleteReservations");
 const pool = require("./db");
 
 async function processAutomaticPayouts() {
@@ -183,6 +184,12 @@ function startCronJobs() {
     console.log("🔔 Sending payout reminders...");
     await sendPayoutReminders();
   });
+
+  // New job: Auto-complete reservations daily at 1 AM
+  cron.schedule("0 1 * * *", async () => {
+    console.log("🔔 Running auto-complete reservations job...");
+    await autoCompleteReservations();
+});
 
   console.log("✅ All cron jobs scheduled successfully");
 }
