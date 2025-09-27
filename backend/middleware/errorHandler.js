@@ -114,7 +114,49 @@ const globalErrorHandler = (err, req, res, next) => {
   }
 };
 
+class ReservationError extends AppError {
+  constructor(message, statusCode, errorCode) {
+    super(message, statusCode);
+    this.errorCode = errorCode;
+  }
+}
+
+// Reservation-specific error codes
+const RESERVATION_ERRORS = {
+  DATES_NOT_AVAILABLE: 'ERR_DATES_NOT_AVAILABLE',
+  INVALID_PAYMENT: 'ERR_INVALID_PAYMENT',
+  REFUND_FAILED: 'ERR_REFUND_FAILED',
+  CANCELLATION_DENIED: 'ERR_CANCELLATION_DENIED',
+  PAYMENT_OVERDUE: 'ERR_PAYMENT_OVERDUE',
+  HOST_APPROVAL_REQUIRED: 'ERR_HOST_APPROVAL_REQUIRED',
+  DEPOSIT_NOT_PAID: 'ERR_DEPOSIT_NOT_PAID'
+};
+
+// Enhanced error handler for reservations
+const handleReservationError = (err) => {
+  if (err.code === 'ERR_DATES_NOT_AVAILABLE') {
+    return new ReservationError(
+      'Selected dates are not available. Please choose different dates.',
+      409,
+      err.code
+    );
+  }
+  
+  if (err.code === 'ERR_PAYMENT_OVERDUE') {
+    return new ReservationError(
+      'Payment is overdue. Reservation will be cancelled.',
+      400,
+      err.code
+    );
+  }
+  
+  return err;
+};
+
 module.exports = {
   AppError,
-  globalErrorHandler
+  globalErrorHandler,
+  ReservationError,
+  RESERVATION_ERRORS,
+  handleReservationError
 };

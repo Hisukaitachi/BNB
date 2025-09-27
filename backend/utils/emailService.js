@@ -95,3 +95,79 @@ exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
     `
   });
 };
+
+exports.sendReservationRequestEmail = async (hostEmail, details) => {
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+    to: hostEmail,
+    subject: 'New Reservation Request',
+    html: `
+      <h2>New Reservation Request</h2>
+      <p>You have a new reservation request for <strong>${details.listingTitle}</strong></p>
+      <ul>
+        <li>Guest: ${details.guestName}</li>
+        <li>Check-in: ${details.checkIn}</li>
+        <li>Check-out: ${details.checkOut}</li>
+        <li>Total Amount: ₱${details.totalAmount}</li>
+        <li>Deposit Required: ₱${details.depositAmount}</li>
+      </ul>
+      <p>Please log in to approve or decline this request.</p>
+    `
+  });
+};
+
+exports.sendReservationApprovedEmail = async (guestEmail, details) => {
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+    to: guestEmail,
+    subject: 'Reservation Approved - Payment Required',
+    html: `
+      <h2>Your Reservation Has Been Approved!</h2>
+      <p>Great news! Your reservation for <strong>${details.listingTitle}</strong> has been approved.</p>
+      <p>To secure your booking, please pay the deposit of <strong>₱${details.depositAmount}</strong></p>
+      <a href="${details.paymentUrl}" style="display:inline-block;background:#10b981;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Pay Deposit Now</a>
+      <p>Note: The remaining 50% will be due 3 days before your check-in date.</p>
+    `
+  });
+};
+
+exports.sendPaymentReminderEmail = async (guestEmail, details) => {
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+    to: guestEmail,
+    subject: 'Payment Reminder - Remaining Balance Due',
+    html: `
+      <h2>Payment Reminder</h2>
+      <p>This is a reminder that the remaining balance for your reservation is due soon.</p>
+      <ul>
+        <li>Property: ${details.listingTitle}</li>
+        <li>Check-in: ${details.checkIn}</li>
+        <li>Remaining Amount: ₱${details.remainingAmount}</li>
+        <li>Due Date: ${details.dueDate}</li>
+      </ul>
+      <a href="${details.paymentUrl}" style="display:inline-block;background:#10b981;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Pay Now</a>
+      <p>Please complete payment to avoid cancellation of your reservation.</p>
+    `
+  });
+};
+
+exports.sendCancellationEmail = async (email, details) => {
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Reservation Cancelled',
+    html: `
+      <h2>Reservation Cancelled</h2>
+      <p>Your reservation has been cancelled.</p>
+      <h3>Cancellation Details:</h3>
+      <ul>
+        <li>Reservation ID: ${details.reservationId}</li>
+        <li>Property: ${details.listingTitle}</li>
+        <li>Refund Percentage: ${details.refundPercentage}%</li>
+        <li>Cancellation Fee: ₱${details.cancellationFee}</li>
+        <li>Refund Amount: ₱${details.refundAmount}</li>
+      </ul>
+      ${details.refundAmount > 0 ? '<p>Your refund is being processed and should appear in your account within 5-10 business days.</p>' : ''}
+    `
+  });
+};

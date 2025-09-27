@@ -139,7 +139,7 @@ console.log('✅ Payment routes loaded');
 app.use('/api/payouts', require('./routes/payoutRoutes'));
 console.log('✅ Payout routes loaded');
 
-app.use('api/reservations', require('./routes/reservationRoutes'));
+app.use('/api/reservations', require('./routes/reservationRoutes'));
 console.log('✅ Reservation routes loaded');
 
 // Admin features

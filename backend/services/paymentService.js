@@ -289,3 +289,161 @@ exports.verifyWebhookSignature = async (rawBody, signature) => {
 exports.isConfigured = () => {
   return !!(KEY && process.env.PAYMONGO_WEBHOOK_SECRET);
 };
+
+exports.createDepositPaymentIntent = async ({ reservationId, clientId, hostId, depositAmount, totalAmount, currency = 'PHP' }) => {
+  if (!KEY) {
+    throw new Error('PayMongo not configured');
+  }
+
+  try {
+    const payload = {
+      data: {
+        attributes: {
+          amount: Math.round(depositAmount * 100), // Convert to centavos
+          currency: currency.toUpperCase(),
+          payment_method_allowed: ['gcash', 'card', 'grab_pay', 'paymaya'],
+          capture_type: 'automatic',
+          description: `50% Deposit for Reservation #${reservationId}`,
+          statement_descriptor: 'STAYBNB DEPOSIT',
+          metadata: {
+            reservation_id: reservationId.toString(),
+            client_id: clientId.toString(),
+            host_id: hostId.toString(),
+            payment_type: 'deposit',
+            total_amount: totalAmount.toString(),
+            deposit_amount: depositAmount.toString()
+          }
+        }
+      }
+    };
+
+    const response = await axios.post(`${API}/payment_intents`, payload, {
+      headers: getAuthHeaders()
+    });
+
+    const intentData = response.data.data;
+
+    // Create checkout session with custom success/cancel pages
+    const checkoutPayload = {
+      data: {
+        attributes: {
+          line_items: [{
+            name: `Reservation #${reservationId} - 50% Deposit`,
+            amount: Math.round(depositAmount * 100),
+            currency: currency.toUpperCase(),
+            quantity: 1,
+            description: `Total booking: ₱${totalAmount} | Deposit: ₱${depositAmount}`
+          }],
+          payment_method_types: ['gcash', 'card', 'grab_pay', 'paymaya'],
+          success_url: `${process.env.FRONTEND_URL}/reservations/payment-success?reservation_id=${reservationId}&type=deposit`,
+          cancel_url: `${process.env.FRONTEND_URL}/reservations/payment-cancel?reservation_id=${reservationId}`,
+          description: `Deposit Payment for Reservation #${reservationId}`,
+          metadata: {
+            reservation_id: reservationId.toString(),
+            payment_type: 'deposit',
+            payment_intent_id: intentData.id
+          }
+        }
+      }
+    };
+
+    const checkoutResponse = await axios.post(`${API}/checkout_sessions`, checkoutPayload, {
+      headers: getAuthHeaders()
+    });
+
+    return {
+      paymentIntent: {
+        id: intentData.id,
+        client_secret: intentData.attributes.client_key,
+        status: intentData.attributes.status,
+        amount: intentData.attributes.amount,
+        checkout_url: checkoutResponse.data.data.attributes.checkout_url
+      }
+    };
+
+  } catch (error) {
+    console.error('PayMongo deposit payment creation failed:', error.response?.data || error.message);
+    throw new Error('Deposit payment processing failed. Please try again.');
+  }
+};
+
+// Process refund with service fee calculation
+exports.processReservationRefund = async (reservation, cancellationDetails) => {
+  if (!KEY) {
+    throw new Error('PayMongo not configured');
+  }
+
+  try {
+    const { paymentIntentId, refundAmount, reason = 'requested_by_customer' } = cancellationDetails;
+
+    // Only process refund if there's an amount to refund
+    if (refundAmount <= 0) {
+      return {
+        success: true,
+        refundAmount: 0,
+        message: 'No refund applicable based on cancellation policy'
+      };
+    }
+
+    const payload = {
+      data: {
+        attributes: {
+          amount: Math.round(refundAmount * 100), // Convert to centavos
+          payment_intent_id: paymentIntentId,
+          reason: reason,
+          metadata: {
+            reservation_id: reservation.id.toString(),
+            cancellation_fee: cancellationDetails.cancellationFee.toString(),
+            refund_percentage: cancellationDetails.refundPercentage.toString()
+          }
+        }
+      }
+    };
+
+    const response = await axios.post(`${API}/refunds`, payload, {
+      headers: getAuthHeaders()
+    });
+
+    const refund = response.data.data;
+
+    return {
+      success: true,
+      refundId: refund.id,
+      refundAmount: refundAmount,
+      status: refund.attributes.status,
+      processedAt: refund.attributes.created_at
+    };
+
+  } catch (error) {
+    console.error('PayMongo refund processing failed:', error.response?.data || error.message);
+    throw new Error('Refund processing failed. Admin intervention required.');
+  }
+};
+
+// Verify payment status for reservations
+exports.verifyReservationPayment = async (paymentIntentId) => {
+  if (!KEY || !paymentIntentId) {
+    throw new Error('Invalid payment verification request');
+  }
+
+  try {
+    const response = await axios.get(`${API}/payment_intents/${paymentIntentId}`, {
+      headers: getAuthHeaders()
+    });
+
+    const payment = response.data.data;
+    
+    return {
+      id: payment.id,
+      status: payment.attributes.status,
+      amount: payment.attributes.amount / 100, // Convert from centavos
+      paid: payment.attributes.status === 'succeeded',
+      last_payment_error: payment.attributes.last_payment_error,
+      metadata: payment.attributes.metadata
+    };
+
+  } catch (error) {
+    console.error('Payment verification failed:', error.response?.data || error.message);
+    throw new Error('Unable to verify payment status');
+  }
+};

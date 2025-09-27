@@ -165,6 +165,65 @@ const initializeSocket = (server) => {
         console.log(`User ${disconnectedUserId} disconnected`);
       }
     });
+
+        socket.on('reservation-created', (data) => {
+      const { hostId, reservationId, guestName } = data;
+      const hostSocketId = onlineUsers[hostId];
+      
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('new-reservation-request', {
+          reservationId,
+          guestName,
+          message: `New reservation request from ${guestName}`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('reservation-approved', (data) => {
+      const { clientId, reservationId, listingTitle } = data;
+      const clientSocketId = onlineUsers[clientId];
+      
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('reservation-approved', {
+          reservationId,
+          listingTitle,
+          message: `Your reservation for ${listingTitle} has been approved!`,
+          requiresPayment: true,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('payment-completed', (data) => {
+      const { hostId, reservationId, paymentType } = data;
+      const hostSocketId = onlineUsers[hostId];
+      
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('payment-received', {
+          reservationId,
+          paymentType,
+          message: `Payment ${paymentType} received for reservation #${reservationId}`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('reservation-cancelled', (data) => {
+      const { userId, reservationId, refundAmount } = data;
+      const userSocketId = onlineUsers[userId];
+      
+      if (userSocketId) {
+        io.to(userSocketId).emit('reservation-cancelled', {
+          reservationId,
+          refundAmount,
+          message: refundAmount > 0 
+            ? `Reservation cancelled. Refund of ₱${refundAmount} is being processed.`
+            : `Reservation cancelled.`,
+          timestamp: new Date()
+        });
+      }
+    });
   });
 };
 
