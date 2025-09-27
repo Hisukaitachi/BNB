@@ -628,4 +628,335 @@ async function schedulePaymentReminder(reservationId, dueDate) {
     `, [reservationId, dueDate]);
 }
 
-module.exports = exports;
+exports.getAvailableDates = catchAsync(async (req, res, next) => {
+    const { listingId } = req.params;
+    const { months = 3 } = req.query;
+
+    if (!listingId || isNaN(listingId)) {
+        return next(new AppError('Valid listing ID is required', 400));
+    }
+
+    // Get booked dates for the next X months
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + parseInt(months));
+
+    const [bookedDates] = await pool.query(`
+        SELECT check_in_date, check_out_date, status
+        FROM reservations
+        WHERE listing_id = ? 
+        AND status IN ('confirmed', 'pending', 'awaiting_payment')
+        AND check_in_date <= ?
+        ORDER BY check_in_date
+    `, [listingId, endDate.toISOString().split('T')[0]]);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            listingId: parseInt(listingId),
+            bookedDates: bookedDates.map(booking => ({
+                checkIn: booking.check_in_date,
+                checkOut: booking.check_out_date,
+                status: booking.status
+            })),
+            availabilityPeriod: {
+                from: new Date().toISOString().split('T')[0],
+                to: endDate.toISOString().split('T')[0]
+            }
+        }
+    });
+});
+
+// Get client's reservations
+exports.getMyReservations = catchAsync(async (req, res, next) => {
+    const userId = req.user.id;
+    const { status, page = 1, limit = 10 } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereClause = 'r.client_id = ?';
+    const queryParams = [userId];
+
+    if (status) {
+        whereClause += ' AND r.status = ?';
+        queryParams.push(status);
+    }
+
+    queryParams.push(parseInt(limit), offset);
+
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location as listing_location,
+            l.image_url,
+            u.name as host_name,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        JOIN users u ON r.host_id = u.id
+        WHERE ${whereClause}
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+    `, queryParams);
+
+    // Get total count
+    const [countResult] = await pool.query(`
+        SELECT COUNT(*) as total 
+        FROM reservations r 
+        WHERE ${whereClause}
+    `, queryParams.slice(0, -2));
+
+    res.status(200).json({
+        status: 'success',
+        results: reservations.length,
+        data: {
+            reservations,
+            pagination: {
+                total: countResult[0].total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+            }
+        }
+    });
+});
+
+// Get host's reservations
+exports.getHostReservations = catchAsync(async (req, res, next) => {
+    const hostId = req.user.id;
+    const { status, page = 1, limit = 10 } = req.query;
+
+    if (req.user.role !== 'host') {
+        return next(new AppError('Only hosts can access this endpoint', 403));
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereClause = 'r.host_id = ?';
+    const queryParams = [hostId];
+
+    if (status) {
+        whereClause += ' AND r.status = ?';
+        queryParams.push(status);
+    }
+
+    queryParams.push(parseInt(limit), offset);
+
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location as listing_location,
+            u.name as client_name,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        JOIN users u ON r.client_id = u.id
+        WHERE ${whereClause}
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+    `, queryParams);
+
+    const [countResult] = await pool.query(`
+        SELECT COUNT(*) as total 
+        FROM reservations r 
+        WHERE ${whereClause}
+    `, queryParams.slice(0, -2));
+
+    res.status(200).json({
+        status: 'success',
+        results: reservations.length,
+        data: {
+            reservations,
+            pagination: {
+                total: countResult[0].total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+            }
+        }
+    });
+});
+
+// Get reservation details
+exports.getReservationDetails = catchAsync(async (req, res, next) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location as listing_location,
+            l.image_url,
+            l.amenities,
+            l.house_rules,
+            uc.name as client_name,
+            uh.name as host_name,
+            uh.email as host_email,
+            uh.phone as host_phone,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        JOIN users uc ON r.client_id = uc.id
+        JOIN users uh ON r.host_id = uh.id
+        WHERE r.id = ?
+    `, [id]);
+
+    if (!reservations.length) {
+        return next(new AppError('Reservation not found', 404));
+    }
+
+    const reservation = reservations[0];
+
+    // Authorization check
+    const canView = reservation.client_id === userId || 
+                   reservation.host_id === userId || 
+                   req.user.role === 'admin';
+
+    if (!canView) {
+        return next(new AppError('Not authorized to view this reservation', 403));
+    }
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            reservation
+        }
+    });
+});
+
+// Update reservation status
+exports.updateReservationStatus = catchAsync(async (req, res, next) => {
+    const { id } = req.params;
+    const { status, notes = '' } = req.body;
+    const userId = req.user.id;
+
+    if (!status) {
+        return next(new AppError('Status is required', 400));
+    }
+
+    const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+    if (!validStatuses.includes(status)) {
+        return next(new AppError('Invalid status', 400));
+    }
+
+    // Get reservation details
+    const [reservations] = await pool.query(`
+        SELECT r.*, l.title 
+        FROM reservations r 
+        JOIN listings l ON r.listing_id = l.id 
+        WHERE r.id = ?
+    `, [id]);
+
+    if (!reservations.length) {
+        return next(new AppError('Reservation not found', 404));
+    }
+
+    const reservation = reservations[0];
+
+    // Authorization check
+    const isHost = reservation.host_id === userId;
+    const isClient = reservation.client_id === userId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isHost && !isClient && !isAdmin) {
+        return next(new AppError('Not authorized to update this reservation', 403));
+    }
+
+    // Business logic validation
+    if (isClient && !['cancelled'].includes(status)) {
+        return next(new AppError('Clients can only cancel reservations', 403));
+    }
+
+    // Update reservation
+    await pool.query(
+        'UPDATE reservations SET status = ?, updated_at = NOW() WHERE id = ?',
+        [status, id]
+    );
+
+    res.status(200).json({
+        status: 'success',
+        message: `Reservation ${status} successfully`,
+        data: {
+            reservationId: parseInt(id),
+            newStatus: status
+        }
+    });
+});
+
+// Search reservations
+exports.searchReservations = catchAsync(async (req, res, next) => {
+    const {
+        status,
+        date_from,
+        date_to,
+        guest_name,
+        page = 1,
+        limit = 20,
+        sort_by = 'created_at',
+        sort_order = 'DESC'
+    } = req.query;
+
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    let whereConditions = [];
+    let queryParams = [];
+    
+    // Role-based filtering
+    if (userRole === 'client') {
+        whereConditions.push('r.client_id = ?');
+        queryParams.push(userId);
+    } else if (userRole === 'host') {
+        whereConditions.push('r.host_id = ?');
+        queryParams.push(userId);
+    }
+    
+    // Apply filters
+    if (status) {
+        whereConditions.push('r.status = ?');
+        queryParams.push(status);
+    }
+    
+    if (date_from) {
+        whereConditions.push('r.check_in_date >= ?');
+        queryParams.push(date_from);
+    }
+    
+    if (date_to) {
+        whereConditions.push('r.check_out_date <= ?');
+        queryParams.push(date_to);
+    }
+    
+    if (guest_name) {
+        whereConditions.push('r.guest_name LIKE ?');
+        queryParams.push(`%${guest_name}%`);
+    }
+    
+    const whereClause = whereConditions.length > 0 ? 
+        'WHERE ' + whereConditions.join(' AND ') : '';
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    queryParams.push(parseInt(limit), offset);
+    
+    const [reservations] = await pool.query(`
+        SELECT 
+            r.*,
+            l.title as listing_title,
+            l.location as listing_location,
+            DATEDIFF(r.check_out_date, r.check_in_date) as nights
+        FROM reservations r
+        JOIN listings l ON r.listing_id = l.id
+        ${whereClause}
+        ORDER BY r.${sort_by} ${sort_order}
+        LIMIT ? OFFSET ?
+    `, queryParams);
+    
+    res.status(200).json({
+        status: 'success',
+        results: reservations.length,
+        data: {
+            reservations
+        }
+    });
+});
+
