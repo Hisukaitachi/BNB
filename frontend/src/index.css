@@ -34,7 +34,7 @@
   }
   
   .btn-primary {
-    @apply px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all duration-300 font-medium text-white shadow-lg hover:shadow-xl;
+    @apply px-6 py-3 rounded-full bg-gradient-to-r from-red-500 to-blue-500 hover:from-red-600 hover:to-blue-600 transition-all duration-300 font-medium text-white shadow-lg hover:shadow-xl;
   }
   
   .btn-secondary {

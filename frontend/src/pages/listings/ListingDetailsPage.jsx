@@ -1,4 +1,4 @@
-// src/pages/listings/ListingDetailsPage.jsx - Cleaned version
+// frontend/src/pages/listings/ListingDetailsPage.jsx - Updated with Reservation Integration
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -13,7 +13,7 @@ import {
   Bed
 } from 'lucide-react';
 import listingService from '../../services/listingService';
-import bookingService from '../../services/bookingService';
+import reservationService from '../../services/reservationService'; // NEW: Import reservation service
 import { favoritesService } from '../../services/favoritesService';
 import { reportsService } from '../../services/reportsService';
 import Button from '../../components/ui/Button';
@@ -24,7 +24,7 @@ import ReportModal from '../../components/reports/ReportModal';
 import ImageGallery from '../../components/listings/ImageGallery';
 import HostInfo from '../../components/listings/HostInfo';
 import ReviewsSection from '../../components/listings/ReviewsSection';
-import BookingSidebar from '../../components/listings/BookingSidebar';
+import ReservationSidebar from '../../components/listings/ReservationSidebar'; // NEW: Use ReservationSidebar instead of BookingSidebar
 import { viewRequestAPI } from '../../services/api';
 
 const ListingDetailPage = () => {
@@ -36,7 +36,7 @@ const ListingDetailPage = () => {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isBookingLoading, setIsBookingLoading] = useState(false);
+  const [isReservationLoading, setIsReservationLoading] = useState(false); // NEW: Changed from isBookingLoading
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [showViewRequestModal, setShowViewRequestModal] = useState(false);
@@ -104,42 +104,66 @@ const ListingDetailPage = () => {
     }
   };
 
-  const handleBooking = async (bookingData) => {
+  // NEW: Handle reservation creation instead of booking
+  const handleReservation = async (reservationData) => {
     if (!isAuthenticated) {
       navigate('/auth/login', { state: { from: location } });
       return;
     }
 
     try {
-      setIsBookingLoading(true);
+      setIsReservationLoading(true);
       
-      const bookingResult = await bookingService.createBooking({
-        listing_id: listing.id,
-        start_date: bookingData.startDate,
-        end_date: bookingData.endDate,
-        total_price: bookingData.totalPrice
-      });
+      // Validate reservation data first
+      const validation = reservationService.validateReservationData(reservationData);
+      if (!validation.isValid) {
+        const errorMessages = Object.values(validation.errors).join('\n');
+        alert('Please fix the following errors:\n\n' + errorMessages);
+        return;
+      }
 
-      if (bookingResult.success) {
-        alert(`Booking request submitted successfully! 
+      // Create reservation using reservation service
+      const result = await reservationService.createReservation(reservationData);
+
+      if (result.success) {
+        const reservation = result.data;
         
-Your request has been sent to the host for approval. You will receive a notification once they respond.
-
-Booking Details:
-- Dates: ${bookingData.startDate} to ${bookingData.endDate}
-- Total: ₱${bookingData.totalPrice.toLocaleString()}
-- Status: Pending Host Approval
-
-You can track your booking status in "My Bookings".`);
+        // Show success message with appropriate next steps
+        let successMessage = `Reservation request submitted successfully!\n\n`;
+        successMessage += `Your request has been sent to the host for approval.\n\n`;
+        successMessage += `Reservation Details:\n`;
+        successMessage += `- Dates: ${reservationData.check_in_date} to ${reservationData.check_out_date}\n`;
+        successMessage += `- Guests: ${reservationData.guest_count}\n`;
+        successMessage += `- Total: ₱${reservationData.total_amount.toLocaleString()}\n`;
         
-        navigate('/my-bookings');
+        if (reservationData.paymentMethod === 'deposit') {
+          successMessage += `- Deposit Required: ₱${reservation.depositAmount?.toLocaleString()}\n`;
+          successMessage += `- Remaining: ₱${reservation.remainingAmount?.toLocaleString()}\n\n`;
+          successMessage += `Next Steps:\n`;
+          successMessage += `1. Wait for host approval\n`;
+          successMessage += `2. Pay deposit when approved\n`;
+          successMessage += `3. Pay remaining balance before check-in\n\n`;
+        } else {
+          successMessage += `\nNext Steps:\n`;
+          successMessage += `1. Wait for host approval\n`;
+          successMessage += `2. Complete full payment when approved\n\n`;
+        }
+        
+        successMessage += `You can track your reservation status in "My Reservations".`;
+        
+        alert(successMessage);
+        
+        // Navigate to reservations page
+        navigate('/my-reservations');
+      } else {
+        throw new Error(result.error);
       }
       
     } catch (error) {
-      console.error('Booking failed:', error);
-      alert('Booking failed: ' + error.message);
+      console.error('Reservation failed:', error);
+      alert('Reservation failed: ' + error.message);
     } finally {
-      setIsBookingLoading(false);
+      setIsReservationLoading(false);
     }
   };
 
@@ -348,15 +372,15 @@ You can track your booking status in "My Bookings".`);
             <ReviewsSection reviews={reviews} />
           </div>
 
-          {/* Booking Sidebar */}
-          <BookingSidebar
+          {/* NEW: Reservation Sidebar instead of Booking Sidebar */}
+          <ReservationSidebar
             listing={listing}
             reviews={reviews}
             isAuthenticated={isAuthenticated}
-            onBooking={handleBooking}
+            onReservation={handleReservation}
             onContactHost={handleContactHost}
             onViewRequest={() => setShowViewRequestModal(true)}
-            isBookingLoading={isBookingLoading}
+            isReservationLoading={isReservationLoading}
           />
         </div>
 

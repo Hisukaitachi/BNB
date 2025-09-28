@@ -1,4 +1,4 @@
-// src/pages/profile/components/ProfileSidebar.jsx
+// src/components/profile/ProfileSidebar.jsx - Fixed version
 import { useState } from 'react';
 import { User, RefreshCw, Star } from 'lucide-react';
 import Button from '../ui/Button';
@@ -26,7 +26,7 @@ const ProfileSidebar = ({ user, reviewsData, switchRole }) => {
 
   return (
     <div className="space-y-6">
-      {/* Profile Card */}
+      {/* Profile Card - FIXED */}
       <ProfileCard user={user} reviewsData={reviewsData} />
 
       {/* Role Switching */}
@@ -45,57 +45,93 @@ const ProfileSidebar = ({ user, reviewsData, switchRole }) => {
   );
 };
 
-// Profile Card Component
-const ProfileCard = ({ user, reviewsData }) => (
-  <div className="bg-gray-800 rounded-xl p-6">
-    <h3 className="text-lg font-semibold text-white mb-4">Account Info</h3>
-    <div className="space-y-4">
-      <div className="flex items-center justify-center">
-        <div className="w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-          <User className="w-10 h-10 text-white" />
-        </div>
-      </div>
+// FIXED Profile Card Component - Built-in logic without service
+const ProfileCard = ({ user, reviewsData }) => {
+  // Built-in avatar logic (no service needed)
+  const getAvatarDisplay = () => {
+    if (user.profile_picture) {
+      return (
+        <img
+          src={user.profile_picture}
+          alt={`${user.name}'s profile picture`}
+          className="w-20 h-20 rounded-full object-cover border-4 border-purple-500/20"
+          onError={(e) => {
+            // Fallback to initials on error
+            const initials = user.name 
+              ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+              : 'U';
+            
+            e.target.style.display = 'none';
+            const placeholder = document.createElement('div');
+            placeholder.className = 'w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-2xl border-4 border-purple-500/20';
+            placeholder.textContent = initials;
+            e.target.parentNode.appendChild(placeholder);
+          }}
+        />
+      );
+    } else {
+      // Default avatar with initials
+      const initials = user.name 
+        ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+        : 'U';
       
-      <div className="text-center">
-        <p className="text-white font-semibold truncate">{user.name}</p>
-        <p className="text-gray-400 text-sm break-all">{user.email}</p>
-      </div>
-
-      <div className="bg-gray-700 rounded-lg p-4 text-center">
-        <span className="text-purple-400 font-semibold text-lg capitalize">
-          {user.role}
-        </span>
-        <p className="text-gray-400 text-sm mt-1">Current Role</p>
-      </div>
-
-      {/* Quick Stats */}
-      {reviewsData.statistics?.averageRating && (
-        <div className="bg-gray-700 rounded-lg p-4 text-center">
-          <div className="flex items-center justify-center space-x-1 mb-2">
-            {Array.from({ length: 5 }, (_, index) => (
-              <Star
-                key={index}
-                className={`w-4 h-4 ${
-                  index < Math.round(reviewsData.statistics.averageRating)
-                    ? 'text-yellow-400 fill-current'
-                    : 'text-gray-400'
-                }`}
-              />
-            ))}
-          </div>
-          <p className="text-white font-semibold">
-            {reviewsData.statistics.averageRating.toFixed(1)} Rating
-          </p>
-          <p className="text-gray-400 text-sm">
-            {reviewsData.statistics.totalReviews} reviews
-          </p>
+      return (
+        <div className="w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-2xl border-4 border-purple-500/20">
+          {initials}
         </div>
-      )}
-    </div>
-  </div>
-);
+      );
+    }
+  };
+  
+  return (
+    <div className="bg-gray-800 rounded-xl p-6">
+      <h3 className="text-lg font-semibold text-white mb-4">Account Info</h3>
+      <div className="space-y-4">
+        <div className="flex items-center justify-center">
+          {getAvatarDisplay()}
+        </div>
+        
+        <div className="text-center">
+          <p className="text-white font-semibold truncate">{user.name}</p>
+          <p className="text-gray-400 text-sm break-all">{user.email}</p>
+        </div>
 
-// Role Switch Card Component
+        <div className="bg-gray-700 rounded-lg p-4 text-center">
+          <span className="text-purple-400 font-semibold text-lg capitalize">
+            {user.role}
+          </span>
+          <p className="text-gray-400 text-sm mt-1">Current Role</p>
+        </div>
+
+        {/* Quick Stats */}
+        {reviewsData.statistics?.averageRating && (
+          <div className="bg-gray-700 rounded-lg p-4 text-center">
+            <div className="flex items-center justify-center space-x-1 mb-2">
+              {Array.from({ length: 5 }, (_, index) => (
+                <Star
+                  key={index}
+                  className={`w-4 h-4 ${
+                    index < Math.round(reviewsData.statistics.averageRating)
+                      ? 'text-yellow-400 fill-current'
+                      : 'text-gray-400'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-white font-semibold">
+              {reviewsData.statistics.averageRating.toFixed(1)} Rating
+            </p>
+            <p className="text-gray-400 text-sm">
+              {reviewsData.statistics.totalReviews} reviews
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Keep other components unchanged...
 const RoleSwitchCard = ({ user, handleRoleSwitch, isSwitchingRole, errors }) => (
   <div className="bg-gray-800 rounded-xl p-6">
     <h3 className="text-lg font-semibold text-white mb-4">Switch Role</h3>
@@ -137,7 +173,6 @@ const RoleSwitchCard = ({ user, handleRoleSwitch, isSwitchingRole, errors }) => 
   </div>
 );
 
-// Quick Stats Card Component
 const QuickStatsCard = ({ user, reviewsData }) => (
   <div className="bg-gray-800 rounded-xl p-6">
     <h3 className="text-lg font-semibold text-white mb-4">Quick Stats</h3>

@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - COMPLETE VERSION
+// src/context/AuthContext.jsx - COMPLETE VERSION WITH updateUser
 import React from 'react'
 import { createContext, useContext, useReducer, useEffect } from 'react';
 import authService from '../services/authService';
@@ -219,6 +219,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // NEW: Simple update user function for immediate updates (like profile pictures)
+  const updateUser = (updates) => {
+    const currentUser = state.user;
+    const updatedUser = { ...currentUser, ...updates };
+    
+    // Update localStorage
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    
+    // Update state
+    dispatch({
+      type: 'UPDATE_USER',
+      payload: updatedUser
+    });
+  };
+
   const logout = () => {
     authService.logout();
     dispatch({ type: 'LOGOUT' });
@@ -235,6 +250,7 @@ export const AuthProvider = ({ children }) => {
     googleLogin,
     switchRole,
     updateProfile,
+    updateUser,  // NEW: Added updateUser to the context value
     logout,
     clearError
   };

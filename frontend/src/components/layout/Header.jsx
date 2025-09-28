@@ -185,7 +185,8 @@ const Header = () => {
 
     if (user?.role === 'client') {
       baseItems.splice(1, 0, 
-        { label: 'My Bookings', path: '/my-bookings', icon: Calendar }
+        { label: 'My Bookings', path: '/my-bookings', icon: Calendar },
+        { label: 'My Reservations', path: '/my-reservations', icon: Calendar }
       );
     }
 
@@ -367,9 +368,33 @@ const Header = () => {
                     onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                     className="flex items-center space-x-2 p-2 rounded-full hover:bg-gray-800 transition"
                   >
-                    <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-white" />
+                    {/* Profile Picture or Avatar */}
+                    {user?.profile_picture ? (
+                      <img
+                        src={user.profile_picture}
+                        alt={user?.name || 'Profile'}
+                        className="w-8 h-8 rounded-full object-cover border-2 border-purple-400"
+                        onError={(e) => {
+                          // Fallback to gradient avatar if image fails to load
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    
+                    {/* Gradient Avatar Fallback */}
+                    <div 
+                      className={`w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-sm ${
+                        user?.profile_picture ? 'hidden' : 'flex'
+                      }`}
+                      style={{ display: user?.profile_picture ? 'none' : 'flex' }}
+                    >
+                      {user?.name ? 
+                        user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
+                        'U'
+                      }
                     </div>
+                    
                     <span className="text-sm font-medium text-gray-300 hidden sm:block">
                       {user?.name}
                     </span>
@@ -380,7 +405,36 @@ const Header = () => {
 
                   {/* Profile Dropdown */}
                   {isProfileMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-56 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
+                      {/* Add user info section at the top of dropdown */}
+                      <div className="px-4 py-3 border-b border-gray-700">
+                        <div className="flex items-center space-x-3">
+                          {user?.profile_picture ? (
+                            <img
+                              src={user.profile_picture}
+                              alt={user?.name || 'Profile'}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-gray-700"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium">
+                              {user?.name ? 
+                                user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
+                                'U'
+                              }
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">
+                              {user?.name}
+                            </p>
+                            <p className="text-xs text-gray-400 truncate">
+                              {user?.email}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Rest of the dropdown menu items */}
                       {getUserMenuItems().map((item) => {
                         const Icon = item.icon;
                         return (
@@ -487,6 +541,16 @@ const Header = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   My Bookings
+                </Link>
+              )}
+
+              {isAuthenticated && user?.role === 'client' && (
+                <Link
+                  to="/my-reservations"
+                  className="block px-4 py-2 text-gray-300 hover:bg-gray-800 rounded-lg"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  My Reservations
                 </Link>
               )}
 

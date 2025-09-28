@@ -27,6 +27,8 @@ import EditListing from '../../components/host/EditListing';
 import HostNotifications from '../../components/host/HostNotifications';
 import ViewRequests from '../../components/host/ViewRequest';
 import hostService from '../../services/hostService';
+import HostReservations from '../../components/host/HostReservations';
+
 
 const HostDashboard = () => {
   const { user } = useAuth();
@@ -70,6 +72,12 @@ const HostDashboard = () => {
       icon: Calendar,
       label: 'Manage Bookings',
       badge: dashboardData?.pendingBookings
+    },
+    {
+      path: '/host/reservations',
+      icon: Users,
+      label: 'Reservations',
+      badge: dashboardData?.activeReservations
     },
     {
       path: '/host/calendar',
@@ -193,6 +201,7 @@ const HostDashboard = () => {
               } 
             />
             <Route path="/bookings" element={<HostBookings />} />
+            <Route path="/reservations" element={<HostReservations />} />
             <Route path="/calendar" element={<HostCalendar />} />
             <Route path="/listings" element={<HostListings />} />
             <Route path="/listings/create" element={<CreateListing />} />

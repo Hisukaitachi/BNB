@@ -162,12 +162,12 @@ export const reservationAPI = {
     return api.post('/reservations', reservationData);
   },
 
-  // Get user's reservations (client view)
+  // Get user's reservations (client view) with enhanced filtering
   getMyReservations: (params = {}) => {
     return api.get('/reservations/my-reservations', { params });
   },
 
-  // Get host's reservations
+  // Get host's reservations with enhanced filtering
   getHostReservations: (params = {}) => {
     return api.get('/reservations/host-reservations', { params });
   },
@@ -177,26 +177,97 @@ export const reservationAPI = {
     return api.get(`/reservations/${reservationId}`);
   },
 
-  // Update reservation status (confirm, cancel, etc.)
+  // Host actions - approve or decline reservation
+  hostReservationAction: (reservationId, action, reason = '') => {
+    return api.post(`/reservations/${reservationId}/host-action`, { action, reason });
+  },
+
+  // Update reservation status (general)
   updateReservationStatus: (reservationId, status, notes = '') => {
     return api.patch(`/reservations/${reservationId}/status`, { status, notes });
   },
 
-  // Cancel reservation
+  // Cancel reservation with reason
   cancelReservation: (reservationId, reason = '') => {
     return api.patch(`/reservations/${reservationId}/cancel`, { reason });
   },
 
-  // Get available dates for a listing
+  // Get available dates for a listing (enhanced with status filtering)
   getAvailableDates: (listingId, months = 3) => {
     return api.get(`/reservations/listing/${listingId}/availability`, { 
       params: { months } 
     });
   },
 
-  // Search reservations with filters
+  // Search reservations with comprehensive filters
   searchReservations: (filters) => {
     return api.get('/reservations/search', { params: filters });
+  },
+
+  // Get cancellation policy
+  getCancellationPolicy: () => {
+    return api.get('/reservations/cancellation-policy');
+  },
+
+  // Process remaining payment for confirmed reservations
+  processRemainingPayment: (reservationId) => {
+    return api.post(`/reservations/${reservationId}/pay-remaining`);
+  },
+
+  // Confirm deposit payment (webhook callback)
+  confirmDepositPayment: (reservationId, paymentIntentId) => {
+    return api.post(`/reservations/${reservationId}/confirm-deposit`, { 
+      reservationId, 
+      paymentIntentId 
+    });
+  },
+
+  // Payment-related endpoints for reservations
+  createReservationPaymentIntent: (reservationId, paymentData) => {
+    return api.post('/payments/reservation/create-intent', {
+      reservationId,
+      ...paymentData
+    });
+  },
+
+  // Get reservation payment status
+  getReservationPaymentStatus: (reservationId) => {
+    return api.get(`/payments/reservation/${reservationId}/status`);
+  },
+
+  // Verify reservation payment with PayMongo
+  verifyReservationPayment: (reservationId) => {
+    return api.post('/payments/reservation/verify', { reservationId });
+  }
+};
+
+export const reservationPaymentAPI = {
+  // Create payment intent for deposit
+  createDepositPayment: (reservationId, amount) => {
+    return api.post('/payments/reservation/deposit', {
+      reservationId,
+      amount,
+      paymentType: 'deposit'
+    });
+  },
+
+  // Create payment intent for remaining amount
+  createRemainingPayment: (reservationId, amount) => {
+    return api.post('/payments/reservation/remaining', {
+      reservationId,
+      amount,
+      paymentType: 'remaining'
+    });
+  },
+
+  // Get payment schedule for reservation
+  getPaymentSchedule: (reservationId) => {
+    return api.get(`/payments/reservation/${reservationId}/schedule`);
+  },
+
+  // Process refund for cancelled reservation
+  processReservationRefund: (reservationId, refundData) => {
+    return api.post(`/payments/reservation/${reservationId}/refund`, refundData);
   }
 };
 

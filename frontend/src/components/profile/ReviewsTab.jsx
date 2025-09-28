@@ -136,7 +136,7 @@ const ReviewStatistics = ({ reviewsData, renderStars }) => (
 // Reviews List Component
 const ReviewsList = ({ currentReviews, reviewFilter, renderStars }) => (
   <div className="space-y-4">
-    {currentReviews.length === 0 ? (
+    {!currentReviews || currentReviews.length === 0 ? (
       <EmptyReviewsState reviewFilter={reviewFilter} />
     ) : (
       currentReviews.map((review) => (

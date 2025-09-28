@@ -1,14 +1,16 @@
-// src/pages/profile/components/ProfileTab.jsx
+// src/components/profile/ProfileTab.jsx - Complete version with Profile Picture
 import { useState, useEffect } from 'react';
 import { Edit, Save, X } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
 import SecuritySection from './SecuritySection';
+import ProfilePictureUpload from './ProfilePictureUpload';
 
 const ProfileTab = ({ user, updateProfile }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(user); // Local user state for updates
   const [profileData, setProfileData] = useState({
     name: '',
     phone: '',
@@ -20,6 +22,7 @@ const ProfileTab = ({ user, updateProfile }) => {
   // Update profile data when user changes
   useEffect(() => {
     if (user) {
+      setCurrentUser(user);
       setProfileData({
         name: user.name || '',
         phone: user.phone || '',
@@ -82,16 +85,29 @@ const ProfileTab = ({ user, updateProfile }) => {
   const cancelEdit = () => {
     setIsEditing(false);
     setProfileData({
-      name: user.name || '',
-      phone: user.phone || '',
-      bio: user.bio || '',
-      location: user.location || ''
+      name: currentUser.name || '',
+      phone: currentUser.phone || '',
+      bio: currentUser.bio || '',
+      location: currentUser.location || ''
     });
     setErrors({});
   };
 
+  // Handle profile picture update
+  const handleProfilePictureUpdate = (updatedUser) => {
+    setCurrentUser(updatedUser);
+    // Force parent component to refresh user data
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-6">
+      {/* Profile Picture Section */}
+      <ProfilePictureUpload 
+        user={currentUser} 
+        onUpdateSuccess={handleProfilePictureUpdate}
+      />
+
       {/* Profile Information */}
       <div className="bg-gray-800 rounded-xl p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 space-y-4 sm:space-y-0">
@@ -150,15 +166,15 @@ const ProfileTab = ({ user, updateProfile }) => {
                   className="bg-white/10 border-gray-600 text-white"
                 />
               ) : (
-                <p className="text-white bg-gray-700 px-4 py-3 rounded-lg">{user.name}</p>
+                <p className="text-white bg-gray-700 px-4 py-3 rounded-lg">{currentUser.name}</p>
               )}
             </div>
 
             <div>
               <label className="block text-sm text-gray-300 mb-2">Email</label>
               <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                <p className="flex-1 text-white bg-gray-700 px-4 py-3 rounded-lg text-sm break-all">{user.email}</p>
-                {user.isVerified ? (
+                <p className="flex-1 text-white bg-gray-700 px-4 py-3 rounded-lg text-sm break-all">{currentUser.email}</p>
+                {currentUser.isVerified ? (
                   <span className="text-green-400 text-sm whitespace-nowrap">✓ Verified</span>
                 ) : (
                   <span className="text-yellow-400 text-sm whitespace-nowrap">⚠ Unverified</span>
@@ -181,7 +197,7 @@ const ProfileTab = ({ user, updateProfile }) => {
                 />
               ) : (
                 <p className="text-white bg-gray-700 px-4 py-3 rounded-lg">
-                  {user.phone || 'Not provided'}
+                  {currentUser.phone || 'Not provided'}
                 </p>
               )}
             </div>
@@ -198,7 +214,7 @@ const ProfileTab = ({ user, updateProfile }) => {
                 />
               ) : (
                 <p className="text-white bg-gray-700 px-4 py-3 rounded-lg">
-                  {user.location || 'Not provided'}
+                  {currentUser.location || 'Not provided'}
                 </p>
               )}
             </div>
@@ -218,7 +234,7 @@ const ProfileTab = ({ user, updateProfile }) => {
               />
             ) : (
               <p className="text-white bg-gray-700 px-4 py-3 rounded-lg min-h-24">
-                {user.bio || 'No bio provided'}
+                {currentUser.bio || 'No bio provided'}
               </p>
             )}
           </div>
