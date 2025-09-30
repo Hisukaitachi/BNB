@@ -1,4 +1,4 @@
-// backend/routes/adminRoutes.js - CLEAN VERSION
+// backend/routes/adminRoutes.js - FIXED VERSION
 const express = require('express');
 const router = express.Router();
 
@@ -69,33 +69,9 @@ router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.removeReview);
 
 // ==========================================
-// FINANCIAL MANAGEMENT
-// ==========================================
-
-// Payouts & Earnings
-router.get('/earnings/:hostId', adminController.getHostEarnings);
-router.post('/mark-paid', adminController.markHostAsPaid);
-router.get('/payouts-summary', adminController.getHostsPendingPayouts);
-router.post('/payouts/host/:hostId', adminController.processHostPayout);
-router.post('/payout/:bookingId', adminController.processPayout);
-
-// Refunds & Transactions  
-router.post('/refund/:transactionId', adminController.processRefund);
-router.get('/transactions', adminController.getAllTransactions);
-
-// ==========================================
 // REPORTS & USER SAFETY
 // ==========================================
 router.get('/reports', reportsController.getAllReports);
 router.post('/actions', reportsController.adminTakeAction);
-
-// ==========================================
-// RESERVATION MANAGEMENT (if needed)
-// ==========================================
-// Uncomment if you have reservation-specific admin functions
-// router.get('/reservations', adminController.getAllReservations);
-// router.get('/reservations/:id', adminController.getReservationDetails);  
-// router.patch('/reservations/:reservationId/cancel', adminController.cancelReservationAdmin);
-// router.get('/reservations/stats', adminController.getReservationStats);
 
 module.exports = router;

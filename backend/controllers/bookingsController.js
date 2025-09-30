@@ -1,10 +1,13 @@
-// backend/controllers/bookingsController.js - Updated with new error handling
+// backend/controllers/bookingsController.js - CLEANED & OPTIMIZED
 const pool = require('../db');
 const { createNotification } = require('./notificationsController');
 const autoCompleteBookings = require('../utils/autoCompleteBookings');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 
+// ==========================================
+// CREATE BOOKING
+// ==========================================
 exports.createBooking = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   const { 
@@ -12,27 +15,25 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     start_date, 
     end_date, 
     total_price,
-    booking_type = 'book', // 'book' or 'reserve'
+    booking_type = 'book', // 'book' (full payment) or 'reserve' (50% deposit)
     remaining_payment_method = 'platform' // 'platform' or 'personal'
   } = req.body;
 
-  // Basic validation
+  // Validation
   if (!listing_id || !start_date || !end_date || !total_price) {
     return next(new AppError('Listing ID, dates, and total price are required', 400));
   }
 
-  // Validate booking type
   if (!['book', 'reserve'].includes(booking_type)) {
     return next(new AppError('Booking type must be "book" or "reserve"', 400));
   }
 
-  // Validate payment method for reservations
   if (booking_type === 'reserve' && !['platform', 'personal'].includes(remaining_payment_method)) {
     return next(new AppError('Remaining payment method must be "platform" or "personal"', 400));
   }
 
   // Date validation
-  const todayString = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   
   if (!dateRegex.test(start_date) || !dateRegex.test(end_date)) {
@@ -46,7 +47,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('Invalid date values', 400));
   }
 
-  if (start_date < todayString) {
+  if (start_date < today) {
     return next(new AppError('Start date cannot be in the past', 400));
   }
 
@@ -60,7 +61,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('Booking cannot exceed 365 days', 400));
   }
 
-  // Check if listing exists
+  // Check listing exists
   const [listings] = await pool.query('SELECT * FROM listings WHERE id = ?', [listing_id]);
   if (!listings.length) {
     return next(new AppError('Listing not found', 404));
@@ -72,7 +73,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('You cannot book your own listing', 400));
   }
 
-  // Check for conflicts
+  // Check for date conflicts
   const [conflicts] = await pool.query(`
     SELECT id, start_date, end_date, status
     FROM bookings
@@ -104,7 +105,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
-    // Double-check conflicts within transaction
+    // Final conflict check within transaction
     const [finalCheck] = await connection.query(`
       SELECT id FROM bookings
       WHERE listing_id = ?
@@ -118,7 +119,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       return next(new AppError('Dates no longer available', 409));
     }
 
-    // Create booking with reserve fields
+    // Create booking
     const [result] = await connection.query(`
       INSERT INTO bookings (
         listing_id, client_id, start_date, end_date, total_price,
@@ -130,18 +131,18 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       listing_id, clientId, start_date, end_date, total_price,
       booking_type, depositAmount, remainingAmount,
       remaining_payment_method, paymentDueDate,
-      booking_type === 'book' ? 0 : 0, // deposit not paid yet
-      booking_type === 'book' ? 0 : 0, // remaining not paid yet
-      'pending'
+      0, 0, 'pending'
     ]);
 
     await connection.commit();
 
-    // Notifications
+    const bookingId = result.insertId;
+
+    // Send notifications
     const bookingTypeText = booking_type === 'book' ? 'booking' : 'reservation';
     const paymentInfo = booking_type === 'book' 
       ? `Full payment: ₱${total_price}` 
-      : `Deposit: ₱${depositAmount} (50%), Remaining: ₱${remainingAmount} (${remaining_payment_method})`;
+      : `Deposit: ₱${depositAmount} (50%), Remaining: ₱${remainingAmount}`;
 
     await createNotification({
       userId: listing.host_id,
@@ -159,7 +160,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       status: 'success',
       message: `${booking_type === 'book' ? 'Booking' : 'Reservation'} request created successfully`,
       data: {
-        bookingId: result.insertId,
+        bookingId,
         booking: {
           listing: listing.title,
           dates: `${start_date} to ${end_date}`,
@@ -185,6 +186,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   }
 });
 
+// ==========================================
+// GET BOOKINGS BY CLIENT
+// ==========================================
 exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   await autoCompleteBookings();
@@ -195,6 +199,7 @@ exports.getBookingsByClient = catchAsync(async (req, res, next) => {
       l.title,
       l.location,
       l.price_per_night,
+      l.image_url,
       u.name AS host_name,
       u.id AS host_id,
       p.id AS payment_id,
@@ -216,7 +221,9 @@ exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   });
 });
 
-
+// ==========================================
+// GET BOOKINGS BY HOST
+// ==========================================
 exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   const hostId = req.user?.id;
   
@@ -230,7 +237,10 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
     SELECT 
       b.*,
       l.title,
+      l.location,
       u.name AS client_name,
+      u.email AS client_email,
+      u.phone AS client_phone,
       h.name AS host_name,
       p.status AS payment_status,
       p.amount AS payment_amount
@@ -250,6 +260,9 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   });
 });
 
+// ==========================================
+// GET BOOKINGS BY LISTING
+// ==========================================
 exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
   
@@ -257,15 +270,34 @@ exports.getBookingsByListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  const [rows] = await pool.query("CALL sp_get_bookings_by_listing(?)", [listingId]);
-
-  res.status(200).json({
-    status: 'success',
-    results: rows[0].length,
-    data: { bookings: rows[0] || [] }
-  });
+  try {
+    const [rows] = await pool.query("CALL sp_get_bookings_by_listing(?)", [listingId]);
+    res.status(200).json({
+      status: 'success',
+      results: rows[0].length,
+      data: { bookings: rows[0] || [] }
+    });
+  } catch (error) {
+    // Fallback if stored procedure doesn't exist
+    const [rows] = await pool.query(`
+      SELECT b.*, u.name AS client_name 
+      FROM bookings b
+      JOIN users u ON b.client_id = u.id
+      WHERE b.listing_id = ?
+      ORDER BY b.start_date DESC
+    `, [listingId]);
+    
+    res.status(200).json({
+      status: 'success',
+      results: rows.length,
+      data: { bookings: rows }
+    });
+  }
 });
 
+// ==========================================
+// GET BOOKED DATES BY LISTING (Calendar)
+// ==========================================
 exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
 
@@ -309,7 +341,9 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
   });
 });
 
-// UPDATED: Enhanced booking status update with payment flow logic
+// ==========================================
+// UPDATE BOOKING STATUS
+// ==========================================
 exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const userRole = req.user.role;
@@ -324,13 +358,12 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('Status is required', 400));
   }
 
-  // UPDATED: Added 'arrived' to valid statuses
   const validStatuses = ['pending', 'approved', 'confirmed', 'rejected', 'cancelled', 'completed', 'arrived'];
   if (!validStatuses.includes(status)) {
     return next(new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400));
   }
 
-  // Enhanced query to get all needed data including payment info
+  // Get booking details with payment info
   const [rows] = await pool.query(`
     SELECT b.*, l.host_id, l.title, p.status AS payment_status
     FROM bookings b 
@@ -345,7 +378,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
 
   const booking = rows[0];
 
-  // Enhanced authorization checks
+  // Authorization checks
   if (userRole === 'client') {
     if (booking.client_id !== userId) {
       return next(new AppError('You can only manage your own bookings', 403));
@@ -363,17 +396,14 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
       return next(new AppError('You can only manage bookings for your listings', 403));
     }
     
-    // UPDATED: Enhanced host permissions with arrived status
     if (booking.status === 'pending' && !['approved', 'rejected'].includes(status)) {
       return next(new AppError('Hosts can only approve or reject pending bookings', 403));
     }
     
-    // NEW: Allow hosts to mark confirmed bookings as arrived (only)
     if (booking.status === 'confirmed' && !['arrived', 'cancelled'].includes(status)) {
       return next(new AppError('Confirmed bookings can only be marked as arrived or cancelled', 403));
     }
     
-    // UPDATED: Remove manual completion from arrived bookings - auto-complete only
     if (booking.status === 'arrived' && !['completed', 'cancelled'].includes(status)) {
       return next(new AppError('Arrived bookings can only be marked as completed or cancelled', 403));
     }
@@ -388,50 +418,47 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('Only pending bookings can be approved', 400));
   }
   
-  // NEW: Validation for arrived status with date check
   if (status === 'arrived' && booking.status !== 'confirmed') {
     return next(new AppError('Only confirmed bookings can be marked as arrived', 400));
   }
   
-  // NEW: Check if today is the check-in date for arrivals
+  // Check if today is the check-in date for arrivals
   if (status === 'arrived' && booking.status === 'confirmed') {
-  const today = new Date().toISOString().split('T')[0];
-  const checkInDate = booking.start_date.toISOString().split('T')[0];
-  
-  // Allow arrivals on check-in day or the day after (for late arrivals)
-  const checkInDay = new Date(checkInDate);
-  const dayAfterCheckIn = new Date(checkInDay.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  
-  if (today !== checkInDate && today !== dayAfterCheckIn) {
-    return next(new AppError('Guests can only be marked as arrived on their check-in date or the day after', 400));
+    const today = new Date().toISOString().split('T')[0];
+    const checkInDate = booking.start_date.toISOString().split('T')[0];
+    const dayAfter = new Date(new Date(checkInDate).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    if (today !== checkInDate && today !== dayAfter) {
+      return next(new AppError('Guests can only be marked as arrived on their check-in date or the day after', 400));
+    }
   }
-}
   
-  // UPDATED: Remove manual completion validation - only auto-complete allowed
   if (status === 'completed' && !['arrived', 'confirmed'].includes(booking.status)) {
     return next(new AppError('Only arrived or confirmed bookings can be marked as completed', 400));
   }
 
   let notificationsToSend = [];
 
-  // UPDATED notification logic with arrived status
+  // Client cancels booking
   if (userRole === 'client' && status === 'cancelled') {
     notificationsToSend.push({
       userId: booking.host_id,
       message: `A client cancelled their booking for '${booking.title}'.`,
       type: 'booking_cancelled'
     });
+    
+    // Notify admins for refund review
     const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'");
-  for (const admin of admins) {
-    notificationsToSend.push({
-      userId: admin.id,
-      message: `Client cancelled booking #${id} for '${booking.title}'. Type: ${booking.booking_type || 'book'}. Amount: ₱${booking.total_price}. Review for potential refund.`,
-      type: 'admin_cancellation_review'
-    });
-  }
+    for (const admin of admins) {
+      notificationsToSend.push({
+        userId: admin.id,
+        message: `Client cancelled booking #${id} for '${booking.title}'. Type: ${booking.booking_type || 'book'}. Amount: ₱${booking.total_price}. Review for potential refund.`,
+        type: 'admin_cancellation_review'
+      });
+    }
   }
 
-  // When host approves, notify client about payment requirement
+  // Host approves - notify client to pay
   if (userRole === 'host' && status === 'approved') {
     notificationsToSend.push({
       userId: booking.client_id,
@@ -440,6 +467,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
+  // Host rejects
   if (userRole === 'host' && status === 'rejected') {
     notificationsToSend.push({
       userId: booking.client_id,
@@ -448,7 +476,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
-  // NEW: Notification for arrived status
+  // Host marks as arrived
   if (userRole === 'host' && status === 'arrived') {
     notificationsToSend.push({
       userId: booking.client_id,
@@ -457,16 +485,16 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
     });
   }
 
+  // Booking completed
   if (userRole === 'host' && status === 'completed') {
-  notificationsToSend.push({
-    userId: booking.client_id,
-    message: `✅ Your stay at '${booking.title}' has been marked as completed. Thank you for choosing our property!`,
-    type: 'booking_completed'
-  });
-}
+    notificationsToSend.push({
+      userId: booking.client_id,
+      message: `✅ Your stay at '${booking.title}' has been marked as completed. Thank you for choosing our property!`,
+      type: 'booking_completed'
+    });
+  }
 
-  // REMOVED: Manual completion notification - only auto-complete now
-
+  // Admin changes
   if (userRole === 'admin' && !['cancelled', 'approved', 'rejected', 'arrived', 'completed'].includes(status)) {
     notificationsToSend.push({
       userId: booking.client_id,
@@ -510,6 +538,9 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   });
 });
 
+// ==========================================
+// GET BOOKING HISTORY
+// ==========================================
 exports.getBookingHistory = catchAsync(async (req, res, next) => {
   const bookingId = req.params.id;
 
@@ -522,40 +553,26 @@ exports.getBookingHistory = catchAsync(async (req, res, next) => {
     FROM booking_history bh
     JOIN users u ON bh.user_id = u.id
     WHERE bh.booking_id = ?
-    ORDER BY bh.changed_at DESC`, [bookingId]);
+    ORDER BY bh.changed_at DESC
+  `, [bookingId]);
 
   res.status(200).json({
     status: 'success',
     results: history.length,
-    data: {
-      history
-    }
+    data: { history }
   });
 });
 
-// Add this function to backend/controllers/bookingsController.js
-
+// ==========================================
+// UPDATE CUSTOMER INFO (ID Verification)
+// ==========================================
 exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
   const clientId = req.user.id;
   
-  console.log('📝 Updating customer info for booking:', bookingId);
-  console.log('Files received:', req.files);
-  console.log('Body received:', req.body);
-  
-  // Extract customer information
   const {
-    fullName,
-    email,
-    phone,
-    birthDate,
-    address,
-    city,
-    postalCode,
-    country,
-    emergencyContact,
-    emergencyPhone,
-    idType
+    fullName, email, phone, birthDate, address, city,
+    postalCode, country, emergencyContact, emergencyPhone, idType
   } = req.body;
 
   // Validate required fields
@@ -563,7 +580,7 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
     return next(new AppError('Missing required customer information', 400));
   }
 
-  // Check if booking exists and belongs to the client
+  // Check booking ownership
   const [bookings] = await pool.query(
     'SELECT id, client_id, status FROM bookings WHERE id = ? AND client_id = ?',
     [bookingId, clientId]
@@ -583,37 +600,23 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
     const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
     idFrontUrl = images[0] ? `/uploads/${images[0].filename}` : null;
     idBackUrl = images[1] ? `/uploads/${images[1].filename}` : null;
-    console.log('📁 ID documents uploaded:', { front: idFrontUrl, back: idBackUrl });
   }
   
   // Create customer info JSON
   const customerInfoJson = JSON.stringify({
-    fullName,
-    email,
-    phone,
-    birthDate,
-    address,
-    city,
-    postalCode,
-    country,
-    emergencyContact,
-    emergencyPhone,
+    fullName, email, phone, birthDate, address, city,
+    postalCode, country, emergencyContact, emergencyPhone,
     uploadedAt: new Date().toISOString()
   });
 
   try {
-    // Try to update bookings table (if columns exist)
-    const [result] = await pool.query(
+    // Update bookings table with customer info
+    await pool.query(
       `UPDATE bookings 
-       SET customer_info = ?,
-           id_type = ?,
-           id_verified = 1,
-           updated_at = NOW()
+       SET customer_info = ?, id_type = ?, id_verified = 1, updated_at = NOW()
        WHERE id = ? AND client_id = ?`,
       [customerInfoJson, idType || 'not_specified', bookingId, clientId]
     );
-    
-    console.log('✅ Customer info updated successfully');
     
     res.status(200).json({
       status: 'success',
@@ -626,42 +629,33 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
     });
     
   } catch (error) {
-    // If columns don't exist, just return success (for testing)
     if (error.code === 'ER_BAD_FIELD_ERROR') {
-      console.log('⚠️ Database columns not found, saving to session only');
-      
-      res.status(200).json({
-        status: 'success',
-        message: 'Customer information saved (session only)',
-        data: {
-          bookingId: parseInt(bookingId),
-          idType,
-          note: 'Database schema needs update for permanent storage'
-        }
-      });
-    } else {
-      throw error;
+      return next(new AppError('Database schema needs update for customer info storage', 500));
     }
+    throw error;
   }
 });
 
+// ==========================================
+// GET BOOKING CUSTOMER INFO (Host Only)
+// ==========================================
 exports.getBookingCustomerInfo = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
-  const userId = req.user.id; // Get the user ID from the authenticated user
-  const userRole = req.user.role; // Get the user role
+  const userId = req.user.id;
+  const userRole = req.user.role;
 
-  // Check if user is a host
+  // Only hosts can view customer information
   if (userRole !== 'host') {
     return next(new AppError('Only hosts can view customer information', 403));
   }
 
-  // Verify that the host owns this booking's listing
+  // Verify host owns this booking's listing
   const [bookings] = await pool.query(`
     SELECT b.*, l.host_id 
     FROM bookings b
     JOIN listings l ON b.listing_id = l.id
     WHERE b.id = ? AND l.host_id = ?
-  `, [bookingId, userId]); // Use userId here instead of hostId
+  `, [bookingId, userId]);
 
   if (!bookings.length) {
     return next(new AppError('Booking not found or you do not have permission to view it', 404));
@@ -679,6 +673,9 @@ exports.getBookingCustomerInfo = catchAsync(async (req, res, next) => {
   });
 });
 
+// ==========================================
+// ADMIN CANCEL BOOKING (with Refund)
+// ==========================================
 exports.adminCancelBooking = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
   const { reason, refundAmount } = req.body;
@@ -717,7 +714,6 @@ exports.adminCancelBooking = catchAsync(async (req, res, next) => {
 
     // Process refund if amount specified
     if (refundAmount && refundAmount > 0) {
-      // Here you'd integrate with PayMongo refund API
       await connection.query(
         'INSERT INTO refunds (booking_id, amount, status, processed_by, reason, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
         [bookingId, refundAmount, 'processing', adminId, reason]
@@ -726,7 +722,7 @@ exports.adminCancelBooking = catchAsync(async (req, res, next) => {
 
     await connection.commit();
 
-    // Notify parties
+    // Notify client
     await createNotification({
       userId: booking.client_id,
       message: `Your booking has been cancelled by admin. ${refundAmount > 0 ? `Refund: ₱${refundAmount}` : ''} Reason: ${reason}`,

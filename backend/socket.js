@@ -1,4 +1,4 @@
-// backend/socket.js - Updated with calling support
+// backend/socket.js - CLEANED (Bookings Only, with Calling Support)
 const { Server } = require('socket.io');
 
 let io;
@@ -15,9 +15,12 @@ const initializeSocket = (server) => {
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
+    // ==========================================
+    // USER REGISTRATION
+    // ==========================================
     socket.on('register', (userId) => {
       onlineUsers[userId] = socket.id;
-      socket.userId = userId; // Store userId on socket for easy access
+      socket.userId = userId;
       socket.join(`user_${userId}`);
 
       // Notify others this user is online
@@ -26,7 +29,9 @@ const initializeSocket = (server) => {
       console.log(`User ${userId} registered with socket ${socket.id}`);
     });
 
-    // Existing message handlers
+    // ==========================================
+    // MESSAGING EVENTS
+    // ==========================================
     socket.on('sendMessage', ({ to, message }) => {
       const receiverSocketId = onlineUsers[to];
       if (receiverSocketId) {
@@ -52,7 +57,9 @@ const initializeSocket = (server) => {
       }
     });
 
-    // NEW: WebRTC Calling Event Handlers
+    // ==========================================
+    // WEBRTC CALLING EVENTS
+    // ==========================================
     socket.on('incoming-call', (data) => {
       const { to, from, callerName, callType } = data;
       const receiverSocketId = onlineUsers[to];
@@ -67,7 +74,6 @@ const initializeSocket = (server) => {
         
         console.log(`📞 ${callType} call from ${from || socket.userId} to ${to}`);
       } else {
-        // User is offline - could store missed call notification
         console.log(`📞 Missed call: User ${to} is offline`);
         socket.emit('call-failed', { reason: 'User is offline' });
       }
@@ -92,9 +98,7 @@ const initializeSocket = (server) => {
       const receiverSocketId = onlineUsers[to];
       
       if (receiverSocketId) {
-        io.to(receiverSocketId).emit('call-answer', {
-          answer
-        });
+        io.to(receiverSocketId).emit('call-answer', { answer });
         console.log(`📞 Call answer sent to ${to}`);
       }
     });
@@ -104,9 +108,7 @@ const initializeSocket = (server) => {
       const receiverSocketId = onlineUsers[to];
       
       if (receiverSocketId) {
-        io.to(receiverSocketId).emit('ice-candidate', {
-          candidate
-        });
+        io.to(receiverSocketId).emit('ice-candidate', { candidate });
       }
     });
 
@@ -130,7 +132,6 @@ const initializeSocket = (server) => {
       }
     });
 
-    // Handle call timeouts (optional)
     socket.on('call-timeout', (data) => {
       const { to } = data;
       const receiverSocketId = onlineUsers[to];
@@ -141,9 +142,133 @@ const initializeSocket = (server) => {
       }
     });
 
-    // Existing disconnect handler
+    // ==========================================
+    // BOOKING EVENTS (Real-time Updates)
+    // ==========================================
+    socket.on('booking-created', (data) => {
+      const { hostId, bookingId, clientName, listingTitle } = data;
+      const hostSocketId = onlineUsers[hostId];
+      
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('new-booking-request', {
+          bookingId,
+          clientName,
+          listingTitle,
+          message: `New booking request from ${clientName} for "${listingTitle}"`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('booking-approved', (data) => {
+      const { clientId, bookingId, listingTitle, requiresPayment } = data;
+      const clientSocketId = onlineUsers[clientId];
+      
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('booking-approved', {
+          bookingId,
+          listingTitle,
+          requiresPayment,
+          message: `Your booking for "${listingTitle}" has been approved!${requiresPayment ? ' Please complete payment.' : ''}`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('booking-rejected', (data) => {
+      const { clientId, bookingId, listingTitle, reason } = data;
+      const clientSocketId = onlineUsers[clientId];
+      
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('booking-rejected', {
+          bookingId,
+          listingTitle,
+          reason,
+          message: `Your booking for "${listingTitle}" has been declined.`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('payment-completed', (data) => {
+      const { hostId, bookingId, amount, paymentType } = data;
+      const hostSocketId = onlineUsers[hostId];
+      
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('payment-received', {
+          bookingId,
+          amount,
+          paymentType,
+          message: `Payment of ₱${amount} received for booking #${bookingId}`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('booking-cancelled', (data) => {
+      const { userId, bookingId, refundAmount, listingTitle } = data;
+      const userSocketId = onlineUsers[userId];
+      
+      if (userSocketId) {
+        io.to(userSocketId).emit('booking-cancelled', {
+          bookingId,
+          listingTitle,
+          refundAmount,
+          message: refundAmount > 0 
+            ? `Booking cancelled. Refund of ₱${refundAmount} is being processed.`
+            : `Booking for "${listingTitle}" has been cancelled.`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('booking-arrived', (data) => {
+      const { clientId, bookingId, listingTitle } = data;
+      const clientSocketId = onlineUsers[clientId];
+      
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('guest-arrived', {
+          bookingId,
+          listingTitle,
+          message: `Welcome! Your host has confirmed your arrival at "${listingTitle}".`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    socket.on('booking-completed', (data) => {
+      const { clientId, hostId, bookingId, listingTitle } = data;
+      
+      // Notify client
+      const clientSocketId = onlineUsers[clientId];
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('booking-completed', {
+          bookingId,
+          listingTitle,
+          message: `Your stay at "${listingTitle}" has been completed. Thank you!`,
+          timestamp: new Date()
+        });
+      }
+      
+      // Notify host
+      const hostSocketId = onlineUsers[hostId];
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('booking-completed', {
+          bookingId,
+          listingTitle,
+          message: `Booking for "${listingTitle}" has been completed.`,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    // ==========================================
+    // DISCONNECT HANDLER
+    // ==========================================
     socket.on('disconnect', () => {
       let disconnectedUserId = null;
+      
+      // Find and remove user from online users
       for (const [userId, socketId] of Object.entries(onlineUsers)) {
         if (socketId === socket.id) {
           disconnectedUserId = userId;
@@ -163,65 +288,6 @@ const initializeSocket = (server) => {
         });
         
         console.log(`User ${disconnectedUserId} disconnected`);
-      }
-    });
-
-        socket.on('reservation-created', (data) => {
-      const { hostId, reservationId, guestName } = data;
-      const hostSocketId = onlineUsers[hostId];
-      
-      if (hostSocketId) {
-        io.to(hostSocketId).emit('new-reservation-request', {
-          reservationId,
-          guestName,
-          message: `New reservation request from ${guestName}`,
-          timestamp: new Date()
-        });
-      }
-    });
-
-    socket.on('reservation-approved', (data) => {
-      const { clientId, reservationId, listingTitle } = data;
-      const clientSocketId = onlineUsers[clientId];
-      
-      if (clientSocketId) {
-        io.to(clientSocketId).emit('reservation-approved', {
-          reservationId,
-          listingTitle,
-          message: `Your reservation for ${listingTitle} has been approved!`,
-          requiresPayment: true,
-          timestamp: new Date()
-        });
-      }
-    });
-
-    socket.on('payment-completed', (data) => {
-      const { hostId, reservationId, paymentType } = data;
-      const hostSocketId = onlineUsers[hostId];
-      
-      if (hostSocketId) {
-        io.to(hostSocketId).emit('payment-received', {
-          reservationId,
-          paymentType,
-          message: `Payment ${paymentType} received for reservation #${reservationId}`,
-          timestamp: new Date()
-        });
-      }
-    });
-
-    socket.on('reservation-cancelled', (data) => {
-      const { userId, reservationId, refundAmount } = data;
-      const userSocketId = onlineUsers[userId];
-      
-      if (userSocketId) {
-        io.to(userSocketId).emit('reservation-cancelled', {
-          reservationId,
-          refundAmount,
-          message: refundAmount > 0 
-            ? `Reservation cancelled. Refund of ₱${refundAmount} is being processed.`
-            : `Reservation cancelled.`,
-          timestamp: new Date()
-        });
       }
     });
   });
