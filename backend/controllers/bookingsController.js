@@ -7,53 +7,57 @@ const { AppError } = require('../middleware/errorHandler');
 
 exports.createBooking = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
-  const { listing_id, start_date, end_date, total_price } = req.body;
+  const { 
+    listing_id, 
+    start_date, 
+    end_date, 
+    total_price,
+    booking_type = 'book', // 'book' or 'reserve'
+    remaining_payment_method = 'platform' // 'platform' or 'personal'
+  } = req.body;
 
   // Basic validation
   if (!listing_id || !start_date || !end_date || !total_price) {
-    return next(new AppError('Listing ID, start date, end date, and total price are required', 400));
+    return next(new AppError('Listing ID, dates, and total price are required', 400));
   }
 
-  // Simple string-based date validation (avoids timezone issues)
+  // Validate booking type
+  if (!['book', 'reserve'].includes(booking_type)) {
+    return next(new AppError('Booking type must be "book" or "reserve"', 400));
+  }
+
+  // Validate payment method for reservations
+  if (booking_type === 'reserve' && !['platform', 'personal'].includes(remaining_payment_method)) {
+    return next(new AppError('Remaining payment method must be "platform" or "personal"', 400));
+  }
+
+  // Date validation
   const todayString = new Date().toISOString().split('T')[0];
-
-  // Validate date format (YYYY-MM-DD)
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  
   if (!dateRegex.test(start_date) || !dateRegex.test(end_date)) {
-    return next(new AppError('Invalid date format. Use YYYY-MM-DD format', 400));
+    return next(new AppError('Invalid date format. Use YYYY-MM-DD', 400));
   }
 
-  // Check if dates are valid
   const startDate = new Date(start_date);
   const endDate = new Date(end_date);
+  
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    return next(new AppError('Invalid date values provided', 400));
+    return next(new AppError('Invalid date values', 400));
   }
 
-  // Check if start date is in the past
   if (start_date < todayString) {
     return next(new AppError('Start date cannot be in the past', 400));
   }
 
-  // Check if end date is after start date
   if (end_date <= start_date) {
     return next(new AppError('End date must be after start date', 400));
   }
 
-  // Calculate booking duration
   const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
   
-  // Check minimum and maximum booking duration
   if (daysDifference > 365) {
     return next(new AppError('Booking cannot exceed 365 days', 400));
-  }
-  if (daysDifference < 1) {
-    return next(new AppError('Minimum booking duration is 1 day', 400));
-  }
-
-  // Validate total_price
-  if (isNaN(total_price) || total_price <= 0) {
-    return next(new AppError('Total price must be a positive number', 400));
   }
 
   // Check if listing exists
@@ -64,12 +68,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
   const listing = listings[0];
 
-  // Check if user is trying to book their own listing
   if (listing.host_id === clientId) {
     return next(new AppError('You cannot book your own listing', 400));
   }
 
-  // Check for booking conflicts with consistent date format
+  // Check for conflicts
   const [conflicts] = await pool.query(`
     SELECT id, start_date, end_date, status
     FROM bookings
@@ -79,26 +82,21 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   `, [listing_id, start_date, end_date]);
 
   if (conflicts.length > 0) {
-    const conflictDates = conflicts.map(c => 
-      `${c.start_date.toISOString().split('T')[0]} to ${c.end_date.toISOString().split('T')[0]} (${c.status})`
-    ).join(', ');
-    
-    return next(new AppError(
-      `Selected dates conflict with existing bookings: ${conflictDates}`, 
-      409
-    ));
+    return next(new AppError('Selected dates conflict with existing bookings', 409));
   }
 
-  // Validate pricing against listing price (with tolerance for discounts/fees)
-  const expectedBasePrice = listing.price_per_night * daysDifference;
-  const priceTolerance = expectedBasePrice * 0.3; // 30% tolerance for fees, taxes, discounts
-  
-  if (total_price > expectedBasePrice + priceTolerance) {
-    return next(new AppError('Price exceeds maximum allowed amount', 400));
-  }
-  
-  if (total_price < expectedBasePrice - priceTolerance) {
-    return next(new AppError('Price is below minimum allowed amount', 400));
+  // Calculate pricing based on booking type
+  let depositAmount = 0;
+  let remainingAmount = 0;
+  let paymentDueDate = null;
+
+  if (booking_type === 'reserve') {
+    depositAmount = Math.round(total_price * 0.5 * 100) / 100; // 50% deposit
+    remainingAmount = Math.round((total_price - depositAmount) * 100) / 100;
+    
+    // Payment due 3 days before check-in
+    paymentDueDate = new Date(start_date);
+    paymentDueDate.setDate(paymentDueDate.getDate() - 3);
   }
 
   const connection = await pool.getConnection();
@@ -106,8 +104,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
-    // Double-check for conflicts within transaction with consistent date format
-    const [finalConflictCheck] = await connection.query(`
+    // Double-check conflicts within transaction
+    const [finalCheck] = await connection.query(`
       SELECT id FROM bookings
       WHERE listing_id = ?
         AND status IN ('pending', 'approved', 'confirmed', 'arrived')
@@ -115,43 +113,65 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       FOR UPDATE
     `, [listing_id, start_date, end_date]);
 
-    if (finalConflictCheck.length > 0) {
+    if (finalCheck.length > 0) {
       await connection.rollback();
-      return next(new AppError('Selected dates are no longer available', 409));
+      return next(new AppError('Dates no longer available', 409));
     }
 
-    // Create the booking with consistent date format
-    const [result] = await connection.query(
-      'INSERT INTO bookings (listing_id, client_id, start_date, end_date, total_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-      [listing_id, clientId, start_date, end_date, total_price, 'pending']
-    );
+    // Create booking with reserve fields
+    const [result] = await connection.query(`
+      INSERT INTO bookings (
+        listing_id, client_id, start_date, end_date, total_price,
+        booking_type, deposit_amount, remaining_amount, 
+        remaining_payment_method, payment_due_date,
+        deposit_paid, remaining_paid, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [
+      listing_id, clientId, start_date, end_date, total_price,
+      booking_type, depositAmount, remainingAmount,
+      remaining_payment_method, paymentDueDate,
+      booking_type === 'book' ? 0 : 0, // deposit not paid yet
+      booking_type === 'book' ? 0 : 0, // remaining not paid yet
+      'pending'
+    ]);
 
     await connection.commit();
 
-    // Notify host
+    // Notifications
+    const bookingTypeText = booking_type === 'book' ? 'booking' : 'reservation';
+    const paymentInfo = booking_type === 'book' 
+      ? `Full payment: ₱${total_price}` 
+      : `Deposit: ₱${depositAmount} (50%), Remaining: ₱${remainingAmount} (${remaining_payment_method})`;
+
     await createNotification({
       userId: listing.host_id,
-      message: `New booking request for '${listing.title}' from ${req.user.name}`,
+      message: `New ${bookingTypeText} request for '${listing.title}' from ${req.user.name}. ${paymentInfo}`,
       type: 'booking_request'
     });
 
-    // Notify client
     await createNotification({
       userId: clientId,
-      message: `Your booking request for '${listing.title}' has been sent to the host.`,
+      message: `Your ${bookingTypeText} request for '${listing.title}' has been sent. ${paymentInfo}`,
       type: 'booking_sent'
     });
 
     res.status(201).json({
       status: 'success',
-      message: 'Booking request created successfully',
+      message: `${booking_type === 'book' ? 'Booking' : 'Reservation'} request created successfully`,
       data: {
         bookingId: result.insertId,
         booking: {
           listing: listing.title,
           dates: `${start_date} to ${end_date}`,
           duration: `${daysDifference} day(s)`,
+          bookingType: booking_type,
           totalPrice: total_price,
+          ...(booking_type === 'reserve' && {
+            depositAmount,
+            remainingAmount,
+            remainingPaymentMethod: remaining_payment_method,
+            paymentDueDate: paymentDueDate?.toISOString().split('T')[0]
+          }),
           status: 'pending'
         }
       }
@@ -167,21 +187,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
 exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
-
-  await autoCompleteBookings(); // Auto-fix statuses first
+  await autoCompleteBookings();
   
-  // UPDATED QUERY: Include payment information matching your table structure
   const [rows] = await pool.query(`
     SELECT 
-      b.id,
-      b.listing_id,
-      b.client_id,
-      b.start_date,
-      b.end_date,
-      b.total_price,
-      b.status,
-      b.created_at,
-      b.updated_at,
+      b.*,
       l.title,
       l.location,
       l.price_per_night,
@@ -190,11 +200,7 @@ exports.getBookingsByClient = catchAsync(async (req, res, next) => {
       p.id AS payment_id,
       p.status AS payment_status,
       p.payment_intent_id,
-      p.amount AS payment_amount,
-      p.platform_fee,
-      p.host_earnings,
-      p.payout_status,
-      p.created_at AS payment_created_at
+      p.amount AS payment_amount
     FROM bookings b
     JOIN listings l ON b.listing_id = l.id
     JOIN users u ON l.host_id = u.id
@@ -206,34 +212,25 @@ exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     results: rows.length,
-    data: {
-      bookings: rows
-    }
+    data: { bookings: rows }
   });
 });
+
 
 exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   const hostId = req.user?.id;
   
   if (!hostId) {
-    return next(new AppError('Host ID missing from authentication', 401));
+    return next(new AppError('Host ID missing', 401));
   }
 
   await autoCompleteBookings();
   
-  // Use direct query instead of stored procedure to ensure host_name is included
   const [rows] = await pool.query(`
     SELECT 
-      b.id AS booking_id,
-      b.listing_id,
+      b.*,
       l.title,
-      b.client_id,
       u.name AS client_name,
-      b.status,
-      b.start_date AS check_in_date,   
-      b.end_date AS check_out_date,    
-      b.total_price,
-      l.host_id,
       h.name AS host_name,
       p.status AS payment_status,
       p.amount AS payment_amount
@@ -249,9 +246,7 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     results: rows.length,
-    data: {
-      bookings: rows || []
-    }
+    data: { bookings: rows || [] }
   });
 });
 
@@ -267,9 +262,7 @@ exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     results: rows[0].length,
-    data: {
-      bookings: rows[0] || []
-    }
+    data: { bookings: rows[0] || [] }
   });
 });
 
@@ -288,14 +281,12 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
     ORDER BY start_date ASC
   `, [listingId]);
 
-  // Generate array of unavailable dates
   const unavailableDates = [];
   
   bookings.forEach(booking => {
     const start = new Date(booking.start_date);
     const end = new Date(booking.end_date);
     
-    // Add each date in the range
     for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
       unavailableDates.push({
         date: d.toISOString().split('T')[0],
@@ -430,6 +421,14 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
       message: `A client cancelled their booking for '${booking.title}'.`,
       type: 'booking_cancelled'
     });
+    const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'");
+  for (const admin of admins) {
+    notificationsToSend.push({
+      userId: admin.id,
+      message: `Client cancelled booking #${id} for '${booking.title}'. Type: ${booking.booking_type || 'book'}. Amount: ₱${booking.total_price}. Review for potential refund.`,
+      type: 'admin_cancellation_review'
+    });
+  }
   }
 
   // When host approves, notify client about payment requirement
@@ -679,26 +678,75 @@ exports.getBookingCustomerInfo = catchAsync(async (req, res, next) => {
     }
   });
 });
-// exports.markAsCompleted = async (req, res) => {
-//   const bookingId = req.params.id;
 
-//   try {
-//     await pool.query('CALL sp_update_booking_status(?, ?)', [bookingId, 'completed']);
-//     res.json({ message: 'Booking marked as completed' });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Failed to mark as completed', error: err.message });
-//   }
-// };
+exports.adminCancelBooking = catchAsync(async (req, res, next) => {
+  const { bookingId } = req.params;
+  const { reason, refundAmount } = req.body;
+  const adminId = req.user.id;
 
-// exports.markBookingCompleted = async (req, res) => {
-//   const { bookingId } = req.params;
+  if (req.user.role !== 'admin') {
+    return next(new AppError('Admin access required', 403));
+  }
 
-//   try {
-//     await pool.query('CALL sp_mark_booking_completed(?)', [bookingId]);
-//     res.json({ message: 'Booking marked as completed' });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Failed to complete booking', error: err.message });
-//   }
-// };
+  if (!reason) {
+    return next(new AppError('Cancellation reason required', 400));
+  }
+
+  const [bookings] = await pool.query('SELECT * FROM bookings WHERE id = ?', [bookingId]);
+
+  if (!bookings.length) {
+    return next(new AppError('Booking not found', 404));
+  }
+
+  const booking = bookings[0];
+
+  if (['cancelled', 'completed'].includes(booking.status)) {
+    return next(new AppError('Cannot cancel this booking', 400));
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    // Cancel booking
+    await connection.query(
+      'UPDATE bookings SET status = ?, cancellation_reason = ?, updated_at = NOW() WHERE id = ?',
+      ['cancelled', `Admin: ${reason}`, bookingId]
+    );
+
+    // Process refund if amount specified
+    if (refundAmount && refundAmount > 0) {
+      // Here you'd integrate with PayMongo refund API
+      await connection.query(
+        'INSERT INTO refunds (booking_id, amount, status, processed_by, reason, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
+        [bookingId, refundAmount, 'processing', adminId, reason]
+      );
+    }
+
+    await connection.commit();
+
+    // Notify parties
+    await createNotification({
+      userId: booking.client_id,
+      message: `Your booking has been cancelled by admin. ${refundAmount > 0 ? `Refund: ₱${refundAmount}` : ''} Reason: ${reason}`,
+      type: 'admin_cancellation'
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Booking cancelled by admin',
+      data: {
+        bookingId: parseInt(bookingId),
+        refundAmount: refundAmount || 0,
+        reason
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+});

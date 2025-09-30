@@ -708,297 +708,267 @@ exports.getDashboardStats = catchAsync(async (req, res, next) => {
   }
 });
 
-exports.getAllReservations = catchAsync(async (req, res, next) => {
-    const { page = 1, limit = 50, status, listing_id } = req.query;
-    
-    if (parseInt(limit) > 100) {
-        return next(new AppError('Limit cannot exceed 100 reservations per page', 400));
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    let whereClause = '1=1';
-    const queryParams = [];
-
-    if (status) {
-        whereClause += ' AND r.status = ?';
-        queryParams.push(status);
-    }
-
-    if (listing_id) {
-        whereClause += ' AND r.listing_id = ?';
-        queryParams.push(listing_id);
-    }
-
-    queryParams.push(parseInt(limit), offset);
-
-    const [reservations] = await pool.query(`
-        SELECT 
-            r.*,
-            l.title as listing_title,
-            l.location,
-            uc.name as client_name,
-            uc.email as client_email,
-            uh.name as host_name,
-            DATEDIFF(r.check_out_date, r.check_in_date) as nights
-        FROM reservations r
-        JOIN listings l ON r.listing_id = l.id
-        JOIN users uc ON r.client_id = uc.id
-        JOIN users uh ON r.host_id = uh.id
-        WHERE ${whereClause}
-        ORDER BY r.created_at DESC
-        LIMIT ? OFFSET ?
-    `, queryParams);
-
-    const [countResult] = await pool.query(`
-        SELECT COUNT(*) as total FROM reservations r WHERE ${whereClause}
-    `, queryParams.slice(0, -2));
-
-    res.status(200).json({
-        status: 'success',
-        results: reservations.length,
-        data: {
-            reservations,
-            pagination: {
-                total: countResult[0].total,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                totalPages: Math.ceil(countResult[0].total / parseInt(limit))
-            }
-        }
-    });
-});
-
-exports.getReservationDetails = catchAsync(async (req, res, next) => {
-    const { id } = req.params;
-
-    if (!id || isNaN(id)) {
-        return next(new AppError('Valid reservation ID is required', 400));
-    }
-
-    const [reservations] = await pool.query(`
-        SELECT 
-            r.*,
-            l.title as listing_title,
-            l.location as listing_location,
-            l.image_url,
-            uc.name as client_name,
-            uc.email as client_email,
-            uh.name as host_name,
-            uh.email as host_email,
-            DATEDIFF(r.check_out_date, r.check_in_date) as nights
-        FROM reservations r
-        JOIN listings l ON r.listing_id = l.id
-        JOIN users uc ON r.client_id = uc.id
-        JOIN users uh ON r.host_id = uh.id
-        WHERE r.id = ?
-    `, [id]);
-
-    if (!reservations.length) {
-        return next(new AppError('Reservation not found', 404));
-    }
-
-    const reservation = reservations[0];
-
-    // Get reservation history
-    const [history] = await pool.query(`
-        SELECT rh.*, u.name as user_name
-        FROM reservation_history rh
-        LEFT JOIN users u ON rh.user_id = u.id
-        WHERE rh.reservation_id = ?
-        ORDER BY rh.created_at DESC
-    `, [id]);
-
-    res.status(200).json({
-        status: 'success',
-        data: {
-            reservation,
-            history
-        }
-    });
-});
-
-exports.cancelReservationAdmin = catchAsync(async (req, res, next) => {
-    const { reservationId } = req.params;
-    const { reason } = req.body;
-    const adminId = req.user.id;
-
-    if (!reason) {
-        return next(new AppError('Cancellation reason is required', 400));
-    }
-
-    const [reservations] = await pool.query(
-        'SELECT * FROM reservations WHERE id = ?', [reservationId]
-    );
-
-    if (!reservations.length) {
-        return next(new AppError('Reservation not found', 404));
-    }
-
-    const reservation = reservations[0];
-
-    if (['cancelled', 'completed'].includes(reservation.status)) {
-        return next(new AppError('Cannot cancel this reservation', 400));
-    }
-
-    await pool.query('CALL sp_update_reservation_status(?, ?, ?, ?)', [
-        reservationId, adminId, 'cancelled', `Admin cancellation: ${reason}`
-    ]);
-
-    // Notify both parties
-    await createNotification({
-        userId: reservation.client_id,
-        message: `Your reservation has been cancelled by administration. Reason: ${reason}`,
-        type: 'admin_cancellation'
-    });
-
-    await createNotification({
-        userId: reservation.host_id,
-        message: `A reservation for your listing has been cancelled by administration.`,
-        type: 'admin_cancellation'
-    });
-
-    res.status(200).json({
-        status: 'success',
-        message: 'Reservation cancelled by admin',
-        data: {
-            reservationId: parseInt(reservationId),
-            reason,
-            cancelledAt: new Date().toISOString()
-        }
-    });
-});
-
-exports.getReservationStats = catchAsync(async (req, res, next) => {
-    const [stats] = await pool.query(`
-        SELECT 
-            COUNT(*) as total_reservations,
-            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
-            COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed,
-            COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-            COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
-            SUM(CASE WHEN status IN ('confirmed', 'completed') THEN total_amount ELSE 0 END) as confirmed_revenue,
-            AVG(total_amount) as average_booking_value,
-            COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today_reservations,
-            COUNT(CASE WHEN WEEK(created_at) = WEEK(CURDATE()) THEN 1 END) as this_week_reservations
-        FROM reservations
-    `);
-
-    // Get monthly trend
-    const [monthlyTrend] = await pool.query(`
-        SELECT 
-            DATE_FORMAT(created_at, '%Y-%m') as month,
-            COUNT(*) as reservations,
-            SUM(total_amount) as revenue
-        FROM reservations 
-        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-        ORDER BY month DESC
-        LIMIT 12
-    `);
-
-    // Get top performing listings
-    const [topListings] = await pool.query(`
-        SELECT 
-            l.id,
-            l.title,
-            l.location,
-            COUNT(r.id) as reservation_count,
-            SUM(r.total_amount) as total_revenue,
-            AVG(r.total_amount) as avg_reservation_value
-        FROM listings l
-        JOIN reservations r ON l.id = r.listing_id
-        WHERE r.status IN ('confirmed', 'completed')
-        GROUP BY l.id, l.title, l.location
-        ORDER BY reservation_count DESC
-        LIMIT 10
-    `);
-
-    res.status(200).json({
-        status: 'success',
-        data: {
-            summary: stats[0],
-            monthlyTrend,
-            topListings
-        }
-    });
-});
-
-// PAYOUTS
-exports.processPayout = catchAsync(async (req, res, next) => {
-  const { bookingId } = req.params;
-  const taxPercentage = 10; // platform fee %
-  const adminId = req.user.id;
-
-  if (!bookingId || isNaN(bookingId)) {
-    return next(new AppError('Valid booking ID is required', 400));
+exports.getAllRefunds = catchAsync(async (req, res, next) => {
+  const { page = 1, limit = 50, status } = req.query;
+  
+  if (parseInt(limit) > 100) {
+    return next(new AppError('Limit cannot exceed 100 refunds per page', 400));
   }
 
-  await pool.query('CALL sp_admin_process_payout(?, ?, ?)', [
-    bookingId,
-    taxPercentage,
-    adminId,
-  ]);
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+  let whereClause = '1=1';
+  const queryParams = [];
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Payout processed successfully'
-  });
-});
-
-// ADMIN REFUND
-exports.processRefund = catchAsync(async (req, res, next) => {
-  const { transactionId } = req.params;
-  const adminId = req.user.id;
-
-  if (!transactionId || isNaN(transactionId)) {
-    return next(new AppError('Valid transaction ID is required', 400));
+  // Filter by status if provided
+  if (status && ['pending', 'processing', 'completed', 'failed'].includes(status)) {
+    whereClause += ' AND r.status = ?';
+    queryParams.push(status);
   }
 
-  await pool.query('CALL sp_admin_process_refund(?, ?)', [transactionId, adminId]);
-  
-  res.status(200).json({
-    status: 'success',
-    message: 'Refund processed successfully'
-  });
-});
+  queryParams.push(parseInt(limit), offset);
 
-exports.getAllTransactions = catchAsync(async (req, res, next) => {
-  const [result] = await pool.query('CALL sp_get_all_transactions()');
-  
+  const [refunds] = await pool.query(`
+    SELECT 
+      r.*,
+      b.listing_id,
+      b.client_id,
+      b.total_price,
+      b.booking_type,
+      b.start_date,
+      b.end_date,
+      l.title as listing_title,
+      l.location as listing_location,
+      uc.name as client_name,
+      uc.email as client_email,
+      a.name as processed_by_name
+    FROM refunds r
+    JOIN bookings b ON r.booking_id = b.id
+    JOIN listings l ON b.listing_id = l.id
+    JOIN users uc ON b.client_id = uc.id
+    LEFT JOIN users a ON r.processed_by = a.id
+    WHERE ${whereClause}
+    ORDER BY r.created_at DESC
+    LIMIT ? OFFSET ?
+  `, queryParams);
+
+  // Get total count for pagination
+  const [countResult] = await pool.query(`
+    SELECT COUNT(*) as total 
+    FROM refunds r 
+    WHERE ${whereClause}
+  `, queryParams.slice(0, -2));
+
+  // Get refund statistics
+  const [stats] = await pool.query(`
+    SELECT 
+      COUNT(*) as total_refunds,
+      COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+      COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_count,
+      COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_count,
+      COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_count,
+      SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as total_refunded,
+      AVG(amount) as average_refund_amount
+    FROM refunds
+  `);
+
   res.status(200).json({
     status: 'success',
-    results: result[0].length,
+    results: refunds.length,
     data: {
-      transactions: result[0]
+      refunds,
+      statistics: stats[0],
+      pagination: {
+        total: countResult[0].total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(countResult[0].total / parseInt(limit))
+      }
     }
   });
 });
 
-exports.getHostsPendingPayouts = catchAsync(async (req, res, next) => {
-  const [result] = await pool.query('CALL sp_get_host_earnings_for_payout()');
-  
-  res.status(200).json({
-    status: 'success',
-    results: result[0].length,
-    data: {
-      hosts: result[0]
-    }
-  });
-});
+// Get refund details by ID
+exports.getRefundDetails = catchAsync(async (req, res, next) => {
+  const { refundId } = req.params;
 
-exports.processHostPayout = catchAsync(async (req, res, next) => {
-  const { hostId } = req.params;
-  const taxPercentage = 10;
-  const adminId = req.user.id;
-
-  if (!hostId || isNaN(hostId)) {
-    return next(new AppError('Valid host ID is required', 400));
+  if (!refundId || isNaN(refundId)) {
+    return next(new AppError('Valid refund ID is required', 400));
   }
 
-  // Verify host exists
-  const [hostCheck] = await pool.query('SELECT id, name FROM users WHERE id = ? AND role = "host"', [hostId]);
-  if (!hostCheck.length) {
-    return next(new AppError('Host not found', 404));
+  const [refunds] = await pool.query(`
+    SELECT 
+      r.*,
+      b.listing_id,
+      b.client_id,
+      b.total_price,
+      b.booking_type,
+      b.deposit_amount,
+      b.remaining_amount,
+      b.start_date,
+      b.end_date,
+      b.status as booking_status,
+      l.title as listing_title,
+      l.location as listing_location,
+      uc.name as client_name,
+      uc.email as client_email,
+      uc.phone as client_phone,
+      uh.name as host_name,
+      a.name as processed_by_name
+    FROM refunds r
+    JOIN bookings b ON r.booking_id = b.id
+    JOIN listings l ON b.listing_id = l.id
+    JOIN users uc ON b.client_id = uc.id
+    JOIN users uh ON l.host_id = uh.id
+    LEFT JOIN users a ON r.processed_by = a.id
+    WHERE r.id = ?
+  `, [refundId]);
+
+  if (!refunds.length) {
+    return next(new AppError('Refund not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      refund: refunds[0]
+    }
+  });
+});
+
+// Update refund status
+exports.updateRefundStatus = catchAsync(async (req, res, next) => {
+  const { refundId } = req.params;
+  const { status, notes } = req.body;
+  const adminId = req.user.id;
+
+  if (!refundId || isNaN(refundId)) {
+    return next(new AppError('Valid refund ID is required', 400));
+  }
+
+  const validStatuses = ['pending', 'processing', 'completed', 'failed'];
+  if (!status || !validStatuses.includes(status)) {
+    return next(new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400));
+  }
+
+  // Get refund details
+  const [refunds] = await pool.query(`
+    SELECT r.*, b.client_id, b.booking_type, l.title
+    FROM refunds r
+    JOIN bookings b ON r.booking_id = b.id
+    JOIN listings l ON b.listing_id = l.id
+    WHERE r.id = ?
+  `, [refundId]);
+
+  if (!refunds.length) {
+    return next(new AppError('Refund not found', 404));
+  }
+
+  const refund = refunds[0];
+
+  // Update refund status
+  const [result] = await pool.query(
+    `UPDATE refunds 
+     SET status = ?, 
+         processed_by = ?,
+         notes = ?,
+         updated_at = NOW()
+     WHERE id = ?`,
+    [status, adminId, notes || refund.notes, refundId]
+  );
+
+  if (result.affectedRows === 0) {
+    return next(new AppError('Failed to update refund status', 500));
+  }
+
+  // Send notification to client based on status
+  let notificationMessage = '';
+  let notificationType = 'refund_update';
+
+  switch(status) {
+    case 'processing':
+      notificationMessage = `Your refund of ₱${refund.amount} for "${refund.title}" is being processed.`;
+      notificationType = 'refund_processing';
+      break;
+    case 'completed':
+      notificationMessage = `✅ Your refund of ₱${refund.amount} for "${refund.title}" has been completed and sent to your account.`;
+      notificationType = 'refund_completed';
+      break;
+    case 'failed':
+      notificationMessage = `❌ Your refund of ₱${refund.amount} for "${refund.title}" failed. Please contact support.`;
+      notificationType = 'refund_failed';
+      break;
+    case 'pending':
+      notificationMessage = `Your refund of ₱${refund.amount} for "${refund.title}" is pending review.`;
+      notificationType = 'refund_pending';
+      break;
+  }
+
+  // Send notification
+  try {
+    await createNotification({
+      userId: refund.client_id,
+      message: notificationMessage,
+      type: notificationType
+    });
+  } catch (notifError) {
+    console.error('Notification error:', notifError);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: `Refund status updated to ${status}`,
+    data: {
+      refundId: parseInt(refundId),
+      previousStatus: refund.status,
+      newStatus: status,
+      amount: refund.amount,
+      updatedBy: adminId,
+      updatedAt: new Date().toISOString()
+    }
+  });
+});
+
+// Process manual refund (create refund without cancellation)
+exports.processManualRefund = catchAsync(async (req, res, next) => {
+  const { bookingId, amount, reason } = req.body;
+  const adminId = req.user.id;
+
+  if (!bookingId || !amount || !reason) {
+    return next(new AppError('Booking ID, amount, and reason are required', 400));
+  }
+
+  if (isNaN(amount) || amount <= 0) {
+    return next(new AppError('Valid refund amount is required', 400));
+  }
+
+  // Get booking details
+  const [bookings] = await pool.query(`
+    SELECT b.*, l.title, l.host_id
+    FROM bookings b
+    JOIN listings l ON b.listing_id = l.id
+    WHERE b.id = ?
+  `, [bookingId]);
+
+  if (!bookings.length) {
+    return next(new AppError('Booking not found', 404));
+  }
+
+  const booking = bookings[0];
+
+  // Validate refund amount doesn't exceed booking total
+  if (amount > booking.total_price) {
+    return next(new AppError(`Refund amount cannot exceed booking total of ₱${booking.total_price}`, 400));
+  }
+
+  // Check for existing refunds
+  const [existingRefunds] = await pool.query(
+    'SELECT SUM(amount) as total_refunded FROM refunds WHERE booking_id = ? AND status IN ("processing", "completed")',
+    [bookingId]
+  );
+
+  const totalRefunded = existingRefunds[0].total_refunded || 0;
+  if ((totalRefunded + amount) > booking.total_price) {
+    return next(new AppError(`Total refunds cannot exceed booking amount. Already refunded: ₱${totalRefunded}`, 400));
   }
 
   const connection = await pool.getConnection();
@@ -1006,113 +976,39 @@ exports.processHostPayout = catchAsync(async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
-    const [earnings] = await connection.query('CALL sp_get_host_earnings_for_payout_by_id(?)', [hostId]);
-
-    const total = earnings[0][0]?.earnings;
-    if (!total || total <= 0) {
-      await connection.rollback();
-      return next(new AppError('No pending payout for this host', 400));
-    }
-
-    // Validate reasonable payout amount
-    if (total > 10000000) { // 10M PHP max payout validation
-      await connection.rollback();
-      return next(new AppError('Payout amount exceeds maximum limit. Please contact system administrator.', 400));
-    }
-
-    // Insert payout record with additional metadata
-    const [payoutResult] = await connection.query(
-      'INSERT INTO payouts (host_id, amount, status, released_at) VALUES (?, ?, ?, NOW())',
-      [hostId, total, 'released']
+    // Create refund record
+    const [result] = await connection.query(
+      `INSERT INTO refunds (booking_id, amount, status, processed_by, reason, created_at)
+       VALUES (?, ?, 'processing', ?, ?, NOW())`,
+      [bookingId, amount, adminId, `Manual refund: ${reason}`]
     );
 
-    // Mark bookings as paid
-    const [updateResult] = await connection.query('CALL sp_mark_bookings_paid(?)', [hostId]);
-
     await connection.commit();
-    
-    res.status(200).json({
+
+    // Notify client
+    await createNotification({
+      userId: booking.client_id,
+      message: `A refund of ₱${amount} has been initiated for your booking "${booking.title}". Reason: ${reason}`,
+      type: 'refund_initiated'
+    });
+
+    res.status(201).json({
       status: 'success',
-      message: 'Host payout processed successfully',
+      message: 'Manual refund created successfully',
       data: {
-        payoutId: payoutResult.insertId,
-        hostId: parseInt(hostId),
-        hostName: hostCheck[0].name,
-        amount: parseFloat(total),
-        processedAt: new Date().toISOString(),
-        processedBy: adminId,
-        affectedBookings: updateResult.affectedRows || 0
+        refundId: result.insertId,
+        bookingId: parseInt(bookingId),
+        amount: parseFloat(amount),
+        reason,
+        status: 'processing',
+        createdAt: new Date().toISOString()
       }
     });
 
   } catch (error) {
     await connection.rollback();
-    
-    // Enhanced error logging
-    console.error('Payout processing error:', {
-      hostId,
-      adminId,
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString(),
-      sqlState: error.sqlState,
-      sqlMessage: error.sqlMessage
-    });
-    
-    // Check for specific database errors
-    if (error.code === 'ER_DUP_ENTRY') {
-      throw new AppError('Payout already processed for this host', 409);
-    }
-    
-    throw new AppError('Failed to process payout. Please try again later.', 500);
+    throw error;
   } finally {
     connection.release();
   }
-});
-
-
-exports.getHostEarnings = catchAsync(async (req, res, next) => {
-  const hostId = req.params.hostId;
-
-  if (!hostId || isNaN(hostId)) {
-    return next(new AppError('Valid host ID is required', 400));
-  }
-
-  const [rows] = await pool.query(`
-    SELECT 
-      SUM(b.total_price) AS total_earnings,
-      SUM(b.total_price) * 0.10 AS platform_fee,
-      SUM(b.total_price) * 0.90 AS net_earnings
-    FROM bookings b
-    JOIN listings l ON b.listing_id = l.id
-    WHERE l.host_id = ?
-      AND b.status = 'approved'
-      AND b.end_date < CURDATE()
-      AND b.paid_out = 0
-  `, [hostId]);
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      host_id: hostId,
-      host_total_earnings: rows[0].total_earnings || 0,
-      platform_fee: rows[0].platform_fee || 0,
-      host_net_earnings: rows[0].net_earnings || 0,
-    }
-  });
-});
-
-exports.markHostAsPaid = catchAsync(async (req, res, next) => {
-  const { hostId } = req.body;
-
-  if (!hostId || isNaN(hostId)) {
-    return next(new AppError('Valid host ID is required', 400));
-  }
-
-  await pool.query('CALL sp_mark_bookings_paid(?)', [hostId]);
-  
-  res.status(200).json({
-    status: 'success',
-    message: 'Host bookings marked as paid'
-  });
 });

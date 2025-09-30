@@ -1,16 +1,19 @@
-// backend/routes/adminRoutes.js - FIXED VERSION
+// backend/routes/adminRoutes.js - CLEAN VERSION
 const express = require('express');
 const router = express.Router();
 
 const adminController = require('../controllers/adminController');
 const reportsController = require('../controllers/reportsController');
-const { authenticateToken, requireAdmin } = require('../middleware/auth'); // ✅ Use the correct import
+const bookingsController = require('../controllers/bookingsController');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Apply authentication and admin check to all routes
 router.use(authenticateToken);
-router.use(requireAdmin); // ✅ Use requireAdmin instead of Admin middleware
+router.use(requireAdmin);
 
-// Dashboard redirect route
+// ==========================================
+// DASHBOARD
+// ==========================================
 router.get('/', (req, res) => {
   res.status(200).json({
     status: 'success',
@@ -22,49 +25,77 @@ router.get('/', (req, res) => {
   });
 });
 
-// Dashboard & Analytics
 router.get('/dashboard-stats', adminController.getDashboardStats);
 
-// User Management
+// ==========================================
+// USER MANAGEMENT
+// ==========================================
 router.get('/users', adminController.getAllUsers);
 router.put('/users/:userId/ban', adminController.banUser);
 router.put('/users/:userId/unban', adminController.unbanUser);
 router.get('/check-ban/:id', adminController.checkBanStatus);
 router.put('/users/:userId/role', adminController.updateUserRole);
 
-// Listing Management
+// ==========================================
+// LISTING MANAGEMENT
+// ==========================================
 router.get('/listings', adminController.getAllListings);
 router.delete('/listings/:listingId', adminController.removeListing);
 
-// Booking Management
+// ==========================================
+// BOOKING MANAGEMENT
+// ==========================================
 router.get('/bookings', adminController.getAllBookings);
+router.get('/bookings/:id', adminController.getBookingDetails);
 router.put('/bookings/:id/status', adminController.updateBookingStatus);
 router.get('/bookings/:id/history', adminController.getBookingHistory);
 router.delete('/bookings/:bookingId', adminController.cancelBooking);
 
-// Review Management
+// Cancel booking with refund (from bookingsController)
+router.patch('/bookings/:bookingId/cancel-refund', bookingsController.adminCancelBooking);
+
+// ==========================================
+// REFUND MANAGEMENT
+// ==========================================
+router.get('/refunds', adminController.getAllRefunds);
+router.get('/refunds/:refundId', adminController.getRefundDetails);
+router.patch('/refunds/:refundId/status', adminController.updateRefundStatus);
+router.post('/refunds/manual', adminController.processManualRefund);
+
+// ==========================================
+// REVIEW MANAGEMENT
+// ==========================================
 router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.removeReview);
 
-// Financial Management - Payouts & Earnings
+// ==========================================
+// FINANCIAL MANAGEMENT
+// ==========================================
+
+// Payouts & Earnings
 router.get('/earnings/:hostId', adminController.getHostEarnings);
 router.post('/mark-paid', adminController.markHostAsPaid);
 router.get('/payouts-summary', adminController.getHostsPendingPayouts);
 router.post('/payouts/host/:hostId', adminController.processHostPayout);
 router.post('/payout/:bookingId', adminController.processPayout);
 
-// Financial Management - Refunds & Transactions  
+// Refunds & Transactions  
 router.post('/refund/:transactionId', adminController.processRefund);
 router.get('/transactions', adminController.getAllTransactions);
 
-// Reports & User Safety
+// ==========================================
+// REPORTS & USER SAFETY
+// ==========================================
 router.get('/reports', reportsController.getAllReports);
 router.post('/actions', reportsController.adminTakeAction);
 
-//Reservation Management
-router.get('/reservations', adminController.getAllReservations);
-router.get('/reservations/:id', adminController.getReservationDetails);  
-router.patch('/reservations/:reservationId/cancel', adminController.cancelReservationAdmin);
-router.get('/reservations/stats', adminController.getReservationStats);
+// ==========================================
+// RESERVATION MANAGEMENT (if needed)
+// ==========================================
+// Uncomment if you have reservation-specific admin functions
+// router.get('/reservations', adminController.getAllReservations);
+// router.get('/reservations/:id', adminController.getReservationDetails);  
+// router.patch('/reservations/:reservationId/cancel', adminController.cancelReservationAdmin);
+// router.get('/reservations/stats', adminController.getReservationStats);
 
 module.exports = router;
