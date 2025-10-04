@@ -185,8 +185,7 @@ const Header = () => {
 
     if (user?.role === 'client') {
       baseItems.splice(1, 0, 
-        { label: 'My Bookings', path: '/my-bookings', icon: Calendar },
-        { label: 'My Reservations', path: '/my-reservations', icon: Calendar }
+        { label: 'My Bookings', path: '/my-bookings', icon: Calendar }
       );
     }
 
@@ -541,16 +540,6 @@ const Header = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   My Bookings
-                </Link>
-              )}
-
-              {isAuthenticated && user?.role === 'client' && (
-                <Link
-                  to="/my-reservations"
-                  className="block px-4 py-2 text-gray-300 hover:bg-gray-800 rounded-lg"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  My Reservations
                 </Link>
               )}
 

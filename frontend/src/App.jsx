@@ -30,12 +30,6 @@ import PaymentSuccessPage from './pages/payment/PaymentSuccessPage';
 import PaymentCancelPage from './pages/payment/PaymentCancelPage';
 import PaymentReceiptPage from './pages/payment/PaymentReceiptPage';
 
-//Reservation
-import MyReservationsPage from './pages/reservations/MyReservationsPage';
-import ReservationPaymentPage from './pages/reservations/ReservationPaymentPage';
-import ReservationSuccessPage from './pages/reservations/ReservationSuccessPage';
-import ReservationCancelPage from './pages/reservations/ReservationCancelPage';
-
 import HostDashboard from './pages/host/HostDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 
@@ -190,17 +184,6 @@ function App() {
                 <Route path="/payment/success" element={<PaymentSuccessPage />} />
                 <Route path="/payment/cancel" element={<PaymentCancelPage />} />
                 <Route path="/payment/:bookingId/receipt" element={<PaymentReceiptPage />} />
-                
-
-                {/* Reservation Routes */}
-                <Route path="/my-reservations" element={<MyReservationsPage />} />
-                <Route path="/reservation/:reservationId/payment" element={
-                  <ProtectedRoute>
-                    <ReservationPaymentPage />
-                  </ProtectedRoute>
-                } />
-                <Route path="/reservation/success" element={<ReservationSuccessPage />} />
-                <Route path="/reservation/cancel" element={<ReservationCancelPage />} />
 
                 {/* Host Routes */}
                 <Route 

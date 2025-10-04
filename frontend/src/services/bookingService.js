@@ -196,39 +196,65 @@ class BookingService {
    * @param {object} booking - Booking object
    * @returns {object} Formatted booking summary
    */
-  formatBookingSummary(booking) {
-    const statusColors = {
-      [BOOKING_STATUS.PENDING]: 'text-yellow-500',
-      [BOOKING_STATUS.APPROVED]: 'text-green-500',
-      [BOOKING_STATUS.CONFIRMED]: 'text-blue-500',
-      [BOOKING_STATUS.REJECTED]: 'text-red-500',
-      [BOOKING_STATUS.CANCELLED]: 'text-red-500',
-      [BOOKING_STATUS.COMPLETED]: 'text-gray-500'
-    };
+formatBookingSummary(booking) {
+  const statusColors = {
+    [BOOKING_STATUS.PENDING]: 'text-yellow-500',
+    [BOOKING_STATUS.APPROVED]: 'text-green-500',
+    [BOOKING_STATUS.CONFIRMED]: 'text-blue-500',
+    [BOOKING_STATUS.REJECTED]: 'text-red-500',
+    [BOOKING_STATUS.CANCELLED]: 'text-red-500',
+    [BOOKING_STATUS.COMPLETED]: 'text-gray-500'
+  };
 
-    // NEW: Check if booking needs payment
-    const needsPayment = booking.status === 'approved' && (!booking.payment_status || booking.payment_status === 'failed');
-    const hasPaymentPending = booking.payment_status === 'pending';
-    const isPaymentSucceeded = booking.payment_status === 'succeeded';
-
-    return {
-      ...booking,
-      statusColor: statusColors[booking.status] || 'text-gray-500',
-      formattedDates: `${new Date(booking.start_date).toLocaleDateString()} - ${new Date(booking.end_date).toLocaleDateString()}`,
-      formattedPrice: `₱${Number(booking.total_price).toLocaleString()}`,
-      
-      // Updated action flags with payment logic
-      canCancel: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED].includes(booking.status) && !isPaymentSucceeded,
-      canReview: booking.status === BOOKING_STATUS.COMPLETED && !booking.review_submitted,
-      
-      // NEW: Payment-related flags
-      needsPayment,
-      hasPaymentPending,
-      isPaymentSucceeded,
-      payment_status: booking.payment_status || null,
-      payment_id: booking.payment_id || null
-    };
+  // Check if booking needs payment based on type
+  let needsPayment = false;
+  let hasPaymentPending = false;
+  
+  if (booking.booking_type === 'reserve') {
+    // For reservations, check deposit and remaining payment status
+    needsPayment = (booking.status === 'approved' && !booking.deposit_paid) ||
+                   (booking.status === 'confirmed' && !booking.remaining_paid && 
+                    booking.remaining_payment_method === 'platform');
+    hasPaymentPending = booking.payment_status === 'pending';
+  } else {
+    // For full bookings
+    needsPayment = booking.status === 'approved' && (!booking.payment_status || booking.payment_status === 'failed');
+    hasPaymentPending = booking.payment_status === 'pending';
   }
+  
+  const isPaymentSucceeded = booking.payment_status === 'succeeded';
+
+  return {
+    ...booking, // This preserves ALL original fields
+    
+    // Explicitly include reservation fields to ensure they're not lost
+    booking_type: booking.booking_type || 'book',
+    deposit_amount: booking.deposit_amount,
+    remaining_amount: booking.remaining_amount,
+    deposit_paid: booking.deposit_paid,
+    remaining_paid: booking.remaining_paid,
+    remaining_payment_method: booking.remaining_payment_method,
+    payment_due_date: booking.payment_due_date,
+    
+    // Formatting fields
+    statusColor: statusColors[booking.status] || 'text-gray-500',
+    formattedDates: booking.start_date && booking.end_date ? 
+      `${new Date(booking.start_date).toLocaleDateString()} - ${new Date(booking.end_date).toLocaleDateString()}` :
+      'Dates not available',
+    formattedPrice: `₱${Number(booking.total_price || 0).toLocaleString()}`,
+    
+    // Action flags
+    canCancel: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED].includes(booking.status) && !isPaymentSucceeded,
+    canReview: booking.status === BOOKING_STATUS.COMPLETED && !booking.review_submitted,
+    
+    // Payment flags
+    needsPayment,
+    hasPaymentPending,
+    isPaymentSucceeded,
+    payment_status: booking.payment_status || null,
+    payment_id: booking.payment_id || null
+  };
+}
 
   /**
    * NEW: Check if booking requires payment

@@ -1,8 +1,8 @@
-// src/components/booking/MyBookings.jsx - Clean & Responsive version
+// src/components/booking/MyBookings.jsx - Updated with Reserve Payment Details
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Clock, MapPin, DollarSign, MessageSquare, Star, X, 
-  CreditCard, RefreshCw, Eye, Filter 
+  CreditCard, RefreshCw, Eye, Filter, Info, AlertCircle 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import bookingService, { BOOKING_STATUS } from '../../services/bookingService';
@@ -27,20 +27,40 @@ const MyBookings = () => {
   }, []);
 
   // Data fetching
-  const loadBookings = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await bookingService.getMyBookings();
-      const formattedBookings = data.map(booking => bookingService.formatBookingSummary(booking));
-      setBookings(formattedBookings);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+const loadBookings = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    const data = await bookingService.getMyBookings();
+    
+    // Debug: Check what data we're getting
+    console.log('Raw booking data:', data);
+    
+    const formattedBookings = data.map(booking => {
+      const formatted = bookingService.formatBookingSummary(booking);
+      
+      // Debug: Check reservation fields
+      if (booking.booking_type === 'reserve') {
+        console.log('Reserve booking fields:', {
+          booking_type: formatted.booking_type,
+          deposit_amount: formatted.deposit_amount,
+          remaining_amount: formatted.remaining_amount,
+          deposit_paid: formatted.deposit_paid,
+          remaining_paid: formatted.remaining_paid,
+          remaining_payment_method: formatted.remaining_payment_method
+        });
+      }
+      
+      return formatted;
+    });
+    
+    setBookings(formattedBookings);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
   // Action handlers
   const handleCancelBooking = async (bookingId, reason = 'User requested cancellation') => {
     try {
@@ -69,6 +89,21 @@ const MyBookings = () => {
   const handlePayNow = async (booking) => {
     try {
       setProcessingPayment(booking.id);
+      
+      // Determine payment amount based on booking type and payment status
+      let paymentAmount = booking.total_price;
+      let paymentType = 'full';
+      
+      if (booking.booking_type === 'reserve') {
+        if (!booking.deposit_paid) {
+          paymentAmount = booking.deposit_amount;
+          paymentType = 'deposit';
+        } else if (!booking.remaining_paid && booking.remaining_payment_method === 'platform') {
+          paymentAmount = booking.remaining_amount;
+          paymentType = 'remaining';
+        }
+      }
+      
       const response = await paymentAPI.createPaymentIntent(booking.id);
       
       if (response.data.status === 'success') {
@@ -76,7 +111,9 @@ const MyBookings = () => {
           state: {
             bookingId: booking.id,
             paymentIntent: response.data.data.paymentIntent,
-            booking: response.data.data.booking
+            booking: response.data.data.booking,
+            paymentType,
+            paymentAmount
           }
         });
       } else {
@@ -95,7 +132,28 @@ const MyBookings = () => {
   };
 
   // Utility functions
-  const needsPayment = (booking) => booking.status === 'approved' && !booking.payment_status;
+  const needsPayment = (booking) => {
+    if (booking.booking_type === 'reserve') {
+      // Check if deposit needs to be paid
+      if (booking.status === 'approved' && !booking.deposit_paid) {
+        return true;
+      }
+      // Check if remaining needs to be paid through platform
+      if (booking.status === 'confirmed' && !booking.remaining_paid && booking.remaining_payment_method === 'platform') {
+        // Check if payment is due (3 days before check-in)
+        const dueDate = booking.payment_due_date ? new Date(booking.payment_due_date) : null;
+        const now = new Date();
+        if (dueDate && now >= dueDate) {
+          return true;
+        }
+      }
+      return false;
+    } else {
+      // Full booking - needs payment if approved and not paid
+      return booking.status === 'approved' && !booking.payment_status;
+    }
+  };
+  
   const hasPaymentPending = (booking) => booking.payment_status === 'pending';
   const canExtend = (booking) => booking.status === 'confirmed' || booking.status === 'completed';
 
@@ -117,14 +175,26 @@ const MyBookings = () => {
   };
 
   const getPaymentStatusBadge = (booking) => {
-    if (hasPaymentPending(booking)) {
-      return <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800 ml-2">Payment Pending</span>;
-    }
-    if (booking.payment_status === 'succeeded') {
-      return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">Paid</span>;
-    }
-    if (needsPayment(booking)) {
-      return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 ml-2">Payment Required</span>;
+    if (booking.booking_type === 'reserve') {
+      if (booking.deposit_paid && booking.remaining_paid) {
+        return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">Fully Paid</span>;
+      }
+      if (booking.deposit_paid && !booking.remaining_paid) {
+        return <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 ml-2">Deposit Paid</span>;
+      }
+      if (!booking.deposit_paid && booking.status === 'approved') {
+        return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 ml-2">Deposit Required</span>;
+      }
+    } else {
+      if (hasPaymentPending(booking)) {
+        return <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800 ml-2">Payment Pending</span>;
+      }
+      if (booking.payment_status === 'succeeded') {
+        return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">Paid</span>;
+      }
+      if (needsPayment(booking)) {
+        return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 ml-2">Payment Required</span>;
+      }
     }
     return null;
   };
@@ -281,133 +351,279 @@ const MyBookings = () => {
   );
 };
 
-// Booking Card Component
+// Booking Card Component - UPDATED with reservation details
 const BookingCard = ({ 
   booking, onCancel, onReview, onPayNow, onExtend, onViewDetails, 
   onContactHost, onViewReceipt, getStatusBadge, getPaymentStatusBadge,
   needsPayment, hasPaymentPending, canExtend, processingPayment
-}) => (
-  <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
-    {/* Header */}
-    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-3">
-      <div className="flex-1">
-        <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">{booking.title}</h3>
-        <div className="flex items-center text-gray-400 text-sm">
-          <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
-          <span>Hosted by {booking.host_name}</span>
-        </div>
-      </div>
-      
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(booking.status)}`}>
-          {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-        </span>
-        {getPaymentStatusBadge(booking)}
-      </div>
-    </div>
+}) => {
+  // Determine what payment is needed for reservations
+  const getPaymentInfo = () => {
+    if (booking.booking_type === 'reserve') {
+      if (!booking.deposit_paid && booking.status === 'approved') {
+        return {
+          type: 'deposit',
+          amount: booking.deposit_amount,
+          message: 'Pay 50% deposit to confirm your reservation'
+        };
+      }
+      if (booking.deposit_paid && !booking.remaining_paid && booking.remaining_payment_method === 'platform') {
+        const dueDate = booking.payment_due_date ? new Date(booking.payment_due_date) : null;
+        const now = new Date();
+        const isDue = dueDate && now >= dueDate;
+        
+        return {
+          type: 'remaining',
+          amount: booking.remaining_amount,
+          message: isDue ? 'Remaining balance due now' : `Remaining balance due ${dueDate?.toLocaleDateString()}`,
+          isDue
+        };
+      }
+    }
+    return null;
+  };
 
-    {/* Alerts */}
-    {needsPayment && (
-      <div className="bg-orange-900/20 border border-orange-600 rounded-lg p-3 mb-4">
-        <div className="flex items-start">
-          <CreditCard className="w-5 h-5 text-orange-400 mr-3 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-orange-400 font-medium text-sm">Payment Required</p>
-            <p className="text-orange-300 text-xs mt-1">Your booking has been approved! Complete payment to confirm.</p>
+  const paymentInfo = getPaymentInfo();
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-3">
+        <div className="flex-1">
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">{booking.title}</h3>
+          <div className="flex items-center text-gray-400 text-sm">
+            <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
+            <span>Hosted by {booking.host_name}</span>
           </div>
         </div>
-      </div>
-    )}
-
-    {hasPaymentPending && (
-      <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
-        <div className="flex items-start">
-          <Clock className="w-5 h-5 text-blue-400 mr-3 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-blue-400 font-medium text-sm">Payment Processing</p>
-            <p className="text-blue-300 text-xs mt-1">Your payment is being processed.</p>
-          </div>
+        
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(booking.status)}`}>
+            {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+          </span>
+          {booking.booking_type === 'reserve' && (
+            <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 font-medium">
+              Reserve
+            </span>
+          )}
+          {getPaymentStatusBadge(booking)}
         </div>
       </div>
-    )}
 
-    {/* Booking Details */}
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6 text-sm">
-      <div className="flex items-center text-gray-300">
-        <Calendar className="w-4 h-4 mr-2 flex-shrink-0" />
-        <span className="truncate">{booking.formattedDates}</span>
-      </div>
-      <div className="flex items-center text-gray-300">
-        <DollarSign className="w-4 h-4 mr-2 flex-shrink-0" />
-        <span className="truncate">{booking.formattedPrice}</span>
-      </div>
-      <div className="flex items-center text-gray-300">
-        <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
-        <span className="truncate">Booking #{booking.id}</span>
-      </div>
-    </div>
-
-    {/* Actions */}
-    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-        <Button size="sm" variant="outline" className="border-gray-600 text-gray-300" onClick={onContactHost}>
-          <MessageSquare className="w-4 h-4 mr-2" />
-          Contact
-        </Button>
-        
-        <Button size="sm" variant="outline" className="border-purple-500 text-purple-400" onClick={onViewDetails}>
-          <Eye className="w-4 h-4 mr-2" />
-          Details
-        </Button>
-        
-        {booking.canReview && (
-          <Button size="sm" variant="gradient" onClick={onReview}>
-            <Star className="w-4 h-4 mr-2" />
-            Review
-          </Button>
-        )}
-
-        {needsPayment && (
-          <Button 
-            size="sm" 
-            variant="gradient" 
-            loading={processingPayment}
-            onClick={onPayNow}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <CreditCard className="w-4 h-4 mr-2" />
-            Pay Now
-          </Button>
-        )}
-
-        {canExtend && (
-          <Button size="sm" variant="gradient" onClick={onExtend} className="bg-blue-600 hover:bg-blue-700">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Extend
-          </Button>
-        )}
-
-        {booking.payment_status === 'succeeded' && (
-          <Button size="sm" variant="outline" className="border-green-600 text-green-400" onClick={onViewReceipt}>
-            <CreditCard className="w-4 h-4 mr-2" />
-            Receipt
-          </Button>
-        )}
-      </div>
-
-      {booking.canCancel && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white w-full sm:w-auto"
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
+      {/* Payment Alerts for Reservations */}
+      {booking.booking_type === 'reserve' && paymentInfo && (
+        <div className={`border rounded-lg p-3 mb-4 ${
+          paymentInfo.type === 'deposit' 
+            ? 'bg-orange-900/20 border-orange-600' 
+            : paymentInfo.isDue 
+              ? 'bg-red-900/20 border-red-600'
+              : 'bg-blue-900/20 border-blue-600'
+        }`}>
+          <div className="flex items-start">
+            <CreditCard className={`w-5 h-5 mr-3 mt-0.5 flex-shrink-0 ${
+              paymentInfo.type === 'deposit' 
+                ? 'text-orange-400' 
+                : paymentInfo.isDue 
+                  ? 'text-red-400'
+                  : 'text-blue-400'
+            }`} />
+            <div>
+              <p className={`font-medium text-sm ${
+                paymentInfo.type === 'deposit' 
+                  ? 'text-orange-400' 
+                  : paymentInfo.isDue 
+                    ? 'text-red-400'
+                    : 'text-blue-400'
+              }`}>
+                {paymentInfo.type === 'deposit' ? 'Deposit Required' : 'Remaining Payment'}
+              </p>
+              <p className={`text-xs mt-1 ${
+                paymentInfo.type === 'deposit' 
+                  ? 'text-orange-300' 
+                  : paymentInfo.isDue 
+                    ? 'text-red-300'
+                    : 'text-blue-300'
+              }`}>
+                {paymentInfo.message}
+              </p>
+              <p className="text-white font-semibold text-sm mt-2">
+                Amount due: ₱{Number(paymentInfo.amount).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* Reservation Payment Breakdown */}
+      {booking.booking_type === 'reserve' && (
+        <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-400">Total Amount:</span>
+              <span className="text-white font-medium">₱{Number(booking.total_price).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-400">Deposit (50%):</span>
+              <div className="flex items-center gap-2">
+                <span className="text-white">₱{Number(booking.deposit_amount || 0).toLocaleString()}</span>
+                {booking.deposit_paid ? (
+                  <span className="text-green-400 text-xs">✓ Paid</span>
+                ) : (
+                  <span className="text-yellow-400 text-xs">Pending</span>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-400">Remaining (50%):</span>
+              <div className="flex items-center gap-2">
+                <span className="text-white">₱{Number(booking.remaining_amount || 0).toLocaleString()}</span>
+                {booking.remaining_paid ? (
+                  <span className="text-green-400 text-xs">✓ Paid</span>
+                ) : (
+                  <span className="text-gray-400 text-xs">
+                    {booking.remaining_payment_method === 'personal' ? '🤝 Pay to host' : '💳 Pay via platform'}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* Payment method indicator */}
+            {booking.remaining_payment_method && !booking.remaining_paid && (
+              <div className={`mt-2 pt-2 border-t border-gray-600 flex items-center gap-2 ${
+                booking.remaining_payment_method === 'personal' 
+                  ? 'text-yellow-400' 
+                  : 'text-blue-400'
+              }`}>
+                <Info className="w-4 h-4" />
+                <span className="text-xs">
+                  {booking.remaining_payment_method === 'personal' 
+                    ? 'Remaining payment should be made directly to the host' 
+                    : 'Remaining payment will be collected through the platform 3 days before check-in'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Standard Payment Alert for Full Bookings */}
+      {booking.booking_type !== 'reserve' && needsPayment && (
+        <div className="bg-orange-900/20 border border-orange-600 rounded-lg p-3 mb-4">
+          <div className="flex items-start">
+            <CreditCard className="w-5 h-5 text-orange-400 mr-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-orange-400 font-medium text-sm">Payment Required</p>
+              <p className="text-orange-300 text-xs mt-1">Your booking has been approved! Complete payment to confirm.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasPaymentPending && (
+        <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
+          <div className="flex items-start">
+            <Clock className="w-5 h-5 text-blue-400 mr-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-blue-400 font-medium text-sm">Payment Processing</p>
+              <p className="text-blue-300 text-xs mt-1">Your payment is being processed.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Booking Details */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6 text-sm">
+        <div className="flex items-center text-gray-300">
+          <Calendar className="w-4 h-4 mr-2 flex-shrink-0" />
+          <span className="truncate">{booking.formattedDates}</span>
+        </div>
+        <div className="flex items-center text-gray-300">
+          <DollarSign className="w-4 h-4 mr-2 flex-shrink-0" />
+          <span className="truncate">{booking.formattedPrice}</span>
+        </div>
+        <div className="flex items-center text-gray-300">
+          <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
+          <span className="truncate">Booking #{booking.id}</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button size="sm" variant="outline" className="border-gray-600 text-gray-300" onClick={onContactHost}>
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Contact
+          </Button>
+          
+          <Button size="sm" variant="outline" className="border-purple-500 text-purple-400" onClick={onViewDetails}>
+            <Eye className="w-4 h-4 mr-2" />
+            Details
+          </Button>
+          
+          {booking.canReview && (
+            <Button size="sm" variant="gradient" onClick={onReview}>
+              <Star className="w-4 h-4 mr-2" />
+              Review
+            </Button>
+          )}
+
+          {/* Dynamic Pay Now button for reservations */}
+          {booking.booking_type === 'reserve' && paymentInfo && (
+            <Button 
+              size="sm" 
+              variant="gradient" 
+              loading={processingPayment}
+              onClick={onPayNow}
+              className={paymentInfo.isDue ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              Pay ₱{Number(paymentInfo.amount).toLocaleString()}
+            </Button>
+          )}
+
+          {/* Standard Pay Now for full bookings */}
+          {booking.booking_type !== 'reserve' && needsPayment && (
+            <Button 
+              size="sm" 
+              variant="gradient" 
+              loading={processingPayment}
+              onClick={onPayNow}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              Pay Now
+            </Button>
+          )}
+
+          {canExtend && (
+            <Button size="sm" variant="gradient" onClick={onExtend} className="bg-blue-600 hover:bg-blue-700">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Extend
+            </Button>
+          )}
+
+          {((booking.booking_type === 'reserve' && booking.deposit_paid) || booking.payment_status === 'succeeded') && (
+            <Button size="sm" variant="outline" className="border-green-600 text-green-400" onClick={onViewReceipt}>
+              <CreditCard className="w-4 h-4 mr-2" />
+              Receipt
+            </Button>
+          )}
+        </div>
+
+        {booking.canCancel && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white w-full sm:w-auto"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Cancel Modal Component
 const CancelModal = ({ booking, onClose, onConfirm, cancelling }) => (
@@ -480,22 +696,6 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">Overall Rating</label>
-            <div className="flex space-x-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star)}
-                  className={`text-2xl ${star <= rating ? 'text-yellow-400' : 'text-gray-600'}`}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div>
             <label className="block text-sm text-gray-300 mb-2">Your Review</label>
             <textarea

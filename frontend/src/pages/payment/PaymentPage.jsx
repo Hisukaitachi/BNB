@@ -1,4 +1,4 @@
-// frontend/src/pages/payment/PaymentPage.jsx - COMPLETE FUNCTIONAL VERSION
+// frontend/src/pages/payment/PaymentPage.jsx - COMPLETE WITH RESERVE SUPPORT
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -35,6 +35,7 @@ const PaymentPage = () => {
   
   // Get booking data from navigation state
   const { bookingId } = location.state || {};
+  const [bookingData, setBookingData] = useState(location.state || {});
 
   // Customer Information State
   const [customerInfo, setCustomerInfo] = useState({
@@ -67,12 +68,53 @@ const PaymentPage = () => {
   const [savingInfo, setSavingInfo] = useState(false);
 
   useEffect(() => {
+  const fetchBookingData = async () => {
     if (!bookingId) {
       navigate('/dashboard');
       return;
     }
+
+    // If we don't have booking data in location.state, fetch it
+    if (!location.state?.amount) {
+      try {
+        setLoading(true);
+        const response = await bookingAPI.getMyBookings();
+        const bookings = response.data?.data?.bookings || [];
+        const currentBooking = bookings.find(b => b.id === parseInt(bookingId));
+        
+        if (currentBooking) {
+          console.log('Fetched booking data:', currentBooking);
+          // Store fetched booking data in component state
+          setBookingData({
+            amount: currentBooking.total_price,
+            bookingType: currentBooking.booking_type,
+            depositAmount: currentBooking.deposit_amount,
+            remainingAmount: currentBooking.remaining_amount,
+            paymentDueDate: currentBooking.payment_due_date 
+              ? new Date(currentBooking.payment_due_date).toLocaleDateString() 
+              : null,
+            listingTitle: currentBooking.title,
+            dates: `${new Date(currentBooking.start_date).toLocaleDateString()} - ${new Date(currentBooking.end_date).toLocaleDateString()}`
+          });
+        } else {
+          setError('Booking not found');
+        }
+      } catch (error) {
+        console.error('Error fetching booking data:', error);
+        setError('Failed to load booking information');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // If we have location.state, use it
+      setBookingData(location.state);
+    }
+    
     fetchUserProfile();
-  }, [bookingId, navigate]);
+  };
+
+  fetchBookingData();
+}, [bookingId, navigate]);
 
   // Cleanup previews on unmount
   useEffect(() => {
@@ -242,16 +284,16 @@ const PaymentPage = () => {
       
       // Add ID files with correct field names for multer
       if (idFiles.front) {
-        formData.append('images', idFiles.front); // Using 'images' as per your multer config
+        formData.append('images', idFiles.front);
       }
       if (idFiles.back) {
-        formData.append('images', idFiles.back); // Both go to 'images' array
+        formData.append('images', idFiles.back);
       }
 
       // Send to backend
       await bookingAPI.updateCustomerInfo(bookingId, formData);
       
-      console.log('✅ Customer information saved successfully');
+      console.log('Customer information saved successfully');
       
       // Move to payment step
       setCurrentStep(2);
@@ -264,27 +306,40 @@ const PaymentPage = () => {
     }
   };
 
-  const handlePayment = async () => {
+const handlePayment = async () => {
   setLoading(true);
   setError('');
   
   try {
     console.log('Starting payment for booking:', bookingId);
+    console.log('Booking data:', bookingData);
+    
+    // Calculate amount to charge based on booking type
+    const bookingType = bookingData?.bookingType || 'book';
+    const totalAmount = bookingData?.amount || 0;
+    const amountToCharge = bookingType === 'reserve' 
+      ? totalAmount * 0.5  // Charge 50% deposit for reservations
+      : totalAmount;        // Charge full amount for bookings
+    
+    console.log('Booking type:', bookingType);
+    console.log('Total amount:', totalAmount);
+    console.log('Amount to charge:', amountToCharge);
     
     // Store booking info in localStorage for success/cancel pages
-    localStorage.setItem(`booking_${bookingId}_amount`, location.state?.amount || 0);
-    localStorage.setItem(`booking_${bookingId}_title`, location.state?.listingTitle || '');
-    localStorage.setItem(`booking_${bookingId}_dates`, location.state?.dates || '');
+    localStorage.setItem(`booking_${bookingId}_amount`, amountToCharge);
+    localStorage.setItem(`booking_${bookingId}_total`, totalAmount);
+    localStorage.setItem(`booking_${bookingId}_type`, bookingType);
+    localStorage.setItem(`booking_${bookingId}_title`, bookingData?.listingTitle || '');
+    localStorage.setItem(`booking_${bookingId}_dates`, bookingData?.dates || '');
     
     // Create payment intent and get checkout URL from backend
     const response = await paymentAPI.createPaymentIntent(bookingId);
     console.log('Payment response:', response.data);
     
-    const { paymentIntent, booking } = response.data.data;
+    const { paymentIntent } = response.data.data;
     
     if (paymentIntent?.checkout_url) {
       console.log('Redirecting to PayMongo checkout:', paymentIntent.checkout_url);
-      // User will be redirected to /payment/success or /payment/cancel after PayMongo
       window.location.href = paymentIntent.checkout_url;
     } else {
       throw new Error('No payment URL received from server. Please try again.');
@@ -642,164 +697,210 @@ const PaymentPage = () => {
   );
 
   // Payment Step
-  const renderPaymentStep = () => (
-    <div className="bg-gray-800 rounded-xl p-8">
-      <h2 className="text-2xl font-bold text-white mb-6">Complete Payment</h2>
-      
-      {/* Back to Customer Info */}
-      <button
-        onClick={() => setCurrentStep(1)}
-        className="text-purple-400 hover:text-purple-300 mb-4 text-sm flex items-center"
-      >
-        <ArrowLeft className="w-4 h-4 mr-1" />
-        Edit Customer Information
-      </button>
+  const renderPaymentStep = () => {
+    const bookingType = bookingData?.bookingType || 'book';
+    const totalAmount = bookingData?.amount || 0;
+    const depositAmount = Math.round(totalAmount * 0.5);
+    const remainingAmount = Math.round(totalAmount * 0.5);
+    const isReserve = bookingType === 'reserve';
+    const amountToPay = isReserve ? depositAmount : totalAmount;
 
-      {error && (
-        <div className="bg-red-900/20 border border-red-500 text-red-400 rounded-lg p-4 mb-6">
-          {error}
-        </div>
-      )}
-
-      {/* Customer Info Summary */}
-      <div className="bg-gray-700 rounded-lg p-4 mb-6">
-        <h4 className="text-sm font-semibold text-gray-400 mb-2">Customer Information</h4>
-        <div className="text-white">
-          <p className="font-medium">{customerInfo.fullName}</p>
-          <p className="text-sm text-gray-300">{customerInfo.email}</p>
-          <p className="text-sm text-gray-300">{customerInfo.phone}</p>
-          <p className="text-sm text-gray-300">{customerInfo.address}, {customerInfo.city}</p>
-        </div>
-      </div>
-
-      {/* Booking Info */}
-      {location.state?.amount && (
-        <div className="bg-gray-700 rounded-lg p-6 mb-6">
-          <h4 className="text-lg font-semibold text-white mb-4">Booking Details</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-gray-300">
-              <span>Booking ID</span>
-              <span>#{bookingId}</span>
-            </div>
-            {location.state?.listingTitle && (
-              <div className="flex justify-between text-gray-300">
-                <span>Property</span>
-                <span>{location.state.listingTitle}</span>
-              </div>
-            )}
-            {location.state?.dates && (
-              <div className="flex justify-between text-gray-300">
-                <span>Dates</span>
-                <span>{location.state.dates}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Payment Methods */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-white mb-4">Select Payment Method</h3>
+    return (
+      <div className="bg-gray-800 rounded-xl p-8">
+        <h2 className="text-2xl font-bold text-white mb-6">Complete Payment</h2>
         
-        <div className="space-y-3">
-          <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
-            <input
-              type="radio"
-              name="paymentMethod"
-              value="gcash"
-              checked={paymentMethod === 'gcash'}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mr-4 text-purple-600"
-            />
-            <Smartphone className="w-6 h-6 text-blue-500 mr-3" />
-            <div>
-              <div className="text-white font-medium">GCash</div>
-              <div className="text-sm text-gray-400">Pay securely with GCash</div>
-            </div>
-          </label>
+        {/* Back to Customer Info */}
+        <button
+          onClick={() => setCurrentStep(1)}
+          className="text-purple-400 hover:text-purple-300 mb-4 text-sm flex items-center"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" />
+          Edit Customer Information
+        </button>
 
-          <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
-            <input
-              type="radio"
-              name="paymentMethod"
-              value="card"
-              checked={paymentMethod === 'card'}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mr-4 text-purple-600"
-            />
-            <CreditCard className="w-6 h-6 text-green-500 mr-3" />
-            <div>
-              <div className="text-white font-medium">Credit/Debit Card</div>
-              <div className="text-sm text-gray-400">Visa, Mastercard, JCB</div>
-            </div>
-          </label>
+        {error && (
+          <div className="bg-red-900/20 border border-red-500 text-red-400 rounded-lg p-4 mb-6">
+            {error}
+          </div>
+        )}
 
-          <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
-            <input
-              type="radio"
-              name="paymentMethod"
-              value="grab_pay"
-              checked={paymentMethod === 'grab_pay'}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mr-4 text-purple-600"
-            />
-            <Smartphone className="w-6 h-6 text-green-500 mr-3" />
-            <div>
-              <div className="text-white font-medium">GrabPay</div>
-              <div className="text-sm text-gray-400">Pay with GrabPay wallet</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      {/* Payment Summary */}
-      {location.state?.amount && (
-        <div className="bg-gray-700 rounded-lg p-6 mb-8">
-          <h4 className="text-lg font-semibold text-white mb-4">Payment Summary</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-gray-300">
-              <span>Booking Amount</span>
-              <span>₱{location.state.amount.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-gray-300">
-              <span>Platform Fee (10%)</span>
-              <span>₱{(location.state.amount * 0.1).toLocaleString()}</span>
-            </div>
-            <div className="border-t border-gray-600 pt-2 mt-2">
-              <div className="flex justify-between text-white font-semibold">
-                <span>Total to Pay</span>
-                <span className="text-xl">₱{location.state.amount.toLocaleString()}</span>
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                Host will receive: ₱{(location.state.amount * 0.9).toLocaleString()}
-              </div>
-            </div>
+        {/* Customer Info Summary */}
+        <div className="bg-gray-700 rounded-lg p-4 mb-6">
+          <h4 className="text-sm font-semibold text-gray-400 mb-2">Customer Information</h4>
+          <div className="text-white">
+            <p className="font-medium">{customerInfo.fullName}</p>
+            <p className="text-sm text-gray-300">{customerInfo.email}</p>
+            <p className="text-sm text-gray-300">{customerInfo.phone}</p>
+            <p className="text-sm text-gray-300">{customerInfo.address}, {customerInfo.city}</p>
           </div>
         </div>
-      )}
 
-      {/* Pay Button */}
-      <Button
-        onClick={handlePayment}
-        loading={loading}
-        variant="gradient"
-        size="lg"
-        className="w-full"
-        disabled={!paymentMethod || loading}
-      >
-        {loading ? 'Processing...' : 'Proceed to Payment'}
-      </Button>
+        {/* Booking Info */}
+        {bookingData?.amount && (
+          <div className="bg-gray-700 rounded-lg p-6 mb-6">
+            <h4 className="text-lg font-semibold text-white mb-4">Booking Details</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-gray-300">
+                <span>Booking ID</span>
+                <span>#{bookingId}</span>
+              </div>
+              {bookingData?.listingTitle && (
+                <div className="flex justify-between text-gray-300">
+                  <span>Property</span>
+                  <span>{bookingData.listingTitle}</span>
+                </div>
+              )}
+              {bookingData?.dates && (
+                <div className="flex justify-between text-gray-300">
+                  <span>Dates</span>
+                  <span>{bookingData.dates}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-      <div className="mt-4 text-center">
-        <p className="text-sm text-gray-400">
-          You will be redirected to PayMongo secure checkout
-        </p>
-        <p className="text-xs text-gray-500 mt-1">
-          Powered by PayMongo - PCI DSS Compliant
-        </p>
+        {/* Payment Methods */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4">Select Payment Method</h3>
+          
+          <div className="space-y-3">
+            <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="gcash"
+                checked={paymentMethod === 'gcash'}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="mr-4 text-purple-600"
+              />
+              <Smartphone className="w-6 h-6 text-blue-500 mr-3" />
+              <div>
+                <div className="text-white font-medium">GCash</div>
+                <div className="text-sm text-gray-400">Pay securely with GCash</div>
+              </div>
+            </label>
+
+            <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="card"
+                checked={paymentMethod === 'card'}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="mr-4 text-purple-600"
+              />
+              <CreditCard className="w-6 h-6 text-green-500 mr-3" />
+              <div>
+                <div className="text-white font-medium">Credit/Debit Card</div>
+                <div className="text-sm text-gray-400">Visa, Mastercard, JCB</div>
+              </div>
+            </label>
+
+            <label className="flex items-center p-4 border border-gray-600 rounded-lg cursor-pointer hover:border-purple-500 transition">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="grab_pay"
+                checked={paymentMethod === 'grab_pay'}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="mr-4 text-purple-600"
+              />
+              <Smartphone className="w-6 h-6 text-green-500 mr-3" />
+              <div>
+                <div className="text-white font-medium">GrabPay</div>
+                <div className="text-sm text-gray-400">Pay with GrabPay wallet</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Payment Summary */}
+        {bookingData?.amount && (
+          <div className="bg-gray-700 rounded-lg p-6 mb-8">
+            <h4 className="text-lg font-semibold text-white mb-4">Payment Summary</h4>
+            
+            {/* Show booking type */}
+            <div className="mb-4 p-3 bg-purple-900/20 border border-purple-500 rounded-lg">
+              <p className="text-purple-400 text-sm font-medium">
+                {isReserve ? '📦 Reservation (50% Deposit)' : '💳 Full Payment'}
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              {isReserve ? (
+                <>
+                  {/* Reserve Payment Breakdown */}
+                  <div className="flex justify-between text-gray-300">
+                    <span>Total Booking Amount</span>
+                    <span>₱{totalAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-400 font-medium">
+                    <span>Deposit (50%)</span>
+                    <span>₱{depositAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-400 text-sm">
+                    <span>Remaining Amount</span>
+                    <span>₱{remainingAmount.toLocaleString()}</span>
+                  </div>
+                  {bookingData?.paymentDueDate && (
+                    <div className="flex justify-between text-gray-400 text-xs">
+                      <span>Due Date for Remaining</span>
+                      <span>{bookingData.paymentDueDate}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-600 pt-2 mt-2">
+                    <div className="flex justify-between text-white font-semibold">
+                      <span>Pay Now (Deposit)</span>
+                      <span className="text-xl">₱{depositAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Remaining balance due 3 days before check-in
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Full Payment Breakdown */}
+                  <div className="flex justify-between text-gray-300">
+                    <span>Booking Amount</span>
+                    <span>₱{totalAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-gray-600 pt-2 mt-2">
+                    <div className="flex justify-between text-white font-semibold">
+                      <span>Total to Pay</span>
+                      <span className="text-xl">₱{totalAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Pay Button */}
+        <Button
+          onClick={handlePayment}
+          loading={loading}
+          variant="gradient"
+          size="lg"
+          className="w-full"
+          disabled={!paymentMethod || loading || !totalAmount}
+        >
+          {loading ? 'Processing...' : `Pay ₱${amountToPay.toLocaleString()}`}
+        </Button>
+
+        <div className="mt-4 text-center">
+          <p className="text-sm text-gray-400">
+            You will be redirected to PayMongo secure checkout
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Powered by PayMongo - PCI DSS Compliant
+          </p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   if (!bookingId) {
     return (
@@ -835,7 +936,7 @@ const PaymentPage = () => {
             currentStep === 1 ? renderCustomerInfoStep() : renderPaymentStep()
           )}
           
-          {/* Admin and Host views remain the same as your original */}
+          {/* Admin and Host views */}
           {user?.role === 'admin' && (
             <div className="bg-gray-800 rounded-xl p-8">
               <div className="flex items-center justify-between mb-6">

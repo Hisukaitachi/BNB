@@ -371,6 +371,151 @@ class AdminService {
       throw new Error(error.response?.data?.message || 'Failed to reject payout');
     }
   }
+  
+  //Refund Management
+/**
+   * Get all refunds with filtering
+   * @param {object} params - Query parameters (status, page, limit)
+   * @returns {Promise<object>} Refunds data with pagination
+   */
+  async getAllRefunds(params = {}) {
+    try {
+      const response = await api.get('/admin/refunds', { params });
+      return {
+        refunds: response.data.data?.refunds || [],
+        statistics: response.data.data?.statistics || {},
+        pagination: response.data.data?.pagination || {}
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch refunds');
+    }
+  }
+
+  /**
+   * Get refund details
+   * @param {number} refundId - Refund ID
+   * @returns {Promise<object>} Refund details
+   */
+  async getRefundDetails(refundId) {
+    try {
+      const response = await api.get(`/admin/refunds/${refundId}`);
+      return response.data.data?.refund || {};
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch refund details');
+    }
+  }
+
+  /**
+   * Update refund status
+   * @param {number} refundId - Refund ID
+   * @param {string} status - New status (pending/processing/completed/failed)
+   * @param {string} notes - Optional notes
+   * @returns {Promise<object>} Update result
+   */
+  async updateRefundStatus(refundId, status, notes = '') {
+    try {
+      const response = await api.patch(`/admin/refunds/${refundId}/status`, { 
+        status, 
+        notes 
+      });
+      return { 
+        success: true, 
+        data: response.data.data,
+        message: `Refund ${status} successfully` 
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to update refund status');
+    }
+  }
+
+  /**
+   * Process manual refund
+   * @param {number} bookingId - Booking ID
+   * @param {number} amount - Refund amount
+   * @param {string} reason - Refund reason
+   * @returns {Promise<object>} Refund creation result
+   */
+  async processManualRefund(bookingId, amount, reason) {
+    try {
+      const response = await api.post('/admin/refunds/manual', {
+        bookingId,
+        amount,
+        reason
+      });
+      return { 
+        success: true, 
+        data: response.data.data,
+        refundId: response.data.data?.refundId 
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to process manual refund');
+    }
+  }
+
+  /**
+   * Get booking details for admin
+   * @param {number} bookingId - Booking ID
+   * @returns {Promise<object>} Booking details
+   */
+  async getBookingDetails(bookingId) {
+    try {
+      const response = await api.get(`/admin/bookings/${bookingId}`);
+      return response.data.data?.booking || {};
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to fetch booking details');
+    }
+  }
+
+  /**
+   * Cancel booking with optional refund
+   * @param {number} bookingId - Booking ID
+   * @param {string} reason - Cancellation reason
+   * @param {number} refundAmount - Optional refund amount
+   * @returns {Promise<object>} Cancellation result
+   */
+  async cancelBookingWithRefund(bookingId, reason, refundAmount = 0) {
+    try {
+      if (refundAmount > 0) {
+        const response = await api.post(`/admin/bookings/${bookingId}/cancel-with-refund`, {
+          reason,
+          refundAmount
+        });
+        return { success: true, data: response.data.data };
+      } else {
+        const response = await api.post(`/admin/bookings/${bookingId}/cancel`, { reason });
+        return { success: true, data: response.data.data };
+      }
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to cancel booking');
+    }
+  }
+
+  /**
+   * Format refund for display
+   * @param {object} refund - Refund object
+   * @returns {object} Formatted refund
+   */
+  formatRefund(refund) {
+    const statusColors = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      processing: 'bg-blue-100 text-blue-800',
+      completed: 'bg-green-100 text-green-800',
+      failed: 'bg-red-100 text-red-800'
+    };
+
+    return {
+      ...refund,
+      formattedAmount: this.formatCurrency(refund.amount),
+      statusBadge: {
+        label: refund.status.charAt(0).toUpperCase() + refund.status.slice(1),
+        color: statusColors[refund.status] || 'bg-gray-100 text-gray-800'
+      },
+      createdDate: new Date(refund.created_at).toLocaleDateString(),
+      canProcess: refund.status === 'pending',
+      needsAttention: refund.status === 'pending' && 
+        new Date(refund.created_at) < new Date(Date.now() - 48 * 60 * 60 * 1000) // Older than 48 hours
+    };
+  }
 }
 
 export default new AdminService();

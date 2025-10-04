@@ -1,6 +1,6 @@
 // src/components/listings/BookingSidebar.jsx
 import React, { useState, useEffect } from 'react';
-import { Star, MessageSquare } from 'lucide-react';
+import { Star, MessageSquare, Info } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import BookingCalendar from '../../pages/booking/BookingCalendar';
@@ -18,7 +18,9 @@ const BookingSidebar = ({
   const [bookingData, setBookingData] = useState({
     startDate: '',
     endDate: '',
-    guests: 1
+    guests: 1,
+    bookingType: 'book', // 'book' or 'reserve'
+    remainingPaymentMethod: 'platform' // 'platform' or 'personal'
   });
   const [totalPrice, setTotalPrice] = useState(0);
   const [priceBreakdown, setPriceBreakdown] = useState(null);
@@ -29,7 +31,7 @@ const BookingSidebar = ({
   useEffect(() => {
     calculateTotalPrice();
     checkAvailability();
-  }, [bookingData.startDate, bookingData.endDate, listing]);
+  }, [bookingData.startDate, bookingData.endDate, listing, bookingData.bookingType]);
 
   const calculateTotalPrice = () => {
     if (!listing || !bookingData.startDate || !bookingData.endDate) {
@@ -43,6 +45,18 @@ const BookingSidebar = ({
       bookingData.startDate,
       bookingData.endDate
     );
+    
+    // Add deposit calculation for reserve option
+    if (bookingData.bookingType === 'reserve') {
+      breakdown.depositAmount = Math.round(breakdown.total * 0.5);
+      breakdown.remainingAmount = breakdown.total - breakdown.depositAmount;
+      
+      // Calculate payment due date (3 days before check-in)
+      const checkInDate = new Date(bookingData.startDate);
+      const paymentDueDate = new Date(checkInDate);
+      paymentDueDate.setDate(paymentDueDate.getDate() - 3);
+      breakdown.paymentDueDate = paymentDueDate.toLocaleDateString();
+    }
     
     setTotalPrice(breakdown.total);
     setPriceBreakdown(breakdown);
@@ -83,7 +97,14 @@ const BookingSidebar = ({
   };
 
   const handleBookingSubmit = () => {
-    onBooking({ ...bookingData, totalPrice });
+    const submitData = {
+      ...bookingData,
+      listing_id: listing.id,
+      total_price: totalPrice,
+      booking_type: bookingData.bookingType,
+      remaining_payment_method: bookingData.bookingType === 'reserve' ? bookingData.remainingPaymentMethod : undefined
+    };
+    onBooking(submitData);
   };
 
   return (
@@ -103,6 +124,61 @@ const BookingSidebar = ({
                 <span className="text-sm text-gray-300">
                   {Number(listing.average_rating).toFixed(1)} ({reviews.length} reviews)
                 </span>
+              </div>
+            )}
+          </div>
+
+          {/* Booking Type Selection */}
+          <div className="mb-4 p-4 bg-gray-700 rounded-lg">
+            <label className="block text-sm text-gray-300 mb-3">Booking Option</label>
+            <div className="space-y-3">
+              <label className="flex items-start cursor-pointer">
+                <input
+                  type="radio"
+                  name="bookingType"
+                  value="book"
+                  checked={bookingData.bookingType === 'book'}
+                  onChange={(e) => setBookingData({...bookingData, bookingType: e.target.value})}
+                  className="mt-1 mr-3 text-purple-500 focus:ring-purple-500"
+                />
+                <div className="flex-1">
+                  <span className="text-white font-medium">Book Now</span>
+                  <p className="text-xs text-gray-400 mt-1">Pay full amount upon host approval</p>
+                </div>
+              </label>
+              
+              <label className="flex items-start cursor-pointer">
+                <input
+                  type="radio"
+                  name="bookingType"
+                  value="reserve"
+                  checked={bookingData.bookingType === 'reserve'}
+                  onChange={(e) => setBookingData({...bookingData, bookingType: e.target.value})}
+                  className="mt-1 mr-3 text-purple-500 focus:ring-purple-500"
+                />
+                <div className="flex-1">
+                  <span className="text-white font-medium">Reserve (50% Deposit)</span>
+                  <p className="text-xs text-gray-400 mt-1">Pay 50% now, remaining 3 days before check-in</p>
+                </div>
+              </label>
+            </div>
+
+            {/* Payment Method for Remaining (if Reserve selected) */}
+            {bookingData.bookingType === 'reserve' && (
+              <div className="mt-4 pt-4 border-t border-gray-600">
+                <label className="block text-sm text-gray-300 mb-2">Remaining Payment Method</label>
+                <select
+                  value={bookingData.remainingPaymentMethod}
+                  onChange={(e) => setBookingData({...bookingData, remainingPaymentMethod: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="platform">Through Platform (Recommended)</option>
+                  <option value="personal">Direct to Host</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-2">
+                  <Info className="inline w-3 h-3 mr-1" />
+                  Platform payment offers buyer protection
+                </p>
               </div>
             )}
           </div>
@@ -211,6 +287,20 @@ const BookingSidebar = ({
                   <span>₱{priceBreakdown.total.toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* Reserve Payment Breakdown */}
+              {bookingData.bookingType === 'reserve' && priceBreakdown.depositAmount && (
+                <div className="mt-4 pt-4 border-t border-gray-600 space-y-2">
+                  <div className="flex justify-between text-purple-400">
+                    <span>Deposit (50%)</span>
+                    <span className="font-semibold">₱{priceBreakdown.depositAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-400 text-sm">
+                    <span>Remaining (due {priceBreakdown.paymentDueDate})</span>
+                    <span>₱{priceBreakdown.remainingAmount.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -224,7 +314,10 @@ const BookingSidebar = ({
               className="w-full"
               disabled={!bookingData.startDate || !bookingData.endDate || totalPrice <= 0 || availabilityMessage.includes('❌')}
             >
-              {!isAuthenticated ? 'Sign in to Book' : 'Submit Booking Request'}
+              {!isAuthenticated ? 'Sign in to Book' : 
+               bookingData.bookingType === 'reserve' ? 
+               `Reserve with ₱${priceBreakdown?.depositAmount?.toLocaleString() || 0} Deposit` :
+               'Submit Booking Request'}
             </Button>
             
             <Button 
@@ -249,7 +342,9 @@ const BookingSidebar = ({
 
           <div className="mt-4 text-center">
             <p className="text-xs text-gray-500">
-              No payment required until host approves your request
+              {bookingData.bookingType === 'reserve' ? 
+                'Deposit payment required upon host approval' :
+                'Full payment required upon host approval'}
             </p>
           </div>
         </div>

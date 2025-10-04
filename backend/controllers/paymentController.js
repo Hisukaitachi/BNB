@@ -1,6 +1,5 @@
 // backend/controllers/paymentController.js - FIXED with proper raw body handling
 const pool = require('../db');
-const axios = require('axios');
 const paymentService = require('../services/paymentService');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
@@ -37,6 +36,19 @@ exports.createPaymentIntent = catchAsync(async (req, res, next) => {
     return next(new AppError('Only approved bookings can be paid', 400));
   }
 
+  // ✅ CRITICAL FIX: Calculate amount based on booking type
+  let amountToCharge = booking.total_price;
+  let isDepositPayment = false;
+  
+  if (booking.booking_type === 'reserve') {
+    // For reservations, only charge the deposit amount (50%)
+    amountToCharge = booking.deposit_amount || Math.round(booking.total_price * 0.5);
+    isDepositPayment = true;
+    console.log(`📦 Reserve booking - charging deposit: ₱${amountToCharge} (50% of ₱${booking.total_price})`);
+  } else {
+    console.log(`💳 Full booking - charging total: ₱${amountToCharge}`);
+  }
+
   // Check for existing successful payments
   const [existingSuccessful] = await pool.query(
     'SELECT id FROM payments WHERE booking_id = ? AND status = "succeeded"', 
@@ -55,17 +67,18 @@ exports.createPaymentIntent = catchAsync(async (req, res, next) => {
       [bookingId]
     );
 
-    // Let paymentService handle BOTH PayMongo creation AND database insert
+    // Create payment intent with the CORRECT amount
     console.log('Creating payment intent via paymentService...');
     const { paymentIntent, paymentId } = await paymentService.createPaymentIntent({
       bookingId,
       clientId,
       hostId: booking.host_id,
-      amount: booking.total_price,
+      amount: amountToCharge, // ✅ Use calculated amount (deposit or full)
       currency: 'PHP'
     });
 
     console.log('Payment intent created successfully:', paymentIntent.id);
+    console.log(`Amount charged: ₱${amountToCharge}`);
 
     // Return the response with checkout URL for GCash/Card payment
     res.status(200).json({
@@ -76,73 +89,71 @@ exports.createPaymentIntent = catchAsync(async (req, res, next) => {
           id: paymentIntent.id,
           client_secret: paymentIntent.client_secret,
           amount: paymentIntent.amount,
-          checkout_url: paymentIntent.checkout_url // Important: Include checkout URL
+          checkout_url: paymentIntent.checkout_url
         },
         booking: {
           id: booking.id,
           title: booking.title,
           totalPrice: booking.total_price,
+          bookingType: booking.booking_type, // ✅ Include booking type
+          amountCharged: amountToCharge, // ✅ Include actual amount charged
+          isDepositPayment, // ✅ Flag if this is a deposit payment
           dates: `${booking.start_date} to ${booking.end_date}`
         }
       }
     });
 
+    // Development auto-confirm (same as before)
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === undefined) {
-  console.log('🔧 Development mode: Setting up auto-confirm for payment...');
-  
-  // Wait 15 seconds then auto-update payment status
-  setTimeout(async () => {
-    try {
-      console.log('⏰ Development auto-confirm: Checking payment status...');
+      console.log('🔧 Development mode: Setting up auto-confirm for payment...');
       
-      // Check if payment is still pending
-      const [pendingPayments] = await pool.query(
-        'SELECT status FROM payments WHERE booking_id = ? AND payment_intent_id = ?',
-        [bookingId, paymentIntent.id]
-      );
-      
-      if (pendingPayments.length > 0 && pendingPayments[0].status === 'pending') {
-        console.log('🔄 Auto-confirming payment for development...');
-        
-        // Update payment to succeeded
-        await pool.query(
-          'UPDATE payments SET status = "succeeded", updated_at = NOW() WHERE booking_id = ? AND status = "pending"',
-          [bookingId]
-        );
-        
-        // Update booking to confirmed
-        await pool.query(
-          'UPDATE bookings SET status = "confirmed" WHERE id = ?',
-          [bookingId]
-        );
-        
-        console.log('✅ Development auto-confirm: Payment marked as succeeded');
-        
-        // Try to create notifications (optional)
+      setTimeout(async () => {
         try {
-          await createNotification({
-            userId: clientId,
-            message: `Payment successful! Your booking #${bookingId} is confirmed.`,
-            type: 'payment_success'
-          });
+          console.log('⏰ Development auto-confirm: Checking payment status...');
           
-          await createNotification({
-            userId: booking.host_id,
-            message: `Payment received for booking #${bookingId}.`,
-            type: 'payment_received'
-          });
-        } catch (notifErr) {
-          console.log('Notification creation failed (non-critical):', notifErr.message);
+          const [pendingPayments] = await pool.query(
+            'SELECT status FROM payments WHERE booking_id = ? AND payment_intent_id = ?',
+            [bookingId, paymentIntent.id]
+          );
+          
+          if (pendingPayments.length > 0 && pendingPayments[0].status === 'pending') {
+            console.log('🔄 Auto-confirming payment for development...');
+            
+            await pool.query(
+              'UPDATE payments SET status = "succeeded", updated_at = NOW() WHERE booking_id = ? AND status = "pending"',
+              [bookingId]
+            );
+            
+            await pool.query(
+              'UPDATE bookings SET status = "confirmed" WHERE id = ?',
+              [bookingId]
+            );
+            
+            console.log('✅ Development auto-confirm: Payment marked as succeeded');
+            
+            try {
+              await createNotification({
+                userId: clientId,
+                message: `Payment successful! Your booking #${bookingId} is confirmed.`,
+                type: 'payment_success'
+              });
+              
+              await createNotification({
+                userId: booking.host_id,
+                message: `Payment received for booking #${bookingId}.`,
+                type: 'payment_received'
+              });
+            } catch (notifErr) {
+              console.log('Notification creation failed (non-critical):', notifErr.message);
+            }
+          } else {
+            console.log('Payment already processed, skipping auto-confirm');
+          }
+        } catch (error) {
+          console.error('Development auto-confirm error:', error);
         }
-      } else {
-        console.log('Payment already processed, skipping auto-confirm');
-      }
-    } catch (error) {
-      console.error('Development auto-confirm error:', error);
-      // Don't throw - this is non-critical development helper
+      }, 90000);
     }
-  }, 90000); // 90 seconds delay
-}
   } catch (error) {
     console.error('Payment intent creation failed:', error);
     return next(new AppError('Payment processing failed: ' + error.message, 500));

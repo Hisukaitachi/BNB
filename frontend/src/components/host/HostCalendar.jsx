@@ -72,10 +72,25 @@ const HostCalendar = () => {
       
       // Get bookings for this day
       const dayBookings = calendarData.bookings.filter(booking => {
-        const bookingStart = new Date(booking.start).toISOString().split('T')[0];
-        const bookingEnd = new Date(booking.end).toISOString().split('T')[0];
-        return dayStr >= bookingStart && dayStr < bookingEnd;
-      });
+  // Validate that start and end exist and are valid
+  if (!booking.start || !booking.end) {
+    console.warn('Booking missing start or end date:', booking);
+    return false;
+  }
+  
+  const startDate = new Date(booking.start);
+  const endDate = new Date(booking.end);
+  
+  // Check if dates are valid before calling toISOString()
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    console.warn('Invalid booking dates:', booking);
+    return false;
+  }
+  
+  const bookingStart = startDate.toISOString().split('T')[0];
+  const bookingEnd = endDate.toISOString().split('T')[0];
+  return dayStr >= bookingStart && dayStr < bookingEnd;
+});
 
       // Filter bookings based on selected filters
       const filteredDayBookings = dayBookings.filter(booking => {

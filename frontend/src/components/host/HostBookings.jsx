@@ -60,7 +60,7 @@ const HostBookings = () => {
       
       if (response.data.status === 'success') {
         setBookings(prev => prev.map(booking => 
-          booking.booking_id === bookingId 
+          booking.id === bookingId 
             ? { ...booking, status: newStatus }
             : booking
         ));
@@ -93,19 +93,29 @@ const HostBookings = () => {
     };
   };
 
-  const getStats = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return {
-      total: bookings.length,
-      pending: bookings.filter(b => b.status === 'pending').length,
-      checkingInToday: bookings.filter(b => 
-        b.check_in_date && 
-        b.check_in_date.split('T')[0] === today &&
-        ['confirmed', 'approved'].includes(b.status)
-      ).length,
-      currentlyStaying: bookings.filter(b => b.status === 'arrived').length
-    };
+const getStats = () => {
+  const today = new Date().toISOString().split('T')[0];
+  const reservations = bookings.filter(b => b.booking_type === 'reserve');
+  const fullBookings = bookings.filter(b => b.booking_type === 'book' || !b.booking_type);
+  
+  return {
+    total: bookings.length,
+    pending: bookings.filter(b => b.status === 'pending').length,
+    checkingInToday: bookings.filter(b => 
+      b.start_date && 
+      b.start_date.split('T')[0] === today &&
+      ['confirmed', 'approved'].includes(b.status)
+    ).length,
+    currentlyStaying: bookings.filter(b => b.status === 'arrived').length,
+    reservations: reservations.length,
+    fullBookings: fullBookings.length,
+    pendingPayments: bookings.filter(b => 
+      b.booking_type === 'reserve' && 
+      b.deposit_paid === 1 && 
+      b.remaining_paid === 0
+    ).length
   };
+};
 
   if (loading) {
     return (
@@ -134,8 +144,10 @@ const HostBookings = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Manage Bookings</h1>
           <p className="text-sm sm:text-base text-gray-400 mt-1">
-            {stats.total} total • {stats.pending} pending • {stats.checkingInToday} checking in today • {stats.currentlyStaying} staying
-          </p>
+  {stats.total} total • {stats.pending} pending • 
+  {stats.reservations} reservations • {stats.fullBookings} full bookings
+  {stats.pendingPayments > 0 && ` • ${stats.pendingPayments} awaiting final payment`}
+</p>
         </div>
         
         <Button
@@ -190,9 +202,9 @@ const HostBookings = () => {
         <div className="space-y-4">
           {bookings.map((booking) => (
             <BookingCard
-              key={booking.booking_id}
+              key={booking.id}
               booking={booking}
-              isLoading={actionLoading[booking.booking_id]}
+              isLoading={actionLoading[booking.id]}
               onUpdateStatus={updateBookingStatus}
               onViewDetails={(booking) => {
                 setSelectedBooking(booking);

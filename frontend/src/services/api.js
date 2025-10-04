@@ -67,7 +67,7 @@ export const adminAPI = {
   banUser: (userId) => api.put(`/admin/users/${userId}/ban`),
   unbanUser: (userId) => api.put(`/admin/users/${userId}/unban`),
   updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role`, { role }),
-  checkBanStatus: (userId) => api.get(`/admin/check-ban/${userId}`),
+  checkBanStatus: (userId) => api.get(`/admin/users/${userId}/ban-status`), // Fixed path
   
   // Listing Management
   getAllListings: (params) => api.get('/admin/listings', { params }),
@@ -75,30 +75,26 @@ export const adminAPI = {
   
   // Booking Management
   getAllBookings: (params) => api.get('/admin/bookings', { params }),
+  getBookingDetails: (bookingId) => api.get(`/admin/bookings/${bookingId}`), // Added
   updateBookingStatus: (bookingId, status) => api.put(`/admin/bookings/${bookingId}/status`, { status }),
-  cancelBooking: (bookingId) => api.delete(`/admin/bookings/${bookingId}`),
+  cancelBooking: (bookingId, reason) => api.post(`/admin/bookings/${bookingId}/cancel`, { reason }), // Fixed method
   getBookingHistory: (bookingId) => api.get(`/admin/bookings/${bookingId}/history`),
+  cancelBookingWithRefund: (bookingId, reason, refundAmount) => // Added
+    api.post(`/admin/bookings/${bookingId}/cancel-with-refund`, { reason, refundAmount }),
   
   // Review Management
   getAllReviews: () => api.get('/admin/reviews'),
   removeReview: (reviewId) => api.delete(`/admin/reviews/${reviewId}`),
   
-  // ✅ FIXED - Financial Management using PAYOUT endpoints
-  getHostEarnings: (hostId) => api.get(`/admin/earnings/${hostId}`), // Uses fixed admin route
-  getAllPayouts: () => api.get('/admin/payouts/all'), // Uses payout controller via admin
-  releasePayout: (payoutData) => api.post('/admin/payouts/release', payoutData), // Uses payout controller via admin
-  
-  // Financial Management - Refunds & Transactions (admin controller)
-  processRefund: (transactionId) => api.post(`/admin/refund/${transactionId}`),
-  getAllTransactions: () => api.get('/admin/transactions'),
-  
-  // Reservation Management
-  getAllReservations: (params) => api.get('/admin/reservations', { params }),
-  getReservationDetails: (reservationId) => api.get(`/admin/reservations/${reservationId}`),
-  cancelReservationAdmin: (reservationId, reason) => api.patch(`/admin/reservations/${reservationId}/cancel`, { reason }),
-  getReservationStats: () => api.get('/admin/reservations/stats'),
+  // Refund Management (NEW)
+  getAllRefunds: (params) => api.get('/admin/refunds', { params }),
+  getRefundDetails: (refundId) => api.get(`/admin/refunds/${refundId}`),
+  updateRefundStatus: (refundId, status, notes) => 
+    api.patch(`/admin/refunds/${refundId}/status`, { status, notes }),
+  processManualRefund: (bookingId, amount, reason) => 
+    api.post('/admin/refunds/manual', { bookingId, amount, reason }),
 
-  // Reports & Disputes Management
+  //Reports
   getAllReports: () => api.get('/reports/admin/reports'),
   takeAction: (actionData) => api.post('/reports/admin/actions', actionData)
 };
@@ -154,121 +150,6 @@ export const bookingAPI = {
   // Get customer verification info for a booking (host only)
   getBookingCustomerInfo: (bookingId) => 
     api.get(`/bookings/${bookingId}/customer-info`)
-};
-
-export const reservationAPI = {
-  // Create a new reservation
-  createReservation: (reservationData) => {
-    return api.post('/reservations', reservationData);
-  },
-
-  // Get user's reservations (client view) with enhanced filtering
-  getMyReservations: (params = {}) => {
-    return api.get('/reservations/my-reservations', { params });
-  },
-
-  // Get host's reservations with enhanced filtering
-  getHostReservations: (params = {}) => {
-    return api.get('/reservations/host-reservations', { params });
-  },
-
-  // Get reservation details
-  getReservationDetails: (reservationId) => {
-    return api.get(`/reservations/${reservationId}`);
-  },
-
-  // Host actions - approve or decline reservation
-  hostReservationAction: (reservationId, action, reason = '') => {
-    return api.post(`/reservations/${reservationId}/host-action`, { action, reason });
-  },
-
-  // Update reservation status (general)
-  updateReservationStatus: (reservationId, status, notes = '') => {
-    return api.patch(`/reservations/${reservationId}/status`, { status, notes });
-  },
-
-  // Cancel reservation with reason
-  cancelReservation: (reservationId, reason = '') => {
-    return api.patch(`/reservations/${reservationId}/cancel`, { reason });
-  },
-
-  // Get available dates for a listing (enhanced with status filtering)
-  getAvailableDates: (listingId, months = 3) => {
-    return api.get(`/reservations/listing/${listingId}/availability`, { 
-      params: { months } 
-    });
-  },
-
-  // Search reservations with comprehensive filters
-  searchReservations: (filters) => {
-    return api.get('/reservations/search', { params: filters });
-  },
-
-  // Get cancellation policy
-  getCancellationPolicy: () => {
-    return api.get('/reservations/cancellation-policy');
-  },
-
-  // Process remaining payment for confirmed reservations
-  processRemainingPayment: (reservationId) => {
-    return api.post(`/reservations/${reservationId}/pay-remaining`);
-  },
-
-  // Confirm deposit payment (webhook callback)
-  confirmDepositPayment: (reservationId, paymentIntentId) => {
-    return api.post(`/reservations/${reservationId}/confirm-deposit`, { 
-      reservationId, 
-      paymentIntentId 
-    });
-  },
-
-  // Payment-related endpoints for reservations
-  createReservationPaymentIntent: (reservationId, paymentData) => {
-    return api.post('/payments/reservation/create-intent', {
-      reservationId,
-      ...paymentData
-    });
-  },
-
-  // Get reservation payment status
-  getReservationPaymentStatus: (reservationId) => {
-    return api.get(`/payments/reservation/${reservationId}/status`);
-  },
-
-  // Verify reservation payment with PayMongo
-  verifyReservationPayment: (reservationId) => {
-    return api.post('/payments/reservation/verify', { reservationId });
-  }
-};
-
-export const reservationPaymentAPI = {
-  // Create payment intent for deposit
-  createDepositPayment: (reservationId, amount) => {
-    return api.post('/payments/reservation/deposit', {
-      reservationId,
-      amount,
-      paymentType: 'deposit'
-    });
-  },
-
-  // Create payment intent for remaining amount
-  createRemainingPayment: (reservationId, amount) => {
-    return api.post('/payments/reservation/remaining', {
-      reservationId,
-      amount,
-      paymentType: 'remaining'
-    });
-  },
-
-  // Get payment schedule for reservation
-  getPaymentSchedule: (reservationId) => {
-    return api.get(`/payments/reservation/${reservationId}/schedule`);
-  },
-
-  // Process refund for cancelled reservation
-  processReservationRefund: (reservationId, refundData) => {
-    return api.post(`/payments/reservation/${reservationId}/refund`, refundData);
-  }
 };
 
 // PAYMENT FUNCTIONS (unchanged)

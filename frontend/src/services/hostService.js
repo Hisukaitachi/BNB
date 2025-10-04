@@ -470,24 +470,26 @@ async updateListing(listingId, updateData) {
    * @returns {Array} Formatted calendar events
    */
   formatBookingsForCalendar(bookings) {
-    return bookings.map(booking => ({
-      id: booking.booking_id,
-      title: `${booking.title} - ${booking.client_name}`,
-      start: booking.check_in_date,
-      end: booking.check_out_date,
-      status: booking.status,
-      listingId: booking.listing_id,
-      clientName: booking.client_name,
-      totalPrice: booking.total_price,
-      color: this.getStatusColor(booking.status),
-      extendedProps: {
-        bookingId: booking.booking_id,
-        clientId: booking.client_id,
-        listingTitle: booking.title,
-        hostName: booking.host_name
-      }
-    }));
-  }
+  return bookings.map(booking => ({
+    id: booking.id || booking.booking_id,
+    title: `${booking.title} - ${booking.client_name}`,
+    // Fix: Use the actual field names from your backend
+    start: booking.start_date || booking.check_in_date,
+    end: booking.end_date || booking.check_out_date,
+    status: booking.status,
+    listingId: booking.listing_id,
+    clientName: booking.client_name,
+    totalPrice: booking.total_price,
+    color: this.getStatusColor(booking.status),
+    extendedProps: {
+      bookingId: booking.id || booking.booking_id,
+      clientId: booking.client_id,
+      listingTitle: booking.title,
+      hostName: booking.host_name,
+      totalPrice: booking.total_price
+    }
+  }));
+}
 
   /**
    * Calculate occupancy rate for a month
@@ -496,20 +498,26 @@ async updateListing(listingId, updateData) {
    * @returns {number} Occupancy rate percentage
    */
   calculateOccupancyRate(bookings, month) {
-    const [year, monthNum] = month.split('-').map(Number);
-    const daysInMonth = new Date(year, monthNum, 0).getDate();
-    
-    const bookedDays = bookings
-      .filter(b => ['approved', 'confirmed', 'completed'].includes(b.status))
-      .reduce((days, booking) => {
-        const start = new Date(booking.check_in_date);
-        const end = new Date(booking.check_out_date);
-        const bookingDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-        return days + bookingDays;
-      }, 0);
-    
-    return Math.round((bookedDays / daysInMonth) * 100);
-  }
+  const [year, monthNum] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  
+  const bookedDays = bookings
+    .filter(b => ['approved', 'confirmed', 'completed'].includes(b.status))
+    .reduce((days, booking) => {
+      // Fix: Use the actual field names from your backend
+      const checkIn = booking.start_date || booking.check_in_date;
+      const checkOut = booking.end_date || booking.check_out_date;
+      
+      if (!checkIn || !checkOut) return days;
+      
+      const start = new Date(checkIn);
+      const end = new Date(checkOut);
+      const bookingDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      return days + bookingDays;
+    }, 0);
+  
+  return Math.round((bookedDays / daysInMonth) * 100);
+}
 
   /**
    * Calculate earnings breakdown by month

@@ -13,7 +13,7 @@ import {
   Bed
 } from 'lucide-react';
 import listingService from '../../services/listingService';
-import reservationService from '../../services/reservationService'; // NEW: Import reservation service
+import bookingService from '../../services/bookingService';
 import { favoritesService } from '../../services/favoritesService';
 import { reportsService } from '../../services/reportsService';
 import Button from '../../components/ui/Button';
@@ -24,7 +24,7 @@ import ReportModal from '../../components/reports/ReportModal';
 import ImageGallery from '../../components/listings/ImageGallery';
 import HostInfo from '../../components/listings/HostInfo';
 import ReviewsSection from '../../components/listings/ReviewsSection';
-import ReservationSidebar from '../../components/listings/ReservationSidebar'; // NEW: Use ReservationSidebar instead of BookingSidebar
+import BookingSidebar from '../../components/listings/BookingSidebar';
 import { viewRequestAPI } from '../../services/api';
 
 const ListingDetailPage = () => {
@@ -36,11 +36,11 @@ const ListingDetailPage = () => {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isReservationLoading, setIsReservationLoading] = useState(false); // NEW: Changed from isBookingLoading
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [showViewRequestModal, setShowViewRequestModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [isBookingLoading, setIsBookingLoading] = useState(false);
 
   useEffect(() => {
     loadListingData();
@@ -103,70 +103,7 @@ const ListingDetailPage = () => {
       setFavoritesLoading(false);
     }
   };
-
-  // NEW: Handle reservation creation instead of booking
-  const handleReservation = async (reservationData) => {
-    if (!isAuthenticated) {
-      navigate('/auth/login', { state: { from: location } });
-      return;
-    }
-
-    try {
-      setIsReservationLoading(true);
-      
-      // Validate reservation data first
-      const validation = reservationService.validateReservationData(reservationData);
-      if (!validation.isValid) {
-        const errorMessages = Object.values(validation.errors).join('\n');
-        alert('Please fix the following errors:\n\n' + errorMessages);
-        return;
-      }
-
-      // Create reservation using reservation service
-      const result = await reservationService.createReservation(reservationData);
-
-      if (result.success) {
-        const reservation = result.data;
-        
-        // Show success message with appropriate next steps
-        let successMessage = `Reservation request submitted successfully!\n\n`;
-        successMessage += `Your request has been sent to the host for approval.\n\n`;
-        successMessage += `Reservation Details:\n`;
-        successMessage += `- Dates: ${reservationData.check_in_date} to ${reservationData.check_out_date}\n`;
-        successMessage += `- Guests: ${reservationData.guest_count}\n`;
-        successMessage += `- Total: ₱${reservationData.total_amount.toLocaleString()}\n`;
-        
-        if (reservationData.paymentMethod === 'deposit') {
-          successMessage += `- Deposit Required: ₱${reservation.depositAmount?.toLocaleString()}\n`;
-          successMessage += `- Remaining: ₱${reservation.remainingAmount?.toLocaleString()}\n\n`;
-          successMessage += `Next Steps:\n`;
-          successMessage += `1. Wait for host approval\n`;
-          successMessage += `2. Pay deposit when approved\n`;
-          successMessage += `3. Pay remaining balance before check-in\n\n`;
-        } else {
-          successMessage += `\nNext Steps:\n`;
-          successMessage += `1. Wait for host approval\n`;
-          successMessage += `2. Complete full payment when approved\n\n`;
-        }
-        
-        successMessage += `You can track your reservation status in "My Reservations".`;
-        
-        alert(successMessage);
-        
-        // Navigate to reservations page
-        navigate('/my-reservations');
-      } else {
-        throw new Error(result.error);
-      }
-      
-    } catch (error) {
-      console.error('Reservation failed:', error);
-      alert('Reservation failed: ' + error.message);
-    } finally {
-      setIsReservationLoading(false);
-    }
-  };
-
+  
   const handleContactHost = () => {
     if (!isAuthenticated) {
       navigate('/auth/login', { state: { from: location } });
@@ -174,6 +111,50 @@ const ListingDetailPage = () => {
     }
     navigate(`/messages?host=${listing.host_id}`);
   };
+
+const handleBooking = async (bookingData) => {
+  if (!isAuthenticated) {
+    navigate('/auth/login', { state: { from: location } });
+    return;
+  }
+
+  // Validate required fields before sending
+  if (!bookingData.listing_id || !bookingData.startDate || !bookingData.endDate || !bookingData.total_price) {
+    alert('Please fill in all required booking information');
+    return;
+  }
+
+  try {
+    setIsBookingLoading(true);
+    
+    // Format the data to match backend expectations (start_date, end_date, NOT check_in/check_out)
+    const formattedBookingData = {
+      listing_id: bookingData.listing_id,
+      start_date: bookingData.startDate,  // Backend expects start_date
+      end_date: bookingData.endDate,      // Backend expects end_date
+      guests: bookingData.guests,
+      total_price: bookingData.total_price,
+      booking_type: bookingData.booking_type || 'book',
+      remaining_payment_method: bookingData.booking_type === 'reserve' 
+        ? bookingData.remaining_payment_method 
+        : undefined
+    };
+
+    console.log('Submitting booking data:', formattedBookingData);
+
+    const response = await bookingService.createBooking(formattedBookingData);
+    
+    if (response.success) {
+      alert('Booking request submitted successfully!');
+      navigate('/my-bookings');
+    }
+  } catch (error) {
+    console.error('Booking error:', error);
+    alert('Failed to create booking: ' + (error.message || 'Unknown error'));
+  } finally {
+    setIsBookingLoading(false);
+  }
+};
 
   const handleViewRequest = async (requestData) => {
     try {
@@ -372,15 +353,15 @@ const ListingDetailPage = () => {
             <ReviewsSection reviews={reviews} />
           </div>
 
-          {/* NEW: Reservation Sidebar instead of Booking Sidebar */}
-          <ReservationSidebar
+          {/* Booking Sidebar */}
+          <BookingSidebar
             listing={listing}
             reviews={reviews}
             isAuthenticated={isAuthenticated}
-            onReservation={handleReservation}
+            onBooking={handleBooking}
             onContactHost={handleContactHost}
             onViewRequest={() => setShowViewRequestModal(true)}
-            isReservationLoading={isReservationLoading}
+            isBookingLoading={isBookingLoading}
           />
         </div>
 

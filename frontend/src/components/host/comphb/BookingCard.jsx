@@ -1,4 +1,4 @@
-// frontend/src/components/host/components/BookingCard.jsx - Updated with clickable names
+// frontend/src/components/host/components/BookingCard.jsx - Fixed version
 import React from 'react';
 import { 
   Calendar, 
@@ -10,7 +10,10 @@ import {
   MessageSquare,
   Eye,
   MapPin,
-  Star
+  Star,
+  CreditCard,
+  AlertCircle,
+  Info  // ADD THIS IMPORT
 } from 'lucide-react';
 import Button from '../../ui/Button';
 import UserProfileLink from '../../ui/UserProfileLink';
@@ -29,6 +32,167 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
     return statusConfig[status] || statusConfig.pending;
   };
 
+  // ENHANCED booking type badge - MOVED INSIDE COMPONENT
+  const getEnhancedBookingTypeBadge = () => {
+    if (booking.booking_type === 'reserve') {
+      return (
+        <div className="flex items-center space-x-2">
+          <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 font-medium">
+            Reserve (50% Deposit)
+          </span>
+          {booking.remaining_payment_method && (
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              booking.remaining_payment_method === 'personal' 
+                ? 'bg-yellow-100 text-yellow-800' 
+                : 'bg-blue-100 text-blue-800'
+            }`}>
+              {booking.remaining_payment_method === 'personal' ? '🤝 Direct' : '💳 Platform'}
+            </span>
+          )}
+        </div>
+      );
+    }
+    return (
+      <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 font-medium">
+        Full Booking
+      </span>
+    );
+  };
+
+  const getPaymentStatusDisplay = () => {
+    if (booking.booking_type === 'reserve') {
+      const depositPaid = booking.deposit_paid === 1;
+      const remainingPaid = booking.remaining_paid === 1;
+      
+      if (!depositPaid && booking.status === 'approved') {
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-yellow-600">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">Awaiting 50% deposit</span>
+            </div>
+            <div className="ml-6 space-y-1">
+              <p className="text-sm text-gray-400">
+                Deposit required: <span className="text-white font-medium">₱{Number(booking.deposit_amount).toLocaleString()}</span>
+              </p>
+              <p className="text-sm text-gray-400">
+                Remaining balance: ₱{Number(booking.remaining_amount).toLocaleString()}
+              </p>
+              {booking.remaining_payment_method && (
+                <div className="flex items-center space-x-2 mt-2 p-2 bg-gray-700/50 rounded">
+                  <Info className="w-4 h-4 text-blue-400" />
+                  <p className="text-xs text-gray-300">
+                    Guest selected: <span className="font-medium text-white">
+                      {booking.remaining_payment_method === 'platform' 
+                        ? '💳 Remaining payment through platform' 
+                        : '🤝 Remaining payment direct to host'}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      } else if (depositPaid && !remainingPaid) {
+        const dueDate = booking.payment_due_date ? new Date(booking.payment_due_date) : null;
+        const isOverdue = dueDate && dueDate < new Date();
+        
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-green-600">
+              <Check className="w-4 h-4" />
+              <span className="text-sm font-medium">Deposit paid</span>
+              <span className="text-sm text-gray-400">(₱{Number(booking.deposit_amount).toLocaleString()})</span>
+            </div>
+            
+            <div className={`ml-6 space-y-2`}>
+              <div className={`flex items-center space-x-2 ${isOverdue ? 'text-red-600' : 'text-yellow-600'}`}>
+                <CreditCard className="w-4 h-4" />
+                <span className="text-sm">
+                  Remaining balance: <span className="font-medium">₱{Number(booking.remaining_amount).toLocaleString()}</span>
+                </span>
+              </div>
+              
+              {dueDate && (
+                <p className={`text-sm ${isOverdue ? 'text-red-400 font-medium' : 'text-gray-400'}`}>
+                  Due date: {dueDate.toLocaleDateString()} {isOverdue && '⚠️ OVERDUE'}
+                </p>
+              )}
+              
+              {/* Highlight payment method for host */}
+              <div className={`flex items-center space-x-2 p-2 rounded ${
+                booking.remaining_payment_method === 'personal' 
+                  ? 'bg-yellow-900/20 border border-yellow-600' 
+                  : 'bg-blue-900/20 border border-blue-600'
+              }`}>
+                {booking.remaining_payment_method === 'personal' ? (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-yellow-400" />
+                    <div className="flex-1">
+                      <p className="text-sm text-yellow-400 font-medium">
+                        🤝 Guest will pay remaining balance directly to you
+                      </p>
+                      <p className="text-xs text-yellow-400/80 mt-1">
+                        Please coordinate with guest for payment collection before check-in
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Info className="w-4 h-4 text-blue-400" />
+                    <div className="flex-1">
+                      <p className="text-sm text-blue-400 font-medium">
+                        💳 Remaining payment through platform
+                      </p>
+                      <p className="text-xs text-blue-400/80 mt-1">
+                        Payment will be collected automatically 3 days before check-in
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      } else if (depositPaid && remainingPaid) {
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-green-600">
+              <Check className="w-4 h-4" />
+              <span className="text-sm font-medium">Fully paid</span>
+              <span className="text-sm text-gray-400">(₱{Number(booking.total_price).toLocaleString()})</span>
+            </div>
+            {booking.remaining_payment_method === 'personal' && (
+              <div className="ml-6 text-xs text-gray-400">
+                ✓ Guest paid remaining balance directly as requested
+              </div>
+            )}
+          </div>
+        );
+      }
+    } else {
+      // Full booking payment status
+      if (booking.payment_status === 'succeeded') {
+        return (
+          <div className="flex items-center space-x-2 text-green-600">
+            <Check className="w-4 h-4" />
+            <span className="text-sm font-medium">Paid in full</span>
+            <span className="text-sm text-gray-400">(₱{Number(booking.total_price).toLocaleString()})</span>
+          </div>
+        );
+      } else if (booking.status === 'approved') {
+        return (
+          <div className="flex items-center space-x-2 text-yellow-600">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">Awaiting full payment (₱{Number(booking.total_price).toLocaleString()})</span>
+          </div>
+        );
+      }
+    }
+    
+    return null;
+  };
+
   const isCheckInDay = (checkInDate) => {
     const today = new Date().toISOString().split('T')[0];
     const checkIn = new Date(checkInDate).toISOString().split('T')[0];
@@ -37,29 +201,41 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
   };
 
   const handleApprove = () => {
-    if (confirm('Approve this booking request? The guest will then need to complete payment to confirm their reservation.')) {
-      onUpdateStatus(booking.booking_id, 'approved');
+    const bookingTypeText = booking.booking_type === 'reserve' 
+      ? 'The guest will need to pay the 50% deposit to confirm their reservation.' 
+      : 'The guest will need to complete full payment to confirm their reservation.';
+    
+    if (confirm(`Approve this booking request? ${bookingTypeText}`)) {
+      onUpdateStatus(booking.id, 'approved');
     }
   };
 
   const handleDecline = () => {
     const reason = prompt('Please provide a reason for declining (optional):');
-    onUpdateStatus(booking.booking_id, 'rejected', reason || 'Host declined');
+    onUpdateStatus(booking.id, 'rejected', reason || 'Host declined');
   };
 
   const handleMarkArrived = () => {
-    if (!isCheckInDay(booking.check_in_date)) {
+    if (!isCheckInDay(booking.check_in_date || booking.start_date)) {
       alert('Guests can only be marked as arrived on their check-in date.');
       return;
     }
+    
+    // Check if reservation has outstanding payment
+    if (booking.booking_type === 'reserve' && booking.remaining_paid !== 1) {
+      if (!confirm('Warning: The remaining balance has not been paid. Do you still want to mark the guest as arrived?')) {
+        return;
+      }
+    }
+    
     if (confirm('Mark this guest as arrived? This will check them into the property.')) {
-      onUpdateStatus(booking.booking_id, 'arrived');
+      onUpdateStatus(booking.id, 'arrived');
     }
   };
 
   const handleMarkCompleted = () => {
     if (confirm('Mark this booking as completed? This action cannot be undone.')) {
-      onUpdateStatus(booking.booking_id, 'completed');
+      onUpdateStatus(booking.id, 'completed');
     }
   };
 
@@ -81,22 +257,11 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusBadge.color}`}>
                 {statusBadge.label}
               </span>
-              
-              {booking.status === 'approved' && (
-                <span className="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
-                  Awaiting Payment
-                </span>
-              )}
-              {booking.payment_status === 'succeeded' && (
-                <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-                  Paid
-                </span>
-              )}
+              {getEnhancedBookingTypeBadge()}  {/* CHANGED TO ENHANCED VERSION */}
             </div>
           </div>
           
           <div className="flex flex-col sm:flex-row sm:items-center text-gray-400 space-y-1 sm:space-y-0 sm:space-x-4 text-sm">
-            {/* Clickable Guest Name */}
             <div className="flex items-center space-x-2">
               <span>Guest:</span>
               <UserProfileLink
@@ -110,7 +275,7 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
             </div>
             <div className="flex items-center">
               <Clock className="w-4 h-4 mr-1" />
-              <span>Booking #{booking.booking_id}</span>
+              <span>Booking #{booking.id}</span>
             </div>
           </div>
         </div>
@@ -119,6 +284,13 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
       {/* Status Messages */}
       <StatusMessage booking={booking} />
 
+      {/* Payment Status for Reserve Bookings */}
+      {(booking.booking_type === 'reserve' || booking.status === 'approved') && (
+        <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
+          {getPaymentStatusDisplay()}
+        </div>
+      )}
+
       {/* Booking Details Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div className="flex items-center text-gray-300">
@@ -126,7 +298,7 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
           <div>
             <p className="text-sm text-gray-400">Check-in</p>
             <p className="font-medium text-sm sm:text-base">
-              {new Date(booking.check_in_date).toLocaleDateString('en-US', {
+              {new Date(booking.start_date || booking.check_in_date).toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short', 
                 day: 'numeric'
@@ -140,7 +312,7 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
           <div>
             <p className="text-sm text-gray-400">Check-out</p>
             <p className="font-medium text-sm sm:text-base">
-              {new Date(booking.check_out_date).toLocaleDateString('en-US', {
+              {new Date(booking.end_date || booking.check_out_date).toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short', 
                 day: 'numeric'
@@ -154,12 +326,41 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
           <div>
             <p className="text-sm text-gray-400">Total</p>
             <p className="font-medium text-sm sm:text-base">₱{Number(booking.total_price).toLocaleString()}</p>
-            {booking.payment_status === 'succeeded' && (
-              <p className="text-xs text-green-400">Your earnings: ₱{Number(booking.total_price * 0.9).toLocaleString()}</p>
+            {booking.booking_type === 'reserve' && (
+              <p className="text-xs text-gray-400">
+                Deposit: ₱{Number(booking.deposit_amount || 0).toLocaleString()} | 
+                Remaining: ₱{Number(booking.remaining_amount || 0).toLocaleString()}
+              </p>
+            )}
+            {((booking.booking_type === 'reserve' && booking.deposit_paid && booking.remaining_paid) || 
+              (booking.payment_status === 'succeeded')) && (
+              <p className="text-xs text-green-400">
+                Your earnings: ₱{Number(booking.total_price * 0.9).toLocaleString()}
+              </p>
             )}
           </div>
         </div>
       </div>
+
+      {/* Warning for overdue payments */}
+      {booking.booking_type === 'reserve' && 
+       booking.deposit_paid === 1 && 
+       booking.remaining_paid === 0 && 
+       booking.payment_due_date &&
+       new Date(booking.payment_due_date) < new Date() && (
+        <div className="mb-4 p-3 bg-red-900/20 border border-red-600 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+            <div>
+              <p className="text-sm text-red-400 font-medium">Remaining Payment Overdue</p>
+              <p className="text-xs text-red-400/80 mt-1">
+                The remaining balance of ₱{Number(booking.remaining_amount).toLocaleString()} is overdue. 
+                Consider contacting the guest or cancelling the booking.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
@@ -201,7 +402,7 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
         <StatusActions 
           booking={booking}
           isLoading={isLoading}
-          isCheckInDay={isCheckInDay(booking.check_in_date)}
+          isCheckInDay={isCheckInDay(booking.start_date || booking.check_in_date)}
           onApprove={handleApprove}
           onDecline={handleDecline}
           onMarkArrived={handleMarkArrived}
@@ -212,13 +413,23 @@ const BookingCard = ({ booking, isLoading, onUpdateStatus, onViewDetails, onOpen
   );
 };
 
-// Status Message Component (unchanged)
+// StatusMessage component
 const StatusMessage = ({ booking }) => {
-  if (booking.status === 'approved' && !booking.payment_status) {
+  if (booking.status === 'approved' && !booking.payment_status && booking.booking_type !== 'reserve') {
     return (
       <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
         <p className="text-blue-400 text-sm">
           💳 This booking has been approved. The guest can now complete payment to confirm their reservation.
+        </p>
+      </div>
+    );
+  }
+
+  if (booking.status === 'approved' && booking.booking_type === 'reserve' && !booking.deposit_paid) {
+    return (
+      <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
+        <p className="text-blue-400 text-sm">
+          💳 This reservation has been approved. The guest needs to pay the 50% deposit to confirm.
         </p>
       </div>
     );
@@ -247,7 +458,7 @@ const StatusMessage = ({ booking }) => {
   return null;
 };
 
-// Status Actions Component (unchanged from previous version)
+// StatusActions component
 const StatusActions = ({ booking, isLoading, isCheckInDay, onApprove, onDecline, onMarkArrived, onMarkCompleted }) => {
   if (booking.status === 'pending') {
     return (
