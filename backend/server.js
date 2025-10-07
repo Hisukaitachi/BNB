@@ -139,6 +139,9 @@ console.log('✅ Payment routes loaded');
 app.use('/api/payouts', require('./routes/payoutRoutes'));
 console.log('✅ Payout routes loaded');
 
+// Refund features
+app.use('/api/refunds', require('./routes/refundRoutes'));
+console.log('✅ Refund routes loaded');
 // Admin features
 app.use('/api/admin', require('./routes/adminRoutes'));
 console.log('✅ Admin routes loaded');
