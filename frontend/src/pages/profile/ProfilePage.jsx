@@ -1,5 +1,5 @@
 // src/pages/profile/ProfilePage.jsx - Refactored and cleaner
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Star } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import reviewService from '../../services/reviewService';

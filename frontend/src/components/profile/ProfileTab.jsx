@@ -1,5 +1,5 @@
 // src/components/profile/ProfileTab.jsx - Complete version with Profile Picture
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Edit, Save, X } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';

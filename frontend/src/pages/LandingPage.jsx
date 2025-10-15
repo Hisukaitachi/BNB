@@ -1,7 +1,8 @@
 // src/pages/LandingPage.jsx
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, MapPin, Calendar, Users, ArrowRight, Star, Heart, SlidersHorizontal } from 'lucide-react';
+import { getImageUrl } from '../services/api';
 import listingService from '../services/listingService';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -388,7 +389,7 @@ const LandingPage = () => {
                   {listing.image_url && (
                     <div className="relative h-48 overflow-hidden">
                       <img 
-                        src={listing.image_url ? `/uploads/${listing.image_url.split('/').pop()}` : '/placeholder.jpg'} 
+                        src={getImageUrl(listing.image_url) || '/placeholder.jpg'} 
                         alt={listing.title}
                         className="w-full h-48 object-cover"
                       />

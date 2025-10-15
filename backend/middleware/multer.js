@@ -7,6 +7,11 @@ const fs = require('fs');
 const uploadDir = 'uploads';
 const messagesDir = 'uploads/messages';
 const profilePicturesDir = 'uploads/profile-pictures';
+const idsDir = 'uploads/ids';
+if (!fs.existsSync(idsDir)) {
+  fs.mkdirSync(idsDir, { recursive: true });
+  console.log('✅ Created uploads/ids directory');
+}
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -113,6 +118,58 @@ const profilePictureStorage = multer.diskStorage({
   }
 });
 
+// Storage configuration for customer ID documents
+const customerIdStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log('📁 Customer ID upload - saving to uploads/ids/');
+    // Ensure IDs directory exists
+    if (!fs.existsSync(idsDir)) {
+      fs.mkdirSync(idsDir, { recursive: true });
+      console.log('Created ids directory');
+    }
+    cb(null, 'uploads/ids/');
+  },
+  filename: function (req, file, cb) {
+    const bookingId = req.params.bookingId || 'unknown';
+    const side = req.body.side || 'document';
+    const uniqueName = `id-${bookingId}-${side}-${Date.now()}${path.extname(file.originalname)}`;
+    console.log('Customer ID saved as:', uniqueName);
+    cb(null, uniqueName);
+  }
+});
+
+// File filter for customer IDs (images only)
+const customerIdFileFilter = function (req, file, cb) {
+  console.log('Customer ID multer received file:', {
+    fieldname: file.fieldname,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size
+  });
+
+  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+  if (allowedImageTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    console.error('ID file type not allowed:', file.mimetype);
+    cb(new Error(`ID must be an image (JPEG, PNG, or WebP)`), false);
+  }
+};
+
+// Multer instance for customer IDs
+const customerIdUpload = multer({
+  storage: customerIdStorage,
+  fileFilter: customerIdFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max file size
+    files: 2, // Max 2 files (front and back)
+    fields: 20,
+    fieldNameSize: 100,
+    fieldSize: 1024 * 1024
+  }
+});
+
 // File filter specifically for profile pictures (only images)
 const profilePictureFilter = function (req, file, cb) {
   console.log('Profile picture multer received file:', {
@@ -169,5 +226,10 @@ module.exports = {
   uploadProfilePicture: profilePictureUpload.single('profilePicture'),
   
   // Alternative: if you want to use 'avatar' as field name
-  uploadAvatar: profilePictureUpload.single('avatar')
+  uploadAvatar: profilePictureUpload.single('avatar'),
+
+  uploadCustomerIds: customerIdUpload.array('images', 2),
+  uploadCustomerIdsFields: customerIdUpload.fields([
+    { name: 'images', maxCount: 2 }
+  ])
 };

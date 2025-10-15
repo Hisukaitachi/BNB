@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bookingsController = require('../controllers/bookingsController');
 const { authenticateToken } = require('../middleware/auth');
-const { uploadFields } = require('../middleware/multer'); // Add this import
+const { uploadFields, uploadCustomerIds } = require('../middleware/multer'); // Add this import
 
 // Existing routes
 router.post('/', authenticateToken, bookingsController.createBooking);
@@ -17,6 +17,6 @@ router.get('/listing/:listingId', bookingsController.getBookingsByListing);
 router.get("/booked-dates/:listingId", bookingsController.getBookedDatesByListing);
 
 // UPDATED: Customer info with file upload support for ID documents
-router.post('/:bookingId/customer-info', authenticateToken, uploadFields, bookingsController.updateCustomerInfo);
+router.post('/:bookingId/customer-info', authenticateToken, uploadCustomerIds, bookingsController.updateCustomerInfo);
 router.get('/:bookingId/customer-info', authenticateToken, bookingsController.getBookingCustomerInfo);
 module.exports = router;

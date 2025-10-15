@@ -1,5 +1,5 @@
 // frontend/src/pages/payment/PaymentReceiptPage.jsx
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Download, Printer, CheckCircle, Calendar, MapPin, User, CreditCard, ArrowLeft } from 'lucide-react';
 import Button from '../../components/ui/Button';

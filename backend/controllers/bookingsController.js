@@ -570,6 +570,11 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
   const clientId = req.user.id;
   
+  console.log('📝 Received customer info update request');
+  console.log('Booking ID:', bookingId);
+  console.log('Files received:', req.files); // Should be an array now
+  console.log('Body:', req.body);
+  
   const {
     fullName, email, phone, birthDate, address, city,
     postalCode, country, emergencyContact, emergencyPhone, idType
@@ -590,27 +595,39 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
     return next(new AppError('Booking not found or unauthorized', 404));
   }
 
-  const booking = bookings[0];
-
-  // Handle ID document uploads
+  // Handle ID document uploads - req.files is now an array
   let idFrontUrl = null;
   let idBackUrl = null;
   
-  if (req.files && req.files.images) {
-    const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-    idFrontUrl = images[0] ? `/uploads/${images[0].filename}` : null;
-    idBackUrl = images[1] ? `/uploads/${images[1].filename}` : null;
+  if (req.files && req.files.length > 0) {
+    console.log('📁 Processing uploaded files:', req.files.length);
+    console.log('File 1:', req.files[0].filename);
+    idFrontUrl = `/uploads/ids/${req.files[0].filename}`;
+    
+    if (req.files.length > 1) {
+      console.log('File 2:', req.files[1].filename);
+      idBackUrl = `/uploads/ids/${req.files[1].filename}`;
+    }
   }
   
   // Create customer info JSON
   const customerInfoJson = JSON.stringify({
-    fullName, email, phone, birthDate, address, city,
-    postalCode, country, emergencyContact, emergencyPhone,
+    fullName, 
+    email, 
+    phone, 
+    birthDate, 
+    address, 
+    city,
+    postalCode, 
+    country: country || 'Philippines', 
+    emergencyContact, 
+    emergencyPhone,
+    idFrontUrl,
+    idBackUrl,
     uploadedAt: new Date().toISOString()
   });
 
   try {
-    // Update bookings table with customer info
     await pool.query(
       `UPDATE bookings 
        SET customer_info = ?, id_type = ?, id_verified = 1, updated_at = NOW()
@@ -618,19 +635,26 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
       [customerInfoJson, idType || 'not_specified', bookingId, clientId]
     );
     
+    console.log('✅ Customer info saved successfully');
+    console.log('ID Front:', idFrontUrl);
+    console.log('ID Back:', idBackUrl);
+    
     res.status(200).json({
       status: 'success',
       message: 'Customer information saved successfully',
       data: {
         bookingId: parseInt(bookingId),
         idType,
-        hasIdDocuments: !!(idFrontUrl || idBackUrl)
+        hasIdDocuments: !!(idFrontUrl || idBackUrl),
+        idFrontUrl,
+        idBackUrl
       }
     });
     
   } catch (error) {
+    console.error('❌ Database error:', error);
     if (error.code === 'ER_BAD_FIELD_ERROR') {
-      return next(new AppError('Database schema needs update for customer info storage', 500));
+      return next(new AppError('Database schema needs update. Run: ALTER TABLE bookings ADD COLUMN customer_info JSON, ADD COLUMN id_type VARCHAR(50), ADD COLUMN id_verified TINYINT(1) DEFAULT 0', 500));
     }
     throw error;
   }

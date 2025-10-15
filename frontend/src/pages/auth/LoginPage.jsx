@@ -1,5 +1,5 @@
 // src/pages/auth/LoginPage.jsx - SIMPLIFIED WITHOUT GOOGLE OAUTH
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';

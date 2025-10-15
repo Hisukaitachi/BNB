@@ -1,5 +1,5 @@
 // src/pages/profile/components/ReviewsTab.jsx - Updated with clickable names
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { RefreshCw, Star, Award } from 'lucide-react';
 import Button from '../ui/Button';
 import UserProfileLink from '../ui/UserProfileLink';

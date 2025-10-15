@@ -1,5 +1,5 @@
 // frontend/src/pages/payment/PaymentStatus.jsx - Success/Failure Handler
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react';
 import Button from '../../components/ui/Button';

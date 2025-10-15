@@ -6,6 +6,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 const { initializeSocket } = require('./socket');
 const startCronJobs = require('./cronJobs');
 const { globalErrorHandler, AppError } = require('./middleware/errorHandler');
@@ -85,7 +86,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static files (uploads) - FIXED with permissive CORS
-app.use('/uploads', cors({ origin: '*' }), express.static('uploads', {
+app.use('/uploads', cors({ origin: '*' }), express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, path) => {
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   }
@@ -100,6 +101,23 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     uptime: Math.floor(process.uptime())
   });
+});
+
+// Debug endpoint to fetch PayMongo payment intent details
+app.get('/api/debug-payment/:intentId', async (req, res) => {
+  try {
+    const response = await axios.get(
+      `https://api.paymongo.com/v1/payment_intents/${req.params.intentId}`,
+      {
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64')}`
+        }
+      }
+    );
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message, details: error.response?.data });
+  }
 });
 
 // API Routes - Clean and organized

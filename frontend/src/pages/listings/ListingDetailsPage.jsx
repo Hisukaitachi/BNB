@@ -1,5 +1,5 @@
 // frontend/src/pages/listings/ListingDetailsPage.jsx - Updated with Reservation Integration
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -12,6 +12,7 @@ import {
   Bath,
   Bed
 } from 'lucide-react';
+import { getImageUrl } from '../../services/api';
 import listingService from '../../services/listingService';
 import bookingService from '../../services/bookingService';
 import { favoritesService } from '../../services/favoritesService';

@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   ExternalLink
 } from 'lucide-react';
+import { getImageUrl } from '../../services/api';
 import adminService from '../../services/adminService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -220,7 +221,7 @@ const ListingManagement = () => {
                 <div className="relative h-48 bg-gray-600">
                   {listing.image_url ? (
                     <img 
-                      src={`http://localhost:5000${listing.image_url}`}
+                      src={getImageUrl(listing.image_url)}
                       alt={listing.title}
                       className="w-full h-full object-cover"
                       onError={(e) => {
@@ -274,7 +275,7 @@ const ListingManagement = () => {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-gray-400 flex-1"
+                      className="text-white flex-1"
                       onClick={() => {
                         setSelectedListing(listing);
                         setShowListingModal(true);
@@ -288,7 +289,7 @@ const ListingManagement = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-gray-400"
+                        className="text-white"
                       >
                         <MoreHorizontal className="w-4 h-4" />
                       </Button>
@@ -399,7 +400,7 @@ const ListingDetailModal = ({ listing, onClose, onRemove }) => {
 
                   return imageUrl ? (
                     <img 
-                      src={imageUrl}
+                      src={getImageUrl(listing.image_url)}
                       alt={listing.title}
                       className="w-full h-64 object-cover rounded-lg"
                       onError={(e) => {

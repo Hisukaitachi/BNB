@@ -1,6 +1,7 @@
 // src/components/profile/ProfilePictureUpload.jsx
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Camera, Upload, X, User } from 'lucide-react';
+import { getImageUrl } from '../../services/api';
 import Button from '../ui/Button';
 import { useAuth } from '../../context/AuthContext';
 import profilePictureService from '../../services/profilePictureService';
@@ -144,7 +145,7 @@ const handleDelete = async () => {
         <div className="relative">
           {currentProfilePicture ? (
             <img
-              src={currentProfilePicture}
+              src={previewUrl || getImageUrl(user.profile_picture)}
               alt="Profile"
               className="w-24 h-24 rounded-full object-cover border-4 border-gray-600"
             />

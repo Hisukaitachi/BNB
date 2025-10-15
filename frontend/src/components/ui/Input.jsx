@@ -1,4 +1,5 @@
 // src/components/ui/Input.jsx
+import React from 'react';
 import { forwardRef } from 'react';
 import { clsx } from 'clsx';
 

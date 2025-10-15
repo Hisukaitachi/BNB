@@ -3,6 +3,31 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
+// ✅ ADD THIS: Helper for backend base URL (without /api)
+export const BACKEND_BASE_URL = API_BASE_URL.replace('/api', '');
+
+// ✅ ADD THIS: Helper function to get full image URL
+export const getImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  if (imagePath.startsWith('http')) return imagePath; // Already full URL
+  
+  // Handle paths that might or might not start with /
+  const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  return `${BACKEND_BASE_URL}${cleanPath}`;
+};
+
+// ✅ ADD THIS: Helper to get profile picture with fallback sizes
+export const getProfilePictureUrl = (user, size = 'medium') => {
+  if (!user?.profile_picture) return null;
+  
+  // If profile picture has size variants (from Sharp processing)
+  const basePath = user.profile_picture.replace('-medium.jpg', '');
+  const sizeVariant = `${basePath}-${size}.jpg`;
+  
+  return getImageUrl(sizeVariant);
+};
+
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -67,7 +92,7 @@ export const adminAPI = {
   banUser: (userId) => api.put(`/admin/users/${userId}/ban`),
   unbanUser: (userId) => api.put(`/admin/users/${userId}/unban`),
   updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role`, { role }),
-  checkBanStatus: (userId) => api.get(`/admin/users/${userId}/ban-status`), // Fixed path
+  checkBanStatus: (userId) => api.get(`/admin/users/${userId}/ban-status`),
   
   // Listing Management
   getAllListings: (params) => api.get('/admin/listings', { params }),
@@ -75,26 +100,18 @@ export const adminAPI = {
   
   // Booking Management
   getAllBookings: (params) => api.get('/admin/bookings', { params }),
-  getBookingDetails: (bookingId) => api.get(`/admin/bookings/${bookingId}`), // Added
+  getBookingDetails: (bookingId) => api.get(`/admin/bookings/${bookingId}`),
   updateBookingStatus: (bookingId, status) => api.put(`/admin/bookings/${bookingId}/status`, { status }),
-  cancelBooking: (bookingId, reason) => api.post(`/admin/bookings/${bookingId}/cancel`, { reason }), // Fixed method
+  cancelBooking: (bookingId, reason) => api.post(`/admin/bookings/${bookingId}/cancel`, { reason }),
   getBookingHistory: (bookingId) => api.get(`/admin/bookings/${bookingId}/history`),
-  cancelBookingWithRefund: (bookingId, reason, refundAmount) => // Added
+  cancelBookingWithRefund: (bookingId, reason, refundAmount) =>
     api.post(`/admin/bookings/${bookingId}/cancel-with-refund`, { reason, refundAmount }),
   
   // Review Management
   getAllReviews: () => api.get('/admin/reviews'),
   removeReview: (reviewId) => api.delete(`/admin/reviews/${reviewId}`),
-  
-  // Refund Management (NEW)
-  getAllRefunds: (params) => api.get('/admin/refunds', { params }),
-  getRefundDetails: (refundId) => api.get(`/admin/refunds/${refundId}`),
-  updateRefundStatus: (refundId, status, notes) => 
-    api.patch(`/admin/refunds/${refundId}/status`, { status, notes }),
-  processManualRefund: (bookingId, amount, reason) => 
-    api.post('/admin/refunds/manual', { bookingId, amount, reason }),
 
-  //Reports
+  // Reports
   getAllReports: () => api.get('/reports/admin/reports'),
   takeAction: (actionData) => api.post('/reports/admin/actions', actionData)
 };
@@ -141,35 +158,80 @@ export const bookingAPI = {
   getBookingsByListing: (listingId) => api.get(`/bookings/listing/${listingId}`),
 
   // Update customer information with ID upload
-  updateCustomerInfo: (bookingId, formData) => {
-    return api.post(`/bookings/${bookingId}/customer-info`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-  },
+  updateCustomerInfo: (bookingId, formData) => 
+    api.post(`/bookings/${bookingId}/customer-info`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }),
 
   // Get customer verification info for a booking (host only)
   getBookingCustomerInfo: (bookingId) => 
     api.get(`/bookings/${bookingId}/customer-info`)
 };
 
-// PAYMENT FUNCTIONS (unchanged)
+export const refundAPI = {
+  // CLIENT: Request refund after cancelling booking
+  requestRefund: (bookingId, reason) => 
+    api.post('/refunds/request', { bookingId, reason }),
+  
+  // CLIENT: Get my refund requests
+  getMyRefunds: (status = null) => {
+    const params = status ? { status } : {};
+    return api.get('/refunds/my-refunds', { params });
+  },
+  
+  // ADMIN: Get all refund requests
+  getAllRefundRequests: (params = {}) => 
+    api.get('/refunds/all', { params }),
+  
+  // ADMIN: Get refund details
+  getRefundDetails: (refundId) => 
+    api.get(`/refunds/${refundId}/details`),
+  
+  // ADMIN: Process refund (approve/reject)
+  processRefund: (refundId, action, notes = '', customRefundAmount = null) => {
+    const payload = { action, notes };
+    if (customRefundAmount !== null && action === 'approve') {
+      payload.customRefundAmount = customRefundAmount;
+    }
+    return api.post(`/refunds/${refundId}/process`, payload);
+  },
+  
+  // ADMIN: Confirm refund intent (execute PayMongo refund)
+  confirmRefundIntent: (refundIntentId) => 
+    api.post(`/refunds/intent/${refundIntentId}/confirm`),
+  
+  // ADMIN: Complete manual refund
+  completePersonalRefund: (refundId, notes) => 
+    api.post(`/refunds/${refundId}/complete-personal`, { notes })
+};
+
+// PAYMENT FUNCTIONS (fixed paths and added missing routes)
 export const paymentAPI = {
-  // Create payment intent for GCash
   createPaymentIntent: (bookingId) => 
     api.post('/payments/create-payment-intent', { bookingId }),
   
-  // Get payment status
-  getPaymentStatus: (bookingId) => api.get(`/payments/booking/${bookingId}`),
+  createIntent: (bookingId) => 
+    api.post('/payments/create-intent', { bookingId }),
   
-  // Get payment history
-  getMyPayments: () => api.get('/payments/my-payments'),
+  getPaymentStatus: (bookingId) => 
+    api.get(`/payments/booking/${bookingId}`),
+  
+  getPaymentStatusAlt: (bookingId) => 
+    api.get(`/payments/status/${bookingId}`),
+  
+  getMyPayments: () => 
+    api.get('/payments/my-payments'),
 
-  // NEW: Verify payment status directly with PayMongo
   verifyStatus: (bookingId) => 
     api.post('/payments/verify-status', { bookingId }),
   
-  // Test payment config
-  testConfig: () => api.get('/payments/test-config')
+  testConfig: () => 
+    api.get('/payments/test-config'),
+
+  test: () => 
+    api.get('/payments/test')
 };
 
 // MESSAGING FUNCTIONS (unchanged)

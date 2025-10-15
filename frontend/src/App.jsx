@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
@@ -17,6 +17,9 @@ import PublicProfilePage from './pages/profile/PublicProfilePage';
 
 
 import MyBookings from './pages/booking/MyBookings';
+import MyRefunds from './pages/refunds/MyRefunds';
+import RefundPaymentPage from './pages/refunds/RefundPaymentPage';
+import RefundSuccessPage from './pages/refunds/RefundSuccessPage';
 import FavoritesPage from './pages/favorites/FavoritesPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import MessagesPage from './pages/messaging/MessagesPage';
@@ -144,7 +147,10 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
+
+                <Route path="/my-refunds" element={<MyRefunds />} />
+                <Route path="/refund/payment/:refundId" element={<RefundPaymentPage />} />
+                <Route path="/refund/success/:refundId" element={<RefundSuccessPage />} />
                 <Route 
                   path="/favorites" 
                   element={

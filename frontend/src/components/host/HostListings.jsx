@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Search
 } from 'lucide-react';
+import { getImageUrl } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import hostService from '../../services/hostService';
 import Button from '../ui/Button';
@@ -245,7 +246,7 @@ const HostListings = () => {
               <div className="relative h-48 overflow-hidden">
                 {listing.image_url ? (
                   <img 
-                    src={`/uploads/${listing.image_url.split('/').pop()}`} 
+                    src={getImageUrl(listing.image_url)}
                     alt={listing.title}
                     className="w-full h-full object-cover"
                     onError={(e) => {

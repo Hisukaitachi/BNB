@@ -1,5 +1,5 @@
 // frontend/src/pages/payment/PaymentHistory.jsx - Role-Based Payment History
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, Eye, Download, Filter, Search, CreditCard } from 'lucide-react';
 import Button from '../../components/ui/Button';

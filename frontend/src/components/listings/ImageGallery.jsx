@@ -1,19 +1,20 @@
 // src/components/listings/ImageGallery.jsx
 import React, { useState } from 'react';
+import { getImageUrl } from '../../services/api';
 import { Home, Play, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const ImageGallery = ({ images, video, title }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showLightbox, setShowLightbox] = useState(false);
 
-  // Parse images from JSON string or use fallback
+  // ✅ FIXED: Parse images from JSON string or use fallback
   const imageUrls = (() => {
     if (images && Array.isArray(images)) {
-      return images.map(img => img.startsWith('/uploads/') ? img : `/uploads/${img.split('/').pop()}`);
+      return images.map(img => getImageUrl(img)); // ✅ Use helper
     } else if (images && typeof images === 'string') {
       try {
         const parsed = JSON.parse(images);
-        return Array.isArray(parsed) ? parsed.map(img => img.startsWith('/uploads/') ? img : `/uploads/${img.split('/').pop()}`) : [];
+        return Array.isArray(parsed) ? parsed.map(img => getImageUrl(img)) : []; // ✅ Use helper
       } catch (e) {
         return [];
       }
@@ -24,7 +25,7 @@ const ImageGallery = ({ images, video, title }) => {
   // Combine images and video for gallery
   const mediaItems = [
     ...imageUrls.map((url, index) => ({ type: 'image', url, id: `img-${index}` })),
-    ...(video ? [{ type: 'video', url: `/uploads/${video.split('/').pop()}`, id: 'video' }] : [])
+    ...(video ? [{ type: 'video', url: getImageUrl(video), id: 'video' }] : [])
   ];
 
   const nextImage = () => {

@@ -1,5 +1,5 @@
 // src/pages/auth/ForgotPasswordPage.jsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Button from '../../components/ui/Button';

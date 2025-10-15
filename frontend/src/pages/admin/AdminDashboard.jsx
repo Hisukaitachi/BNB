@@ -25,6 +25,7 @@ import AdminEarnings from '../../components/admin/AdminEarnings';
 import BookingManagement from '../../components/admin/BookingManagement';
 import ReportManagement from '../../components/admin/ReportManagement';
 import PlatformFeedback from '../../components/admin/PlatformFeedback';
+import RefundManagement from '../../components/admin/RefundManagement';
 import adminService from '../../services/adminService';
 
 const AdminDashboard = () => {
@@ -93,6 +94,12 @@ const AdminDashboard = () => {
       path: '/admin/bookings',
       icon: Calendar,
       label: 'Booking Management'
+    },
+    {
+      path: '/admin/refunds', // ADD THIS
+      icon: DollarSign,
+      label: 'Refund Management',
+      badge: stats.pendingRefunds
     },
     {
       path: '/admin/reports',
@@ -198,6 +205,7 @@ const AdminDashboard = () => {
             <Route path="/payouts" element={<PayoutManagement />} />
             <Route path="/earnings" element={<AdminEarnings />} />
             <Route path="/bookings" element={<BookingManagement />} />
+            <Route path="/refunds" element={<RefundManagement />} />
             <Route path="/reports" element={<ReportManagement />} />
             <Route path="/feedback" element={<PlatformFeedback />} />
             <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />

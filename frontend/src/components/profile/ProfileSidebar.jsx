@@ -1,5 +1,5 @@
 // src/components/profile/ProfileSidebar.jsx - Fixed version
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { User, RefreshCw, Star } from 'lucide-react';
 import Button from '../ui/Button';
 

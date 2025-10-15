@@ -1,5 +1,5 @@
 // src/pages/listings/ListingsPage.jsx
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Filter, MapPin, Star, Heart, SlidersHorizontal } from 'lucide-react';
 import listingService from '../../services/listingService';
