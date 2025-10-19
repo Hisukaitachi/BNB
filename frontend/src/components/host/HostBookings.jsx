@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostBookings.jsx - Refactored and responsive
+// frontend/src/components/host/HostBookings.jsx - With Search Functionality
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -10,7 +10,8 @@ import {
   MessageSquare,
   Eye,
   RefreshCw,
-  Star
+  Star,
+  Search
 } from 'lucide-react';
 import Button from '../ui/Button';
 import { bookingAPI } from '../../services/api';
@@ -23,6 +24,7 @@ const HostBookings = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState({});
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -82,6 +84,33 @@ const HostBookings = () => {
     }
   };
 
+  // Filter bookings based on search query
+  const getFilteredBookings = () => {
+    if (!searchQuery.trim()) {
+      return bookings;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return bookings.filter(booking => {
+      // Search in guest name
+      const guestName = booking.client_name?.toLowerCase() || '';
+      
+      // Search in property title
+      const propertyTitle = booking.title?.toLowerCase() || '';
+      
+      // Search in booking ID
+      const bookingId = booking.id?.toString() || '';
+      
+      // Search in client ID (if needed)
+      const clientId = booking.client_id?.toString() || '';
+
+      return guestName.includes(query) || 
+             propertyTitle.includes(query) || 
+             bookingId.includes(query) ||
+             clientId.includes(query);
+    });
+  };
+
   const getFilterCounts = () => {
     return {
       all: bookings.length,
@@ -93,29 +122,29 @@ const HostBookings = () => {
     };
   };
 
-const getStats = () => {
-  const today = new Date().toISOString().split('T')[0];
-  const reservations = bookings.filter(b => b.booking_type === 'reserve');
-  const fullBookings = bookings.filter(b => b.booking_type === 'book' || !b.booking_type);
-  
-  return {
-    total: bookings.length,
-    pending: bookings.filter(b => b.status === 'pending').length,
-    checkingInToday: bookings.filter(b => 
-      b.start_date && 
-      b.start_date.split('T')[0] === today &&
-      ['confirmed', 'approved'].includes(b.status)
-    ).length,
-    currentlyStaying: bookings.filter(b => b.status === 'arrived').length,
-    reservations: reservations.length,
-    fullBookings: fullBookings.length,
-    pendingPayments: bookings.filter(b => 
-      b.booking_type === 'reserve' && 
-      b.deposit_paid === 1 && 
-      b.remaining_paid === 0
-    ).length
+  const getStats = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const reservations = bookings.filter(b => b.booking_type === 'reserve');
+    const fullBookings = bookings.filter(b => b.booking_type === 'book' || !b.booking_type);
+    
+    return {
+      total: bookings.length,
+      pending: bookings.filter(b => b.status === 'pending').length,
+      checkingInToday: bookings.filter(b => 
+        b.start_date && 
+        b.start_date.split('T')[0] === today &&
+        ['confirmed', 'approved'].includes(b.status)
+      ).length,
+      currentlyStaying: bookings.filter(b => b.status === 'arrived').length,
+      reservations: reservations.length,
+      fullBookings: fullBookings.length,
+      pendingPayments: bookings.filter(b => 
+        b.booking_type === 'reserve' && 
+        b.deposit_paid === 1 && 
+        b.remaining_paid === 0
+      ).length
+    };
   };
-};
 
   if (loading) {
     return (
@@ -136,6 +165,7 @@ const getStats = () => {
 
   const stats = getStats();
   const filterCounts = getFilterCounts();
+  const filteredBookings = getFilteredBookings();
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -144,10 +174,10 @@ const getStats = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Manage Bookings</h1>
           <p className="text-sm sm:text-base text-gray-400 mt-1">
-  {stats.total} total • {stats.pending} pending • 
-  {stats.reservations} reservations • {stats.fullBookings} full bookings
-  {stats.pendingPayments > 0 && ` • ${stats.pendingPayments} awaiting final payment`}
-</p>
+            {stats.total} total • {stats.pending} pending • 
+            {stats.reservations} reservations • {stats.fullBookings} full bookings
+            {stats.pendingPayments > 0 && ` • ${stats.pendingPayments} awaiting final payment`}
+          </p>
         </div>
         
         <Button
@@ -158,6 +188,28 @@ const getStats = () => {
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-gray-400" />
+        </div>
+        <input
+          type="text"
+          placeholder="Search by guest name, property title, or booking ID..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -195,12 +247,38 @@ const getStats = () => {
         </div>
       </div>
 
+      {/* Search Results Info */}
+      {searchQuery && (
+        <div className="text-sm text-gray-400">
+          Found {filteredBookings.length} booking{filteredBookings.length !== 1 ? 's' : ''} matching "{searchQuery}"
+        </div>
+      )}
+
       {/* Bookings List */}
-      {bookings.length === 0 ? (
-        <EmptyState filter={filter} />
+      {filteredBookings.length === 0 ? (
+        searchQuery ? (
+          <div className="text-center py-12 sm:py-16">
+            <Search className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">
+              No results found
+            </h3>
+            <p className="text-sm sm:text-base text-gray-400 max-w-md mx-auto mb-4">
+              No bookings match your search for "{searchQuery}"
+            </p>
+            <Button 
+              onClick={() => setSearchQuery('')}
+              variant="outline"
+              className="border-gray-600 text-gray-300"
+            >
+              Clear Search
+            </Button>
+          </div>
+        ) : (
+          <EmptyState filter={filter} />
+        )
       ) : (
         <div className="space-y-4">
-          {bookings.map((booking) => (
+          {filteredBookings.map((booking) => (
             <BookingCard
               key={booking.id}
               booking={booking}

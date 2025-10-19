@@ -1,4 +1,4 @@
-// frontend/src/components/host/HostCalendar.jsx - Big Calendar for Host Dashboard
+// frontend/src/components/host/HostCalendar.jsx - With property images
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ChevronLeft, 
@@ -15,12 +15,14 @@ import {
   X,
   CheckCircle,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Home
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import { BOOKING_STATUS } from '../../services/bookingService';
 import Button from '../ui/Button';
 import UserProfileLink from '../ui/UserProfileLink';
+import { getImageUrl } from '../../services/api';
 
 const HostCalendar = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -72,25 +74,23 @@ const HostCalendar = () => {
       
       // Get bookings for this day
       const dayBookings = calendarData.bookings.filter(booking => {
-  // Validate that start and end exist and are valid
-  if (!booking.start || !booking.end) {
-    console.warn('Booking missing start or end date:', booking);
-    return false;
-  }
-  
-  const startDate = new Date(booking.start);
-  const endDate = new Date(booking.end);
-  
-  // Check if dates are valid before calling toISOString()
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    console.warn('Invalid booking dates:', booking);
-    return false;
-  }
-  
-  const bookingStart = startDate.toISOString().split('T')[0];
-  const bookingEnd = endDate.toISOString().split('T')[0];
-  return dayStr >= bookingStart && dayStr < bookingEnd;
-});
+        if (!booking.start || !booking.end) {
+          console.warn('Booking missing start or end date:', booking);
+          return false;
+        }
+        
+        const startDate = new Date(booking.start);
+        const endDate = new Date(booking.end);
+        
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          console.warn('Invalid booking dates:', booking);
+          return false;
+        }
+        
+        const bookingStart = startDate.toISOString().split('T')[0];
+        const bookingEnd = endDate.toISOString().split('T')[0];
+        return dayStr >= bookingStart && dayStr < bookingEnd;
+      });
 
       // Filter bookings based on selected filters
       const filteredDayBookings = dayBookings.filter(booking => {
@@ -182,9 +182,7 @@ const HostCalendar = () => {
   // Handle booking actions
   const handleBookingAction = async (bookingId, newStatus) => {
     try {
-      // Add your booking action logic here
       console.log(`Updating booking ${bookingId} to status ${newStatus}`);
-      // Reload calendar data after action
       await loadCalendarData();
     } catch (error) {
       console.error('Failed to update booking:', error);
@@ -392,19 +390,40 @@ const HostCalendar = () => {
                 <h4 className="text-green-400 font-medium mb-3">Check-ins ({getTodaysCheckIns().length})</h4>
                 <div className="space-y-2">
                   {getTodaysCheckIns().map(booking => (
-                    <div key={booking.id} className="bg-gray-700 rounded-lg p-3">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-gray-400 text-sm">Guest:</span>
-                        <UserProfileLink
-                          userId={booking.extendedProps?.clientId}
-                          name={booking.clientName}
-                          role="client"
-                          size="sm"
-                          showAvatar={false}
-                          className="text-white font-medium"
-                        />
+                    <div key={booking.id} className="bg-gray-700 rounded-lg p-3 flex items-center space-x-3">
+                      {/* Property Image */}
+                      <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-600">
+                        {booking.extendedProps?.imageUrl ? (
+                          <img 
+                            src={getImageUrl(booking.extendedProps.imageUrl)} 
+                            alt={booking.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = '/placeholder.jpg';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Home className="w-6 h-6 text-gray-500" />
+                          </div>
+                        )}
                       </div>
-                      <p className="text-gray-400 text-sm">{booking.title}</p>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-gray-400 text-sm">Guest:</span>
+                          <UserProfileLink
+                            userId={booking.extendedProps?.clientId}
+                            name={booking.clientName}
+                            role="client"
+                            size="sm"
+                            showAvatar={false}
+                            className="text-white font-medium truncate"
+                          />
+                        </div>
+                        <p className="text-gray-400 text-sm truncate">{booking.title}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -417,19 +436,40 @@ const HostCalendar = () => {
                 <h4 className="text-purple-400 font-medium mb-3">Check-outs ({getTodaysCheckOuts().length})</h4>
                 <div className="space-y-2">
                   {getTodaysCheckOuts().map(booking => (
-                    <div key={booking.id} className="bg-gray-700 rounded-lg p-3">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-gray-400 text-sm">Guest:</span>
-                        <UserProfileLink
-                          userId={booking.extendedProps?.clientId}
-                          name={booking.clientName}
-                          role="client"
-                          size="sm"
-                          showAvatar={false}
-                          className="text-white font-medium"
-                        />
+                    <div key={booking.id} className="bg-gray-700 rounded-lg p-3 flex items-center space-x-3">
+                      {/* Property Image */}
+                      <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-600">
+                        {booking.extendedProps?.imageUrl ? (
+                          <img 
+                            src={getImageUrl(booking.extendedProps.imageUrl)} 
+                            alt={booking.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = '/placeholder.jpg';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Home className="w-6 h-6 text-gray-500" />
+                          </div>
+                        )}
                       </div>
-                      <p className="text-gray-400 text-sm">{booking.title}</p>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-gray-400 text-sm">Guest:</span>
+                          <UserProfileLink
+                            userId={booking.extendedProps?.clientId}
+                            name={booking.clientName}
+                            role="client"
+                            size="sm"
+                            showAvatar={false}
+                            className="text-white font-medium truncate"
+                          />
+                        </div>
+                        <p className="text-gray-400 text-sm truncate">{booking.title}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -441,8 +481,8 @@ const HostCalendar = () => {
 
       {/* Day Details Modal */}
       {showDayModal && selectedDate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-white">
                 {selectedDate.toLocaleDateString('en-US', { 
@@ -465,88 +505,112 @@ const HostCalendar = () => {
                 <p className="text-gray-400 text-center py-8">No bookings for this day</p>
               ) : (
                 dayBookings.map((booking) => (
-                  <div key={booking.id} className="bg-gray-700 rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="text-white font-semibold">{booking.title}</h3>
-                        <div className="flex items-center space-x-2 text-gray-400 text-sm mt-1">
-                          <User className="w-4 h-4" />
-                          <span>Guest:</span>
-                          <UserProfileLink
-                            userId={booking.extendedProps?.clientId}
-                            name={booking.clientName}
-                            role="client"
-                            size="sm"
-                            showAvatar={false}
-                            className="text-white hover:text-purple-400"
+                  <div key={booking.id} className="bg-gray-700 rounded-lg overflow-hidden">
+                    <div className="flex flex-col sm:flex-row">
+                      {/* Property Image */}
+                      <div className="w-full sm:w-32 h-32 sm:h-auto flex-shrink-0 bg-gray-600">
+                        {booking.extendedProps?.imageUrl ? (
+                          <img 
+                            src={getImageUrl(booking.extendedProps.imageUrl)} 
+                            alt={booking.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = '/placeholder.jpg';
+                            }}
                           />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Home className="w-12 h-12 text-gray-500" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Booking Details */}
+                      <div className="flex-1 p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h3 className="text-white font-semibold">{booking.title}</h3>
+                            <div className="flex items-center space-x-2 text-gray-400 text-sm mt-1">
+                              <User className="w-4 h-4" />
+                              <span>Guest:</span>
+                              <UserProfileLink
+                                userId={booking.extendedProps?.clientId}
+                                name={booking.clientName}
+                                role="client"
+                                size="sm"
+                                showAvatar={false}
+                                className="text-white hover:text-purple-400"
+                              />
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs text-white ${getBookingColor(booking.status)}`}>
+                            {booking.status}
+                          </span>
                         </div>
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs text-white ${getBookingColor(booking.status)}`}>
-                        {booking.status}
-                      </span>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                      <div className="flex items-center text-gray-300">
-                        <Calendar className="w-4 h-4 mr-2" />
-                        <span>
-                          {new Date(booking.start).toLocaleDateString()} - 
-                          {new Date(booking.end).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center text-gray-300">
-                        <DollarSign className="w-4 h-4 mr-2" />
-                        <span>₱{Number(booking.extendedProps?.totalPrice || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-4">
+                          <div className="flex items-center text-gray-300">
+                            <Calendar className="w-4 h-4 mr-2" />
+                            <span className="truncate">
+                              {new Date(booking.start).toLocaleDateString()} - 
+                              {new Date(booking.end).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center text-gray-300">
+                            <DollarSign className="w-4 h-4 mr-2" />
+                            <span>₱{Number(booking.extendedProps?.totalPrice || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
 
-                    <div className="flex justify-between items-center">
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-gray-600 text-gray-300"
-                          onClick={() => window.open(`/messages?client=${booking.extendedProps?.clientId}`, '_blank')}
-                        >
-                          <MessageSquare className="w-4 h-4 mr-1" />
-                          Message
-                        </Button>
-                      </div>
-
-                      {/* Booking actions based on status */}
-                      <div className="flex space-x-2">
-                        {booking.status === BOOKING_STATUS.PENDING && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="gradient"
-                              className="bg-green-600 hover:bg-green-700"
-                              onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.APPROVED)}
-                            >
-                              <Check className="w-4 h-4" />
-                            </Button>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
+                          <div className="flex space-x-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-red-500 text-red-400"
-                              onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.REJECTED)}
+                              className="border-gray-600 text-gray-300"
+                              onClick={() => window.open(`/messages?client=${booking.extendedProps?.clientId}`, '_blank')}
                             >
-                              <X className="w-4 h-4" />
+                              <MessageSquare className="w-4 h-4 mr-1" />
+                              Message
                             </Button>
-                          </>
-                        )}
-                        
-                        {booking.status === BOOKING_STATUS.APPROVED && (
-                          <Button
-                            size="sm"
-                            variant="gradient"
-                            onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.CONFIRMED)}
-                          >
-                            <CheckCircle className="w-4 h-4 mr-1" />
-                            Confirm
-                          </Button>
-                        )}
+                          </div>
+
+                          {/* Booking actions based on status */}
+                          <div className="flex space-x-2">
+                            {booking.status === BOOKING_STATUS.PENDING && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="gradient"
+                                  className="bg-green-600 hover:bg-green-700"
+                                  onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.APPROVED)}
+                                >
+                                  <Check className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-500 text-red-400"
+                                  onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.REJECTED)}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </>
+                            )}
+                            
+                            {booking.status === BOOKING_STATUS.APPROVED && (
+                              <Button
+                                size="sm"
+                                variant="gradient"
+                                onClick={() => handleBookingAction(booking.extendedProps?.bookingId, BOOKING_STATUS.CONFIRMED)}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Confirm
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

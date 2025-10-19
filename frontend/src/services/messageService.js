@@ -1,4 +1,4 @@
-// src/services/messageService.js - FIXED - Remove all hook calls
+// src/services/messageService.js - UPDATED with proper unread count
 import { messageAPI } from './api';
 
 export const MESSAGE_TYPES = {
@@ -32,58 +32,65 @@ class MessageService {
    * @returns {Promise<object>} Send result
    */
   async sendMessage(receiverId, message, mediaFiles = []) {
-  try {
-    // Validate input
-    if (!receiverId || (!message?.trim() && (!mediaFiles || mediaFiles.length === 0))) {
-      throw new Error('Receiver ID and message content or files are required');
-    }
-
-    if (message && message.length > 1000) {
-      throw new Error('Message cannot exceed 1000 characters');
-    }
-
-    // Validate media files array
-    if (mediaFiles && mediaFiles.length > 0) {
-      if (mediaFiles.length > 20) {
-        throw new Error('Cannot send more than 20 files at once');
+    try {
+      // Validate input
+      if (!receiverId || (!message?.trim() && (!mediaFiles || mediaFiles.length === 0))) {
+        throw new Error('Receiver ID and message content or files are required');
       }
 
-      // Validate each file
-      for (const file of mediaFiles) {
-        const validationResult = this.validateMediaFile(file);
-        if (!validationResult.isValid) {
-          throw new Error(`Invalid file ${file.name}: ${validationResult.error}`);
+      if (message && message.length > 1000) {
+        throw new Error('Message cannot exceed 1000 characters');
+      }
+
+      // Validate media files array
+      if (mediaFiles && mediaFiles.length > 0) {
+        if (mediaFiles.length > 20) {
+          throw new Error('Cannot send more than 20 files at once');
+        }
+
+        // Validate each file
+        for (const file of mediaFiles) {
+          const validationResult = this.validateMediaFile(file);
+          if (!validationResult.isValid) {
+            throw new Error(`Invalid file ${file.name}: ${validationResult.error}`);
+          }
         }
       }
-    }
 
-    // Use the correct API call
-    const response = await messageAPI.sendMessage(receiverId, message, mediaFiles);
-    
-    // Send via socket for real-time delivery (if available)
-    if (this.socket && this.socket.emit) {
-      this.socket.emit('newMessage', {
-        receiverId,
-        message: {
-          sender_id: response.data.data.message.sender_id,
-          receiver_id: receiverId,
-          message: message,
-          media_count: mediaFiles ? mediaFiles.length : 0,
-          created_at: new Date(),
-          type: mediaFiles && mediaFiles.length > 0 ? 'media' : 'text'
-        }
-      });
-    }
+      // Use the correct API call
+      const response = await messageAPI.sendMessage(receiverId, message, mediaFiles);
+      
+      // Send via socket for real-time delivery (if available)
+      if (this.socket && this.socket.emit) {
+        this.socket.emit('newMessage', {
+          receiverId,
+          message: {
+            sender_id: response.data.data.message.sender_id,
+            receiver_id: receiverId,
+            message: message,
+            media_count: mediaFiles ? mediaFiles.length : 0,
+            created_at: new Date(),
+            type: mediaFiles && mediaFiles.length > 0 ? 'media' : 'text'
+          }
+        });
+        
+        // Emit event to trigger badge refresh after sending message
+        this.socket.emit('messageSent', { receiverId });
+      }
 
-    return {
-      success: true,
-      data: response.data.data?.message,
-      messageId: response.data.data?.message?.id
-    };
-  } catch (error) {
-    throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
+      // Trigger custom event for Header to refresh badge
+      window.dispatchEvent(new CustomEvent('messageCountUpdate'));
+
+      return {
+        success: true,
+        data: response.data.data?.message,
+        messageId: response.data.data?.message?.id
+      };
+    } catch (error) {
+      throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
+    }
   }
-}
+
   /**
    * Get conversation with another user
    * @param {number} otherUserId - Other user ID
@@ -159,15 +166,22 @@ class MessageService {
   }
 
   /**
-   * Get unread message count
+   * Get unread message count - UPDATED to use direct API call
    * @returns {Promise<number>} Unread count
    */
   async getUnreadCount() {
     try {
-      const conversations = await this.getInbox();
-      return conversations.reduce((total, conv) => total + (conv.unread_count || 0), 0);
+      const response = await messageAPI.getUnreadCount();
+      
+      // Handle different possible response structures
+      const count = response.data?.data?.unread_count || 
+                   response.data?.unread_count || 
+                   0;
+      
+      console.log('📊 Unread messages count from API:', count);
+      return count;
     } catch (error) {
-      console.error('Failed to get unread count:', error);
+      console.error('❌ Failed to get unread count:', error);
       return 0;
     }
   }

@@ -50,4 +50,6 @@ router.patch('/conversation/:otherUserId/read', authenticateToken, messagesContr
 // NEW: Delete message
 router.delete('/:id', authenticateToken, messagesController.deleteMessage);
 
+router.get('/unread-count', authenticateToken, messagesController.getUnreadCount);
+
 module.exports = router;

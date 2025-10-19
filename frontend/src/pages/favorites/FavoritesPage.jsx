@@ -4,6 +4,7 @@ import { Heart, MapPin, Star, Trash2, Grid, List } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { favoritesService } from '../../services/favoritesService';
 import Button from '../../components/ui/Button';
+import { getImageUrl } from '../../services/api';
 
 const FavoritesPage = () => {
   const [favorites, setFavorites] = useState([]);
@@ -137,7 +138,7 @@ const FavoritesPage = () => {
               Start exploring and save properties you love!
             </p>
             <Button 
-              onClick={() => navigate('/listings')} 
+              onClick={() => navigate('/')} 
               variant="gradient"
             >
               Explore Properties
@@ -159,7 +160,7 @@ const FavoritesPage = () => {
                 {favorite.image_url && (
                   <div className={`relative ${viewMode === 'list' ? 'w-48 h-32' : 'h-48'} overflow-hidden`}>
                     <img 
-                      src={favorite.image_url} 
+                      src={getImageUrl(favorite.image_url)}
                       alt={favorite.title}
                       className="w-full h-full object-cover"
                     />

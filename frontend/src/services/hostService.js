@@ -465,11 +465,11 @@ async updateListing(listingId, updateData) {
   }
 
   /**
-   * Format bookings for calendar display
-   * @param {Array} bookings - Raw bookings data
-   * @returns {Array} Formatted calendar events
-   */
-  formatBookingsForCalendar(bookings) {
+ * Format bookings for calendar display
+ * @param {Array} bookings - Raw bookings data
+ * @returns {Array} Formatted calendar events
+ */
+formatBookingsForCalendar(bookings) {
   return bookings.map(booking => ({
     id: booking.id || booking.booking_id,
     title: `${booking.title} - ${booking.client_name}`,
@@ -486,7 +486,8 @@ async updateListing(listingId, updateData) {
       clientId: booking.client_id,
       listingTitle: booking.title,
       hostName: booking.host_name,
-      totalPrice: booking.total_price
+      totalPrice: booking.total_price,
+      imageUrl: booking.image_url  // ← ADD THIS LINE
     }
   }));
 }

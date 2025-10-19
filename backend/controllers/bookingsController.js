@@ -238,6 +238,7 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
       b.*,
       l.title,
       l.location,
+      l.image_url,
       u.name AS client_name,
       u.email AS client_email,
       u.phone AS client_phone,

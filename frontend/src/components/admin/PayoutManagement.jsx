@@ -1,4 +1,4 @@
-// frontend/src/components/admin/PayoutManagement.jsx - Updated Version
+// frontend/src/components/admin/PayoutManagement.jsx - Simplified Manual Payout System
 import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
@@ -7,18 +7,13 @@ import {
   Check, 
   X,
   Clock,
-  User,
-  Calendar,
-  CreditCard,
   RefreshCw,
   Download,
   AlertCircle,
-  TrendingUp,
   Eye,
-  Send,
   CheckCircle
 } from 'lucide-react';
-import { payoutAPI } from '../../services/api';
+import payoutService from '../../services/payoutService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
@@ -34,8 +29,6 @@ const PayoutManagement = () => {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [actionLoading, setActionLoading] = useState({});
   const [stats, setStats] = useState({});
-  const [transactionRef, setTransactionRef] = useState('');
-  const [proofUrl, setProofUrl] = useState('');
 
   useEffect(() => {
     loadPayouts();
@@ -50,11 +43,17 @@ const PayoutManagement = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await payoutAPI.getAllPayouts();
-      const payoutsData = response.data?.payouts || [];
-      setPayouts(payoutsData);
+      
+      const result = await payoutService.getAllPayouts();
+      
+      if (result.success) {
+        setPayouts(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
-      setError(err.response?.data?.message || err.message);
+      console.error('Error loading payouts:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -62,9 +61,10 @@ const PayoutManagement = () => {
 
   const loadPayoutStats = async () => {
     try {
-      const response = await payoutAPI.getPayoutStats();
-      const statsData = response.data?.data?.stats || response.data?.stats || {};
-      setStats(statsData);
+      const result = await payoutService.getPayoutStats();
+      if (result.success) {
+        setStats(result.data.stats || {});
+      }
     } catch (err) {
       console.error('Failed to load payout stats:', err);
     }
@@ -73,7 +73,6 @@ const PayoutManagement = () => {
   const applyFilters = () => {
     let filtered = [...payouts];
 
-    // Search filter
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(payout => 
@@ -84,7 +83,6 @@ const PayoutManagement = () => {
       );
     }
 
-    // Status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(payout => payout.status === statusFilter);
     }
@@ -93,52 +91,43 @@ const PayoutManagement = () => {
   };
 
   const handleApprovePayout = async (payoutId) => {
-    if (!transactionRef) {
-      alert('Please enter a transaction reference number');
-      return;
-    }
-
     try {
       setActionLoading(prev => ({ ...prev, [payoutId]: 'approve' }));
       
-      const response = await payoutAPI.approvePayout(payoutId, {
-        transaction_ref: transactionRef
-      });
+      const result = await payoutService.approvePayout(payoutId);
 
-      if (response.data.status === 'success') {
-        alert('Payout approved! Now transfer the money and mark as complete.');
+      if (result.success) {
+        alert(result.message);
         setShowProcessModal(false);
-        setTransactionRef('');
         await loadPayouts();
         await loadPayoutStats();
+      } else {
+        alert(result.error);
       }
     } catch (error) {
-      alert(`Failed to approve payout: ${error.response?.data?.message || error.message}`);
+      alert(`Failed to approve payout: ${error.message}`);
     } finally {
       setActionLoading(prev => ({ ...prev, [payoutId]: false }));
     }
   };
 
   const handleCompletePayout = async (payoutId) => {
-    if (!proofUrl) {
-      proofUrl = prompt('Enter proof of transfer URL or reference (optional):');
-    }
+    const proof = prompt('Enter proof of transfer URL or reference (optional):');
 
     try {
       setActionLoading(prev => ({ ...prev, [payoutId]: 'complete' }));
       
-      const response = await payoutAPI.completePayout(payoutId, {
-        proof_url: proofUrl || ''
-      });
+      const result = await payoutService.completePayout(payoutId, proof || '');
 
-      if (response.data.status === 'success') {
-        alert('Payout marked as completed!');
-        setProofUrl('');
+      if (result.success) {
+        alert(result.message);
         await loadPayouts();
         await loadPayoutStats();
+      } else {
+        alert(result.error);
       }
     } catch (error) {
-      alert(`Failed to complete payout: ${error.response?.data?.message || error.message}`);
+      alert(`Failed to complete payout: ${error.message}`);
     } finally {
       setActionLoading(prev => ({ ...prev, [payoutId]: false }));
     }
@@ -151,57 +140,60 @@ const PayoutManagement = () => {
     try {
       setActionLoading(prev => ({ ...prev, [payoutId]: 'reject' }));
       
-      const response = await payoutAPI.rejectPayout({
-        payout_id: payoutId,
-        reason: reason
-      });
+      const result = await payoutService.rejectPayout(payoutId, reason);
 
-      if (response.data.status === 'success') {
-        alert('Payout rejected successfully');
+      if (result.success) {
+        alert(result.message);
         await loadPayouts();
         await loadPayoutStats();
+      } else {
+        alert(result.error);
       }
     } catch (error) {
-      alert(`Failed to reject payout: ${error.response?.data?.message || error.message}`);
+      alert(`Failed to reject payout: ${error.message}`);
     } finally {
       setActionLoading(prev => ({ ...prev, [payoutId]: false }));
     }
   };
 
   const getStatusBadge = (status) => {
-    const badges = {
-      pending: { 
+    const color = payoutService.getStatusColor(status);
+    const text = payoutService.getStatusText(status);
+    
+    const colorMap = {
+      warning: { 
         bg: 'bg-yellow-100', 
         text: 'text-yellow-800', 
-        icon: <Clock className="w-3 h-3 mr-1" />,
-        label: 'Pending' 
+        icon: <Clock className="w-3 h-3 mr-1" />
       },
-      processing: { 
+      info: { 
         bg: 'bg-blue-100', 
         text: 'text-blue-800', 
-        icon: <Send className="w-3 h-3 mr-1" />,
-        label: 'Processing' 
+        icon: <Check className="w-3 h-3 mr-1" />
       },
-      completed: { 
+      success: { 
         bg: 'bg-green-100', 
         text: 'text-green-800', 
-        icon: <CheckCircle className="w-3 h-3 mr-1" />,
-        label: 'Completed' 
+        icon: <CheckCircle className="w-3 h-3 mr-1" />
       },
-      rejected: { 
+      danger: { 
         bg: 'bg-red-100', 
         text: 'text-red-800', 
-        icon: <X className="w-3 h-3 mr-1" />,
-        label: 'Rejected' 
+        icon: <X className="w-3 h-3 mr-1" />
+      },
+      secondary: { 
+        bg: 'bg-gray-100', 
+        text: 'text-gray-800', 
+        icon: <AlertCircle className="w-3 h-3 mr-1" />
       }
     };
     
-    const badge = badges[status] || badges.pending;
+    const config = colorMap[color] || colorMap.secondary;
     
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-        {badge.icon}
-        {badge.label}
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.icon}
+        {text}
       </span>
     );
   };
@@ -233,15 +225,16 @@ const PayoutManagement = () => {
 
   const exportPayouts = () => {
     const csv = [
-      ['ID', 'Host', 'Amount', 'Status', 'Method', 'Requested Date', 'Bank Details'],
+      ['ID', 'Host', 'Amount', 'Fee', 'Net Amount', 'Status', 'Method', 'Requested Date'],
       ...filteredPayouts.map(p => [
         p.id,
         p.host_name,
         p.amount,
+        p.fee || 0,
+        p.net_amount || p.amount,
         p.status,
         p.payment_method || 'bank_transfer',
-        new Date(p.created_at || p.requested_at).toLocaleDateString(),
-        JSON.stringify(p.bank_details || {})
+        new Date(p.created_at || p.requested_at).toLocaleDateString()
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -256,7 +249,7 @@ const PayoutManagement = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
       </div>
     );
   }
@@ -289,7 +282,7 @@ const PayoutManagement = () => {
             className="border-gray-600 text-gray-300"
           >
             <Download className="w-4 h-4 mr-2" />
-            Export CSV
+            Export
           </Button>
           <Button
             onClick={() => {
@@ -306,7 +299,7 @@ const PayoutManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -315,27 +308,25 @@ const PayoutManagement = () => {
                 {stats.pending_count || 0}
               </p>
               <p className="text-xs text-gray-500">
-                ₱{(stats.pending_amount || 0).toLocaleString()}
+                {payoutService.formatCurrency(stats.pending_amount || 0)}
               </p>
             </div>
-            <div className="p-3 rounded-full bg-yellow-600/20">
-              <Clock className="w-6 h-6 text-yellow-400" />
-            </div>
+            <Clock className="w-6 h-6 text-yellow-400" />
           </div>
         </div>
 
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Processing</p>
-              <p className="text-2xl font-bold text-blue-400">
-                {stats.processing_count || 0}
+              <p className="text-sm text-gray-400">Approved</p>
+              <p className="text-2xl font-bold text-indigo-400">
+                {stats.approved_count || 0}
               </p>
-              <p className="text-xs text-gray-500">In Transfer</p>
+              <p className="text-xs text-gray-500">
+                {payoutService.formatCurrency(stats.approved_amount || 0)}
+              </p>
             </div>
-            <div className="p-3 rounded-full bg-blue-600/20">
-              <Send className="w-6 h-6 text-blue-400" />
-            </div>
+            <Check className="w-6 h-6 text-indigo-400" />
           </div>
         </div>
 
@@ -347,27 +338,23 @@ const PayoutManagement = () => {
                 {stats.completed_count || 0}
               </p>
               <p className="text-xs text-gray-500">
-                ₱{(stats.total_paid_out || 0).toLocaleString()}
+                {payoutService.formatCurrency(stats.total_paid_out || 0)}
               </p>
             </div>
-            <div className="p-3 rounded-full bg-green-600/20">
-              <CheckCircle className="w-6 h-6 text-green-400" />
-            </div>
+            <CheckCircle className="w-6 h-6 text-green-400" />
           </div>
         </div>
 
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Rejected</p>
-              <p className="text-2xl font-bold text-red-400">
-                {stats.rejected_count || 0}
+              <p className="text-sm text-gray-400">Total Fees</p>
+              <p className="text-2xl font-bold text-purple-400">
+                {payoutService.formatCurrency(stats.total_fees_paid || 0)}
               </p>
-              <p className="text-xs text-gray-500">Declined</p>
+              <p className="text-xs text-gray-500">Processing fees</p>
             </div>
-            <div className="p-3 rounded-full bg-red-600/20">
-              <X className="w-6 h-6 text-red-400" />
-            </div>
+            <DollarSign className="w-6 h-6 text-purple-400" />
           </div>
         </div>
       </div>
@@ -392,9 +379,11 @@ const PayoutManagement = () => {
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
             <option value="processing">Processing</option>
             <option value="completed">Completed</option>
             <option value="rejected">Rejected</option>
+            <option value="failed">Failed</option>
           </select>
 
           <div className="flex items-center space-x-2 text-sm text-gray-300">
@@ -419,20 +408,22 @@ const PayoutManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-700">
                 <tr>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">ID</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Host</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Amount</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Method</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Status</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Requested</th>
-                  <th className="text-left py-3 px-6 text-gray-300 font-medium">Actions</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">ID</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Host</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Amount</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Method</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Status</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Requested</th>
+                  <th className="text-left py-3 px-4 text-gray-300 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
                 {filteredPayouts.map((payout) => (
                   <tr key={payout.id} className="hover:bg-gray-700/50">
-                    <td className="py-4 px-6 text-white">#{payout.id}</td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-4 text-white">
+                      #{payout.id}
+                    </td>
+                    <td className="py-4 px-4">
                       <div>
                         <div className="text-white font-medium">
                           {payout.host_name || `Host #${payout.host_id}`}
@@ -440,29 +431,40 @@ const PayoutManagement = () => {
                         <div className="text-gray-400 text-sm">{payout.host_email}</div>
                       </div>
                     </td>
-                    <td className="py-4 px-6">
-                      <div className="text-white font-semibold">
-                        ₱{Number(payout.amount).toLocaleString()}
+                    <td className="py-4 px-4">
+                      <div>
+                        <div className="text-white font-semibold">
+                          {payoutService.formatCurrency(payout.amount)}
+                        </div>
+                        {payout.fee > 0 && (
+                          <div className="text-xs text-gray-400">
+                            Fee: {payoutService.formatCurrency(payout.fee)}
+                          </div>
+                        )}
                       </div>
                     </td>
-                    <td className="py-4 px-6">
-                      <span className="text-gray-300 text-sm">
-                        {payout.payment_method === 'gcash' ? 'GCash' : 'Bank Transfer'}
+                    <td className="py-4 px-4">
+                      <span className="text-gray-300 text-sm capitalize">
+                        {payout.payment_method?.replace('_', ' ') || 'Bank Transfer'}
                       </span>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-4">
                       <div>
                         {getStatusBadge(payout.status)}
                         {getUrgencyIndicator(payout)}
                       </div>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-4">
                       <div className="text-white text-sm">
                         {new Date(payout.created_at || payout.requested_at).toLocaleDateString()}
                       </div>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-4">
                       <div className="flex items-center space-x-2">
+
+                        <span className="text-yellow-400 text-xs mr-2">
+                          [{payout.status}]
+                        </span>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -501,15 +503,15 @@ const PayoutManagement = () => {
                           </>
                         )}
 
-                        {payout.status === 'processing' && (
+                        {payout.status === 'approved' && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-blue-400"
+                            className="text-purple-400"
                             loading={actionLoading[payout.id] === 'complete'}
                             onClick={() => handleCompletePayout(payout.id)}
                           >
-                            Mark Complete
+                            Complete
                           </Button>
                         )}
                       </div>
@@ -537,13 +539,10 @@ const PayoutManagement = () => {
       {showProcessModal && selectedPayout && (
         <ProcessPayoutModal
           payout={selectedPayout}
-          transactionRef={transactionRef}
-          onTransactionRefChange={setTransactionRef}
           onApprove={() => handleApprovePayout(selectedPayout.id)}
           onClose={() => {
             setShowProcessModal(false);
             setSelectedPayout(null);
-            setTransactionRef('');
           }}
           loading={actionLoading[selectedPayout.id] === 'approve'}
         />
@@ -553,7 +552,7 @@ const PayoutManagement = () => {
 };
 
 // Process Payout Modal
-const ProcessPayoutModal = ({ payout, transactionRef, onTransactionRefChange, onApprove, onClose, loading }) => {
+const ProcessPayoutModal = ({ payout, onApprove, onClose, loading }) => {
   const bankDetails = typeof payout.bank_details === 'string' 
     ? JSON.parse(payout.bank_details) 
     : payout.bank_details || {};
@@ -562,25 +561,47 @@ const ProcessPayoutModal = ({ payout, transactionRef, onTransactionRefChange, on
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-xl max-w-md w-full">
         <div className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Process Payout</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Approve Payout</h2>
           
           <div className="bg-gray-700 rounded-lg p-4 mb-4">
-            <h3 className="text-sm text-gray-400 mb-2">Transfer Details</h3>
+            <h3 className="text-sm text-gray-400 mb-2">Payout Details</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-400">Amount:</span>
-                <span className="text-white font-bold">₱{Number(payout.amount).toLocaleString()}</span>
+                <span className="text-white font-bold">
+                  {payoutService.formatCurrency(payout.amount)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Fee:</span>
+                <span className="text-white">
+                  {payoutService.formatCurrency(payout.fee || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Net Amount:</span>
+                <span className="text-green-400 font-bold">
+                  {payoutService.formatCurrency(payout.net_amount || payout.amount - (payout.fee || 0))}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Method:</span>
-                <span className="text-white">{payout.payment_method === 'gcash' ? 'GCash' : 'Bank Transfer'}</span>
+                <span className="text-white capitalize">
+                  {payout.payment_method?.replace('_', ' ') || 'Bank Transfer'}
+                </span>
               </div>
               
-              {payout.payment_method === 'gcash' ? (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">GCash:</span>
-                  <span className="text-white">{bankDetails.account_number}</span>
-                </div>
+              {payout.payment_method === 'gcash' || payout.payment_method === 'paymaya' ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Mobile:</span>
+                    <span className="text-white">{bankDetails.mobile_number}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Name:</span>
+                    <span className="text-white">{bankDetails.account_name}</span>
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="flex justify-between">
@@ -593,28 +614,17 @@ const ProcessPayoutModal = ({ payout, transactionRef, onTransactionRefChange, on
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Bank:</span>
-                    <span className="text-white">{bankDetails.bank_name}</span>
+                    <span className="text-white">{bankDetails.bank_name || bankDetails.bank_code}</span>
                   </div>
                 </>
               )}
             </div>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm text-gray-300 mb-2">Transaction Reference</label>
-            <input
-              type="text"
-              value={transactionRef}
-              onChange={(e) => onTransactionRefChange(e.target.value)}
-              placeholder="Enter reference number after transfer"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-            />
-          </div>
-
           <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
             <p className="text-blue-400 text-sm">
               <AlertCircle className="w-4 h-4 inline mr-1" />
-              Transfer the money first, then enter the reference number above
+              After approval, you'll need to manually transfer the money to the host's account
             </p>
           </div>
 
@@ -631,9 +641,9 @@ const ProcessPayoutModal = ({ payout, transactionRef, onTransactionRefChange, on
               onClick={onApprove}
               variant="gradient"
               className="flex-1 bg-green-600 hover:bg-green-700"
-              disabled={!transactionRef || loading}
+              disabled={loading}
             >
-              {loading ? 'Processing...' : 'Approve & Process'}
+              {loading ? 'Processing...' : 'Approve Payout'}
             </Button>
           </div>
         </div>
@@ -669,29 +679,49 @@ const PayoutDetailModal = ({ payout, onClose }) => {
                 </div>
                 <div>
                   <span className="text-gray-400">Amount:</span>
-                  <span className="text-white ml-2 font-semibold">₱{Number(payout.amount).toLocaleString()}</span>
+                  <span className="text-white ml-2 font-semibold">
+                    {payoutService.formatCurrency(payout.amount)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Fee:</span>
+                  <span className="text-white ml-2">
+                    {payoutService.formatCurrency(payout.fee || 0)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Net Amount:</span>
+                  <span className="text-green-400 ml-2 font-semibold">
+                    {payoutService.formatCurrency(payout.net_amount || payout.amount - (payout.fee || 0))}
+                  </span>
                 </div>
                 <div>
                   <span className="text-gray-400">Status:</span>
-                  <span className="ml-2">{payout.status}</span>
+                  <span className="ml-2">{payoutService.getStatusText(payout.status)}</span>
                 </div>
                 <div>
                   <span className="text-gray-400">Payment Method:</span>
-                  <span className="text-white ml-2">
-                    {payout.payment_method === 'gcash' ? 'GCash' : 'Bank Transfer'}
+                  <span className="text-white ml-2 capitalize">
+                    {payout.payment_method?.replace('_', ' ') || 'Bank Transfer'}
                   </span>
                 </div>
               </div>
             </div>
 
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">Bank/GCash Details</h3>
+              <h3 className="text-lg font-medium text-white mb-4">Payment Details</h3>
               <div className="space-y-3">
-                {payout.payment_method === 'gcash' ? (
-                  <div>
-                    <span className="text-gray-400">GCash Number:</span>
-                    <span className="text-white ml-2">{bankDetails.account_number}</span>
-                  </div>
+                {payout.payment_method === 'gcash' || payout.payment_method === 'paymaya' ? (
+                  <>
+                    <div>
+                      <span className="text-gray-400">Mobile Number:</span>
+                      <span className="text-white ml-2">{bankDetails.mobile_number}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Account Name:</span>
+                      <span className="text-white ml-2">{bankDetails.account_name}</span>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div>
@@ -703,10 +733,36 @@ const PayoutDetailModal = ({ payout, onClose }) => {
                       <span className="text-white ml-2">{bankDetails.account_number}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400">Bank Name:</span>
-                      <span className="text-white ml-2">{bankDetails.bank_name}</span>
+                      <span className="text-gray-400">Bank:</span>
+                      <span className="text-white ml-2">{bankDetails.bank_name || bankDetails.bank_code}</span>
                     </div>
                   </>
+                )}
+              </div>
+
+              <h3 className="text-lg font-medium text-white mb-4 mt-6">Timeline</h3>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-gray-400">Requested:</span>
+                  <span className="text-white ml-2">
+                    {new Date(payout.created_at).toLocaleString()}
+                  </span>
+                </div>
+                {payout.updated_at && (
+                  <div>
+                    <span className="text-gray-400">Last Updated:</span>
+                    <span className="text-white ml-2">
+                      {new Date(payout.updated_at).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {payout.completed_at && (
+                  <div>
+                    <span className="text-gray-400">Completed:</span>
+                    <span className="text-white ml-2">
+                      {new Date(payout.completed_at).toLocaleString()}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -716,6 +772,14 @@ const PayoutDetailModal = ({ payout, onClose }) => {
             <div className="mt-6 p-4 bg-red-900/20 border border-red-600 rounded-lg">
               <p className="text-red-400 text-sm">
                 <strong>Rejection Reason:</strong> {payout.rejection_reason}
+              </p>
+            </div>
+          )}
+
+          {payout.proof_url && (
+            <div className="mt-6 p-4 bg-green-900/20 border border-green-600 rounded-lg">
+              <p className="text-green-400 text-sm">
+                <strong>Proof of Transfer:</strong> {payout.proof_url}
               </p>
             </div>
           )}

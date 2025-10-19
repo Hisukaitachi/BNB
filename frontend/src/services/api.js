@@ -118,19 +118,18 @@ export const adminAPI = {
 
 // PAYOUT FUNCTIONS (fixed paths and added missing routes)
 export const payoutAPI = {
-  // Host endpoints
-  requestPayout: (data) => api.post('/payouts/request', data),
-  getMyEarnings: () => api.get('/payouts/host/earnings'), // Fixed path
-  getAvailableBalance: () => api.get('/payouts/balance'),
-  getReceivedPayouts: () => api.get('/payouts/my-received'), // Added this
+  // Host endpoints - UPDATED PATHS
+  requestPayout: (data) => api.post('/payouts/host/request', data),
+  getAvailableBalance: () => api.get('/payouts/host/balance'),
+  getMyEarnings: () => api.get('/payouts/host/earnings'),
+  getReceivedPayouts: () => api.get('/payouts/host/received'),
 
-  // Admin endpoints
-  getAllPayouts: () => api.get('/payouts/all'),
-  approvePayout: (id, data) => api.post(`/payouts/${id}/approve`, data),
-  completePayout: (id, data) => api.post(`/payouts/${id}/complete`, data),
-  rejectPayout: (data) => api.post('/payouts/reject', data),
-  getPayoutStats: () => api.get('/payouts/stats'),
-  releasePayout: (data) => api.post('/payouts/release', data) // Added for admin
+  // Admin endpoints - UPDATED PATHS
+  getAllPayouts: (filters) => api.get('/payouts/admin', { params: filters }),
+  getPayoutStats: () => api.get('/payouts/admin/stats'),
+  approvePayout: (payoutId) => api.post(`/payouts/admin/${payoutId}/approve`),
+  completePayout: (payoutId, proofUrl) => api.post(`/payouts/admin/${payoutId}/complete`, { proof_url: proofUrl }),
+  rejectPayout: (payoutId, reason) => api.post('/payouts/admin/reject', { payout_id: payoutId, reason })
 };
 
 // BOOKING FUNCTIONS (unchanged)
@@ -281,7 +280,10 @@ export const messageAPI = {
     api.get(`/messages/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`),
 
   // NEW: Delete message
-  deleteMessage: (messageId) => api.delete(`/messages/${messageId}`)
+  deleteMessage: (messageId) => api.delete(`/messages/${messageId}`),
+  
+  // NEW: Get unread message count
+  getUnreadCount: () => api.get('/messages/unread-count')
 };
 
 // REVIEWS AND FEEDBACK FUNCTIONS (unchanged)
@@ -290,7 +292,7 @@ export const reviewAPI = {
   createReview: (reviewData) => api.post('/reviews', reviewData),
   
   // Get reviews for listing - FIXED ENDPOINT
-  getListingReviews: (listingId, params = {}) => 
+  getListingReviews: (listingId, params = {}) =>
     api.get(`/reviews/listing/${listingId}`, { params }),
   
   // Get my reviews (written and received)  

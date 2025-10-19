@@ -471,3 +471,22 @@ exports.deleteMessage = catchAsync(async (req, res, next) => {
     throw error;
   }
 });
+
+// Get unread messages count
+exports.getUnreadCount = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+
+  const [result] = await pool.query(
+    `SELECT COUNT(*) as unread_count 
+     FROM messages 
+     WHERE receiver_id = ? AND is_read = 0`,
+    [userId]
+  );
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      unread_count: result[0].unread_count
+    }
+  });
+});

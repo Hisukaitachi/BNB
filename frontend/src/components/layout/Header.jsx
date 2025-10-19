@@ -34,20 +34,124 @@ const Header = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(true);
   
+  // NEW: Unread messages count state
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  
+  // TEMPORARY TEST: Force badge to show (remove after testing)
+  // useEffect(() => {
+  //   setUnreadMessagesCount(5); // Test value
+  // }, []);
+  
   const { user, isAuthenticated, logout, switchRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Load notifications when user is authenticated
+  // Load notifications when user is authenticated (for all roles now)
   useEffect(() => {
-    if (isAuthenticated && user?.role === 'host') {
+    if (isAuthenticated) {
       fetchNotifications();
       
       // Set up periodic refresh for notifications (every 30 seconds)
       const interval = setInterval(fetchNotifications, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, user?.role]);
+  }, [isAuthenticated]);
+
+  // NEW: Fetch unread messages count
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('🔍 Fetching unread messages count...');
+      fetchUnreadMessagesCount();
+      
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchUnreadMessagesCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
+  // Real-time message count updates via Socket.IO
+  useEffect(() => {
+    if (isAuthenticated && window.socket) {
+      // Listen for new messages
+      window.socket.on('receiveMessage', (message) => {
+        console.log('📨 New message received via socket');
+        // Increment unread count
+        setUnreadMessagesCount(prev => prev + 1);
+      });
+
+      // Listen for inbox updates (when messages are marked as read)
+      window.socket.on('updateInbox', () => {
+        console.log('📬 Inbox update event received');
+        fetchUnreadMessagesCount();
+      });
+
+      // Listen for new notifications
+      window.socket.on('newNotification', (notification) => {
+        console.log('🔔 New notification received via socket:', notification);
+        // Increment unread notification count
+        setUnreadCount(prev => prev + 1);
+        // Optionally add the new notification to the list
+        if (notification) {
+          const formattedNotif = {
+            id: notification.id,
+            message: notification.message,
+            type: notification.type,
+            isUnread: true,
+            created_at: notification.created_at,
+            icon: '🔔',
+            title: notification.message?.substring(0, 50) || 'New notification',
+            timeAgo: 'Just now'
+          };
+          setNotifications(prev => [formattedNotif, ...prev]);
+        }
+      });
+
+      return () => {
+        if (window.socket) {
+          window.socket.off('receiveMessage');
+          window.socket.off('updateInbox');
+          window.socket.off('newNotification');
+        }
+      };
+    }
+  }, [isAuthenticated]);
+
+  // Listen for message sent event to refresh badge immediately
+  useEffect(() => {
+    const handleMessageCountUpdate = () => {
+      console.log('✉️ Message sent - refreshing unread count');
+      fetchUnreadMessagesCount();
+    };
+
+    window.addEventListener('messageCountUpdate', handleMessageCountUpdate);
+
+    return () => {
+      window.removeEventListener('messageCountUpdate', handleMessageCountUpdate);
+    };
+  }, []);
+
+  // NEW: Function to fetch unread messages count using MessageService
+  const fetchUnreadMessagesCount = async () => {
+    try {
+      console.log('📨 Fetching unread messages count via MessageService...');
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.log('⚠️ No auth token found');
+        return;
+      }
+      
+      // Use MessageService instead of direct fetch
+      const { default: messageService } = await import('../../services/messageService');
+      const count = await messageService.getUnreadCount();
+      
+      console.log('✅ Unread messages count:', count);
+      setUnreadMessagesCount(count);
+    } catch (error) {
+      console.error('❌ Failed to fetch unread messages count:', error);
+      setUnreadMessagesCount(0);
+    }
+  };
 
   const fetchNotifications = async (page = 1, append = false) => {
     try {
@@ -69,7 +173,13 @@ const Header = () => {
         setNotifications(formattedNotifications);
       }
       
-      setUnreadCount(data.statistics?.unread_count || 0);
+      // Get unread count from API response
+      const unreadCountFromAPI = data.statistics?.totalUnread || 
+                                 data.statistics?.unread_count || 
+                                 data.statistics?.unread || 0;
+      
+      console.log('🔔 Notification unread count:', unreadCountFromAPI);
+      setUnreadCount(unreadCountFromAPI);
       setCurrentPage(page);
       
       const currentPageNum = data.pagination?.current_page || page;
@@ -90,7 +200,7 @@ const Header = () => {
   };
 
   const handleLoadMore = () => {
-    if (!isLoadingMore && hasMoreNotifications && user?.role === 'host') {
+    if (!isLoadingMore && hasMoreNotifications) {
       fetchNotifications(currentPage + 1, true);
     }
   };
@@ -108,25 +218,59 @@ const Header = () => {
 
       let targetPath = '/notifications';
       
-      switch (notification.type) {
-        case 'booking_request':
-        case 'booking_approved':
-        case 'booking_declined':
-        case 'booking_cancelled':
-          targetPath = '/host/bookings';
-          break;
-        case 'message_received':
-          targetPath = '/messages';
-          break;
-        case 'payment_success':
-        case 'payment_failed':
-          targetPath = '/host/earnings';
-          break;
-        case 'review_received':
-          targetPath = '/host/listings';
-          break;
-        default:
-          targetPath = '/host/notifications';
+      // Route based on notification type and user role
+      if (user?.role === 'host') {
+        // Host routing
+        switch (notification.type) {
+          case 'booking_request':
+          case 'booking_approved':
+          case 'booking_declined':
+          case 'booking_cancelled':
+            targetPath = '/host/bookings';
+            break;
+          case 'message_received':
+            targetPath = '/messages';
+            break;
+          case 'payment_success':
+          case 'payment_failed':
+            targetPath = '/host/earnings';
+            break;
+          case 'review_received':
+            targetPath = '/host/listings';
+            break;
+          default:
+            targetPath = '/host/notifications';
+        }
+      } else if (user?.role === 'client') {
+        // Client routing
+        switch (notification.type) {
+          case 'booking_request':
+          case 'booking_approved':
+          case 'booking_declined':
+          case 'booking_cancelled':
+          case 'booking':
+            targetPath = '/my-bookings';
+            break;
+          case 'message_received':
+            targetPath = '/messages';
+            break;
+          case 'payment_success':
+          case 'payment_failed':
+            targetPath = '/my-bookings'; // Or /payments if you have a payments page
+            break;
+          case 'review_received':
+          case 'review':
+            targetPath = '/my-bookings'; // Reviews are usually related to bookings
+            break;
+          case 'listing':
+            targetPath = '/listings';
+            break;
+          default:
+            targetPath = '/notifications';
+        }
+      } else {
+        // Admin or other roles - default routing
+        targetPath = '/notifications';
       }
 
       setIsNotificationMenuOpen(false);
@@ -173,7 +317,12 @@ const Header = () => {
     const baseItems = [
       { label: 'Profile', path: '/profile', icon: User },
       { label: 'Favorites', path: '/favorites', icon: Heart },
-      { label: 'Messages', path: '/messages', icon: MessageSquare },
+      { 
+        label: 'Messages', 
+        path: '/messages', 
+        icon: MessageSquare,
+        badge: unreadMessagesCount // NEW: Add badge count
+      },
     ];
 
     if (user?.role === 'host') {
@@ -194,12 +343,7 @@ const Header = () => {
 
   // Render notification component based on user role
   const renderNotificationComponent = () => {
-    if (user?.role === 'client') {
-      // Use the simple ClientNotificationBell component
-      return <ClientNotificationBell />;
-    }
-
-    // Full notification dropdown for hosts
+    // Show notification bell for ALL authenticated users
     return (
       <div className="relative">
         <button
@@ -208,20 +352,22 @@ const Header = () => {
         >
           <Bell className="w-6 h-6" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-          {unreadCount > 0 && (
-            <div className="absolute inset-0 rounded-full border-2 border-purple-400 animate-ping"></div>
+            <>
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold shadow-lg z-10">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+              <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full animate-ping opacity-75"></div>
+            </>
           )}
         </button>
 
-        {/* Host Notifications Dropdown */}
+        {/* Notifications Dropdown - For ALL users */}
         {isNotificationMenuOpen && (
           <div className="absolute right-0 mt-2 w-80 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
             <div className="px-4 py-2 border-b border-gray-700 flex justify-between items-center">
-              <h3 className="text-sm font-medium text-gray-200">Host Notifications</h3>
+              <h3 className="text-sm font-medium text-gray-200">
+                {user?.role === 'host' ? 'Host Notifications' : 'Notifications'}
+              </h3>
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllAsRead}
@@ -361,6 +507,22 @@ const Header = () => {
                 {/* Role-based Notifications */}
                 {renderNotificationComponent()}
 
+                {/* NEW: Messages Icon with Badge - Desktop */}
+                <Link
+                  to="/messages"
+                  className="hidden md:block relative p-2 rounded-full hover:bg-gray-800 text-gray-300 transition"
+                >
+                  <MessageSquare className="w-6 h-6" />
+                  {unreadMessagesCount > 0 && (
+                    <>
+                      <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold shadow-lg z-10">
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </span>
+                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full animate-ping opacity-75"></div>
+                    </>
+                  )}
+                </Link>
+
                 {/* Profile Menu */}
                 <div className="relative">
                   <button
@@ -433,18 +595,26 @@ const Header = () => {
                         </div>
                       </div>
                       
-                      {/* Rest of the dropdown menu items */}
+                      {/* Rest of the dropdown menu items with badges */}
                       {getUserMenuItems().map((item) => {
                         const Icon = item.icon;
                         return (
                           <Link
                             key={item.path}
                             to={item.path}
-                            className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-gray-700 transition"
+                            className="flex items-center justify-between px-4 py-2 text-gray-300 hover:bg-gray-700 transition"
                             onClick={() => setIsProfileMenuOpen(false)}
                           >
-                            <Icon className="w-4 h-4" />
-                            <span>{item.label}</span>
+                            <div className="flex items-center space-x-2">
+                              <Icon className="w-4 h-4" />
+                              <span>{item.label}</span>
+                            </div>
+                            {/* NEW: Show badge if exists */}
+                            {item.badge && item.badge > 0 && (
+                              <span className="bg-green-500 text-white text-xs rounded-full px-2 py-0.5 font-semibold">
+                                {item.badge > 99 ? '99+' : item.badge}
+                              </span>
+                            )}
                           </Link>
                         );
                       })}
@@ -525,9 +695,28 @@ const Header = () => {
                     <Bell className="w-4 h-4" />
                     <span>Notifications</span>
                   </span>
-                  {user?.role === 'host' && unreadCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                      {unreadCount > 9 ? '9+' : unreadCount}
+                  {unreadCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 font-semibold">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              )}
+
+              {/* NEW: Mobile Messages link with badge */}
+              {isAuthenticated && (
+                <Link
+                  to="/messages"
+                  className="flex items-center justify-between px-4 py-2 text-gray-300 hover:bg-gray-800 rounded-lg"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <span className="flex items-center space-x-2">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Messages</span>
+                  </span>
+                  {unreadMessagesCount > 0 && (
+                    <span className="bg-green-500 text-white text-xs rounded-full px-2 py-0.5 font-semibold">
+                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                     </span>
                   )}
                 </Link>
