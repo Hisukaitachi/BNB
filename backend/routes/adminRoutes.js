@@ -55,14 +55,6 @@ router.delete('/bookings/:bookingId', adminController.cancelBooking);
 router.patch('/bookings/:bookingId/cancel-refund', bookingsController.adminCancelBooking);
 
 // ==========================================
-// REFUND MANAGEMENT
-// ==========================================
-router.get('/refunds', adminController.getAllRefunds);
-router.get('/refunds/:refundId', adminController.getRefundDetails);
-router.patch('/refunds/:refundId/status', adminController.updateRefundStatus);
-router.post('/refunds/manual', adminController.processManualRefund);
-
-// ==========================================
 // REVIEW MANAGEMENT
 // ==========================================
 router.get('/reviews', adminController.getAllReviews);

@@ -1,7 +1,18 @@
-const pool = require('../db');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 
+/**
+ * CREATE REVIEW
+ * Allows users to review completed bookings
+ * Replaced: sp_create_review_safe stored procedure
+ * 
+ * Extensive validation:
+ * - Booking must be completed
+ * - Only participants can review
+ * - One review per booking per user
+ * - Review must be within 30 days of completion
+ * - Profanity filtering
+ */
 exports.createReview = catchAsync(async (req, res, next) => {
   const { booking_id, reviewee_id, rating, comment, type } = req.body;
   const reviewer_id = req.user.id;
@@ -20,14 +31,17 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid reviewee ID is required', 400));
   }
 
+  // Rating must be 1-5
   if (!rating || rating < 1 || rating > 5 || !Number.isInteger(Number(rating))) {
     return next(new AppError('Rating must be an integer between 1 and 5', 400));
   }
 
+  // Comment length validation
   if (!comment || comment.length < 10 || comment.length > 500) {
     return next(new AppError('Comment must be between 10-500 characters long', 400));
   }
 
+  // Type validation
   const validTypes = ['host', 'client', 'listing', 'user'];
   if (!validTypes.includes(type)) {
     return next(new AppError(`Type must be one of: ${validTypes.join(', ')}`, 400));
@@ -38,7 +52,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('You cannot review yourself', 400));
   }
 
-  // Check if booking exists and involves the reviewer
+  // CHECK BOOKING EXISTS AND STATUS
   const [bookingCheck] = await pool.query(`
     SELECT b.*, l.host_id, l.title
     FROM bookings b
@@ -60,7 +74,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('You can only review bookings you participated in', 403));
   }
 
-  // Check booking status - only completed bookings can be reviewed
+  // Check booking status - only completed bookings
   if (booking.status !== 'completed') {
     return next(new AppError('You can only review completed bookings', 400));
   }
@@ -74,7 +88,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('Hosts can only review the client of their booking', 400));
   }
 
-  // Check if review already exists
+  // CHECK IF REVIEW ALREADY EXISTS - replaces check in sp_create_review_safe
   const [existingReview] = await pool.query(
     'SELECT id FROM reviews WHERE booking_id = ? AND reviewer_id = ?',
     [booking_id, reviewer_id]
@@ -84,7 +98,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('You have already reviewed this booking', 400));
   }
 
-  // Check review time limit (e.g., 30 days after booking completion)
+  // CHECK REVIEW TIME LIMIT (30 days after completion)
   const completionDate = new Date(booking.updated_at);
   const now = new Date();
   const daysSinceCompletion = Math.ceil((now - completionDate) / (1000 * 60 * 60 * 24));
@@ -93,7 +107,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('Reviews must be submitted within 30 days of booking completion', 400));
   }
 
-  // Profanity check (basic implementation)
+  // PROFANITY CHECK (basic implementation)
   const profanityWords = ['badword1', 'badword2']; // Add actual words
   const containsProfanity = profanityWords.some(word => 
     comment.toLowerCase().includes(word.toLowerCase())
@@ -104,14 +118,28 @@ exports.createReview = catchAsync(async (req, res, next) => {
   }
 
   try {
+    // INSERT REVIEW - replaces sp_create_review_safe stored procedure
     await pool.query(
-      'CALL sp_create_review_safe(?, ?, ?, ?, ?, ?)',
+      'INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, type, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
       [booking_id, reviewer_id, reviewee_id, rating, comment, type]
     );
 
-    // Update listing average rating if it's a listing review
+    // UPDATE LISTING AVERAGE RATING if it's a listing review
     if (type === 'listing') {
-      await pool.query('CALL sp_update_listing_rating(?)', [booking.listing_id]);
+      // Calculate new average rating - replaces sp_update_listing_rating
+      const [avgResult] = await pool.query(`
+        SELECT AVG(r.rating) as avg_rating
+        FROM reviews r
+        JOIN bookings b ON r.booking_id = b.id
+        WHERE b.listing_id = ? AND r.type = 'listing'
+      `, [booking.listing_id]);
+
+      const avgRating = avgResult[0].avg_rating || 0;
+
+      await pool.query(
+        'UPDATE listings SET average_rating = ? WHERE id = ?',
+        [avgRating, booking.listing_id]
+      );
     }
 
     res.status(201).json({
@@ -138,6 +166,14 @@ exports.createReview = catchAsync(async (req, res, next) => {
   }
 });
 
+/**
+ * GET ALL REVIEWS
+ * Retrieves all reviews with filtering and pagination
+ * 
+ * Supports filtering by:
+ * - rating (1-5)
+ * - type (host/client/listing/user)
+ */
 exports.getAllReviews = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 20, rating, type } = req.query;
   
@@ -163,14 +199,15 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
 
   queryParams.push(parseInt(limit), offset);
 
+  // GET REVIEWS WITH USER INFO
   const [reviews] = await pool.query(`
     SELECT r.*, 
            u1.name AS reviewer_name,
-           u1.profile_picture AS reviewer_profile_picture,  -- ADD THIS
-           u1.role AS reviewer_role,  -- ADD THIS
+           u1.profile_picture AS reviewer_profile_picture,
+           u1.role AS reviewer_role,
            u2.name AS reviewee_name,
-           u2.profile_picture AS reviewee_profile_picture,  -- ADD THIS
-           u2.role AS reviewee_role,  -- ADD THIS
+           u2.profile_picture AS reviewee_profile_picture,
+           u2.role AS reviewee_role,
            b.start_date,
            b.end_date,
            l.title AS listing_title
@@ -184,7 +221,7 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
     LIMIT ? OFFSET ?
   `, queryParams);
 
-  // Get total count
+  // Get total count for pagination
   const [countResult] = await pool.query(`
     SELECT COUNT(*) as total 
     FROM reviews r 
@@ -206,6 +243,16 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * GET REVIEWS FOR LISTING
+ * Retrieves all reviews for a specific listing with statistics
+ * Replaced: sp_get_reviews_for_listing stored procedure
+ * 
+ * Features:
+ * - Rating distribution (5-star breakdown)
+ * - Average rating calculation
+ * - Pagination support
+ */
 exports.getReviewsForListing = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
   const { page = 1, limit = 10, rating } = req.query;
@@ -221,7 +268,11 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   // Check if listing exists
-  const [listingCheck] = await pool.query('SELECT id, title FROM listings WHERE id = ?', [listingId]);
+  const [listingCheck] = await pool.query(
+    'SELECT id, title FROM listings WHERE id = ?', 
+    [listingId]
+  );
+  
   if (!listingCheck.length) {
     return next(new AppError('Listing not found', 404));
   }
@@ -236,11 +287,12 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
 
   queryParams.push(parseInt(limit), offset);
 
+  // GET REVIEWS FOR LISTING - replaces sp_get_reviews_for_listing
   const [rows] = await pool.query(`
     SELECT r.*, 
            u.name AS reviewer_name,
-           u.profile_picture AS reviewer_profile_picture,  -- ADD THIS
-           u.role AS reviewer_role,  -- ADD THIS
+           u.profile_picture AS reviewer_profile_picture,
+           u.role AS reviewer_role,
            b.start_date,
            b.end_date
     FROM reviews r
@@ -251,7 +303,7 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
     LIMIT ? OFFSET ?
   `, queryParams);
 
-  // Get total count and rating distribution
+  // Get total count
   const [countResult] = await pool.query(`
     SELECT COUNT(*) as total 
     FROM reviews r
@@ -259,6 +311,7 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
     WHERE b.listing_id = ? ${ratingFilter}
   `, queryParams.slice(0, -2));
 
+  // GET RATING STATISTICS
   const [ratingStats] = await pool.query(`
     SELECT 
       AVG(r.rating) as average_rating,
@@ -300,6 +353,15 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * GET MY REVIEWS
+ * Retrieves reviews written by and received by the user
+ * Replaced: sp_get_my_reviews stored procedure
+ * 
+ * Returns two separate arrays:
+ * - Reviews written by the user
+ * - Reviews received by the user
+ */
 exports.getMyReviews = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const { page = 1, limit = 20, type = 'all' } = req.query;
@@ -312,12 +374,13 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
 
   let writtenQuery, receivedQuery;
 
+  // GET WRITTEN REVIEWS (reviews by this user)
   if (type === 'written' || type === 'all') {
     writtenQuery = pool.query(`
       SELECT r.*, 
              u.name AS reviewee_name,
-             u.profile_picture AS reviewee_profile_picture,  -- ADD THIS
-             u.role AS reviewee_role,  -- ADD THIS
+             u.profile_picture AS reviewee_profile_picture,
+             u.role AS reviewee_role,
              b.start_date,
              b.end_date,
              l.title AS listing_title
@@ -331,12 +394,13 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
     `, [userId, parseInt(limit), offset]);
   }
 
+  // GET RECEIVED REVIEWS (reviews about this user)
   if (type === 'received' || type === 'all') {
     receivedQuery = pool.query(`
       SELECT r.*, 
              u.name AS reviewer_name,
-             u.profile_picture AS reviewer_profile_picture,  -- ADD THIS
-             u.role AS reviewer_role,  -- ADD THIS
+             u.profile_picture AS reviewer_profile_picture,
+             u.role AS reviewer_role,
              b.start_date,
              b.end_date,
              l.title AS listing_title
@@ -352,6 +416,7 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
 
   const results = {};
 
+  // Execute queries
   if (writtenQuery) {
     const [written] = await writtenQuery;
     results.written = written;
@@ -362,7 +427,7 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
     results.received = received;
   }
 
-  // Get counts and average rating for received reviews
+  // GET COUNTS AND AVERAGE RATING
   const [writtenCount] = await pool.query(
     'SELECT COUNT(*) as total FROM reviews WHERE reviewer_id = ?',
     [userId]
@@ -380,7 +445,7 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
       statistics: {
         totalWritten: writtenCount[0].total,
         totalReceived: receivedStats[0].total,
-        averageRating: parseFloat(receivedStats[0].averageRating || 0)
+        averageRating: parseFloat(receivedStats[0].averageRating || 0).toFixed(2)
       },
       pagination: {
         page: parseInt(page),
@@ -390,6 +455,16 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * DELETE REVIEW
+ * Deletes a review with authorization checks
+ * Replaced: sp_remove_review stored procedure
+ * 
+ * Rules:
+ * - Admins can delete any review
+ * - Users can only delete their own reviews
+ * - Reviews can only be deleted within 7 days (non-admin)
+ */
 exports.deleteReview = catchAsync(async (req, res, next) => {
   const reviewId = req.params.id;
   const userId = req.user.id;
@@ -399,6 +474,7 @@ exports.deleteReview = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid review ID is required', 400));
   }
 
+  // GET REVIEW DETAILS
   const [rows] = await pool.query(`
     SELECT r.*, b.listing_id
     FROM reviews r
@@ -412,12 +488,12 @@ exports.deleteReview = catchAsync(async (req, res, next) => {
 
   const review = rows[0];
 
-  // Authorization check
+  // AUTHORIZATION CHECK
   if (userRole !== 'admin' && review.reviewer_id !== userId) {
     return next(new AppError('You can only delete your own reviews', 403));
   }
 
-  // Check if review is too old to delete (e.g., 7 days)
+  // TIME LIMIT CHECK (7 days for non-admins)
   if (userRole !== 'admin') {
     const reviewDate = new Date(review.created_at);
     const now = new Date();
@@ -428,11 +504,25 @@ exports.deleteReview = catchAsync(async (req, res, next) => {
     }
   }
 
+  // DELETE REVIEW - replaces sp_remove_review stored procedure
   await pool.query('DELETE FROM reviews WHERE id = ?', [reviewId]);
 
-  // Update listing rating if it was a listing review
+  // UPDATE LISTING RATING if it was a listing review
   if (review.type === 'listing' && review.listing_id) {
-    await pool.query('CALL sp_update_listing_rating(?)', [review.listing_id]);
+    // Recalculate average rating
+    const [avgResult] = await pool.query(`
+      SELECT AVG(r.rating) as avg_rating
+      FROM reviews r
+      JOIN bookings b ON r.booking_id = b.id
+      WHERE b.listing_id = ? AND r.type = 'listing'
+    `, [review.listing_id]);
+
+    const avgRating = avgResult[0].avg_rating || 0;
+
+    await pool.query(
+      'UPDATE listings SET average_rating = ? WHERE id = ?',
+      [avgRating, review.listing_id]
+    );
   }
   
   res.status(200).json({
