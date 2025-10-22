@@ -118,6 +118,7 @@ exports.getAllListings = catchAsync(async (req, res, next) => {
   });
 });
 
+// backend/controllers/listingController.js
 exports.getListingById = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
 
@@ -125,36 +126,35 @@ exports.getListingById = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  try {
-    const [result] = await pool.query('CALL sp_get_listing_by_id(?)', [listingId]);
-    const listing = result[0][0];
+  // ✅ Direct query instead of stored procedure
+  const [rows] = await pool.query(`
+    SELECT 
+      l.*,
+      u.name as host_name,
+      u.email as host_email,
+      u.bio as host_bio,
+      u.profile_picture as host_profile_picture,  -- ✅ Includes profile picture
+      u.created_at as host_created_at,
+      COUNT(DISTINCT r.id) as total_reviews,
+      AVG(r.rating) as average_rating
+    FROM listings l
+    LEFT JOIN users u ON l.host_id = u.id
+    LEFT JOIN bookings b ON l.id = b.listing_id
+    LEFT JOIN reviews r ON b.id = r.booking_id AND r.type = 'listing'
+    WHERE l.id = ?
+    GROUP BY l.id
+  `, [listingId]);
 
-    if (!listing) {
-      return next(new AppError('Listing not found', 404));
-    }
+  const listing = rows[0];
 
-    res.status(200).json({
-      status: 'success',
-      data: { listing }
-    });
-
-  } catch (dbError) {
-    if (dbError.code === 'ER_SP_DOES_NOT_EXIST') {
-      // Fallback to direct query
-      const [result] = await pool.query('SELECT * FROM listings WHERE id = ?', [listingId]);
-      const listing = result[0];
-
-      if (!listing) {
-        return next(new AppError('Listing not found', 404));
-      }
-
-      return res.status(200).json({
-        status: 'success',
-        data: { listing }
-      });
-    }
-    throw dbError;
+  if (!listing) {
+    return next(new AppError('Listing not found', 404));
   }
+
+  res.status(200).json({
+    status: 'success',
+    data: { listing }
+  });
 });
 
 exports.getListingsByHost = catchAsync(async (req, res, next) => {

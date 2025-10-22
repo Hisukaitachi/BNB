@@ -113,7 +113,7 @@ const MyRefunds = () => {
               <div>
                 <p className="text-gray-400 text-sm">Total Requested</p>
                 <p className="text-xl sm:text-2xl font-bold text-white">
-                  ₱{statistics.totalAmountPaid.toLocaleString()}
+                  ₱{Number(statistics.totalAmountPaid ?? 0).toLocaleString()}
                 </p>
               </div>
               <div className="bg-blue-500 p-2 sm:p-3 rounded-lg">
@@ -127,7 +127,7 @@ const MyRefunds = () => {
               <div>
                 <p className="text-gray-400 text-sm">Total Refunded</p>
                 <p className="text-xl sm:text-2xl font-bold text-green-400">
-                  ₱{statistics.totalRefunded.toLocaleString()}
+                  ₱{Number(statistics.totalRefunded ?? 0).toLocaleString()}
                 </p>
               </div>
               <div className="bg-green-500 p-2 sm:p-3 rounded-lg">
@@ -141,7 +141,7 @@ const MyRefunds = () => {
               <div>
                 <p className="text-gray-400 text-sm">Deductions</p>
                 <p className="text-xl sm:text-2xl font-bold text-red-400">
-                  ₱{statistics.totalDeductions.toLocaleString()}
+                  ₱{Number(statistics.totalDeductions ?? 0).toLocaleString()}
                 </p>
               </div>
               <div className="bg-red-500 p-2 sm:p-3 rounded-lg">

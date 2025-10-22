@@ -23,22 +23,30 @@ class PayoutService {
     }
   }
 
-  async getAvailableBalance() {
-    try {
-      const response = await payoutAPI.getAvailableBalance();
-      return {
-        success: true,
-        data: response.data.data.balance
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Failed to fetch balance',
-        data: null
-      };
-    }
+async getAvailableBalance() {
+  try {
+    const response = await payoutAPI.getAvailableBalance();
+    
+    // ✅ ADD DETAILED LOGGING
+    console.log('=== GET AVAILABLE BALANCE ===');
+    console.log('Full response:', response);
+    console.log('response.data:', response.data);
+    console.log('response.data.data:', response.data.data);
+    console.log('============================');
+    
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error) {
+    console.error('❌ getAvailableBalance error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Failed to fetch balance',
+      data: null
+    };
   }
-
+}
   async getMyEarnings() {
     try {
       const response = await payoutAPI.getMyEarnings();

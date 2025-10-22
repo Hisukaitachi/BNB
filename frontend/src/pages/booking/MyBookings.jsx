@@ -931,6 +931,7 @@ const CancelModal = ({ booking, onClose, onConfirm, cancelling, hasRefundablePay
 };
 
 // Review Modal Component
+// Review Modal Component - FIXED to submit both host AND listing reviews
 const ReviewModal = ({ booking, onSubmit, onClose }) => {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
@@ -945,6 +946,11 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
 
     try {
       setSubmitting(true);
+      
+      // ✅ FIXED: Submit BOTH a host review AND a listing review
+      // This ensures reviews appear on both the host's profile AND the listing page
+      
+      // 1. Review for the HOST (person)
       await onSubmit({
         booking_id: booking.id,
         reviewee_id: booking.host_id,
@@ -952,6 +958,22 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
         comment,
         type: 'host'
       });
+
+      // 2. Review for the LISTING (property)
+      await onSubmit({
+        booking_id: booking.id,
+        reviewee_id: booking.host_id, // Still need reviewee_id for backend validation
+        rating,
+        comment,
+        type: 'listing' // ✅ This makes the review appear on the listing page
+      });
+
+      alert('✅ Reviews submitted successfully!\n\n📝 Your review has been posted to both the host profile and the listing page.');
+      onClose();
+      
+    } catch (error) {
+      console.error('Review submission error:', error);
+      alert('Failed to submit review: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -968,6 +990,13 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Info Box */}
+          <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3">
+            <p className="text-blue-300 text-xs leading-relaxed">
+              💡 Your review will be posted to both the host's profile and the property listing to help future guests make informed decisions.
+            </p>
+          </div>
+
           {/* Star Rating */}
           <div>
             <label className="block text-sm text-gray-300 mb-2">Rating</label>
@@ -1002,7 +1031,7 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Share your experience about the property, host, cleanliness, location, etc..."
+              placeholder="Share your experience about the property, host, cleanliness, location, amenities, etc..."
               rows={4}
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
               maxLength={500}
@@ -1035,7 +1064,7 @@ const ReviewModal = ({ booking, onSubmit, onClose }) => {
               loading={submitting}
               disabled={comment.length < 10 || submitting}
             >
-              Submit Review
+              {submitting ? 'Submitting...' : 'Submit Review'}
             </Button>
           </div>
         </form>

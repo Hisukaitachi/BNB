@@ -172,7 +172,6 @@ const BookingSidebar = ({
                   onChange={(e) => setBookingData({...bookingData, remainingPaymentMethod: e.target.value})}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="platform">Through Platform (Recommended)</option>
                   <option value="personal">Direct to Host</option>
                 </select>
                 <p className="text-xs text-gray-400 mt-2">

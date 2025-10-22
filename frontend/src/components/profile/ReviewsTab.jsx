@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { RefreshCw, Star, Award } from 'lucide-react';
 import Button from '../ui/Button';
 import UserProfileLink from '../ui/UserProfileLink';
+import Avatar from '../ui/Avatar';
 
 const ReviewsTab = ({ reviewsData, reviewsLoading, loadReviews, user }) => {
   const [reviewFilter, setReviewFilter] = useState('received');
@@ -174,29 +175,38 @@ const ReviewCard = ({ review, reviewFilter, renderStars }) => {
     ? {
         id: review.reviewer_id,
         name: review.reviewer_name,
-        role: review.reviewer_role || 'host'
+        role: review.reviewer_role || 'host',
+        profile_picture: review.reviewer_profile_picture // ✅ ADD THIS
       }
     : {
         id: review.reviewee_id,
         name: review.reviewee_name,
-        role: review.reviewee_role || 'client'
+        role: review.reviewee_role || 'client',
+        profile_picture: review.reviewee_profile_picture // ✅ ADD THIS
       };
 
   return (
     <div className="bg-gray-800 rounded-xl p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 space-y-4 sm:space-y-0">
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
-          {/* Clickable User Profile */}
-          <UserProfileLink
-            userId={userData.id}
-            name={userData.name}
-            role={userData.role}
+        <div className="flex items-start space-x-3 flex-1 min-w-0">
+          {/* ✅ USE AVATAR */}
+          <Avatar 
+            user={{
+              name: userData.name,
+              profile_picture: userData.profile_picture
+            }}
             size="md"
-            showAvatar={true}
-            showRole={false}
             className="flex-shrink-0"
           />
+          
           <div className="min-w-0 flex-1">
+            {/* Clickable name */}
+            <button
+              onClick={() => window.location.href = `/profile/${userData.id}`}
+              className="text-white font-medium hover:text-purple-400 transition-colors text-left"
+            >
+              {userData.name}
+            </button>
             <div className="flex items-center space-x-1 mt-1">
               {renderStars(review.rating)}
             </div>

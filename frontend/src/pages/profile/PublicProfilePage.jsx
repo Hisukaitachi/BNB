@@ -1,8 +1,9 @@
-// src/pages/profile/PublicProfilePage.jsx - Enhanced with listing context in reviews
+// src/pages/profile/PublicProfilePage.jsx - COMPLETE UPDATED VERSION
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, Star, Calendar, MapPin, ArrowLeft, MessageSquare, Award, Home, Clock, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Star, Calendar, MapPin, ArrowLeft, MessageSquare, Award, Home, Clock, ThumbsUp, ThumbsDown } from 'lucide-react';
 import Button from '../../components/ui/Button';
+import Avatar from '../../components/ui/Avatar'; // ✅ IMPORT AVATAR
 import { userAPI } from '../../services/api';
 import reviewService from '../../services/reviewService';
 import { useAuth } from '../../context/AuthContext';
@@ -28,6 +29,7 @@ const PublicProfilePage = () => {
     try {
       setLoading(true);
       const response = await userAPI.getPublicProfile(userId);
+      console.log('📋 Public profile data:', response.data.data.user); // ✅ DEBUG
       setProfileData(response.data.data.user);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load profile');
@@ -40,7 +42,7 @@ const PublicProfilePage = () => {
     try {
       setReviewsLoading(true);
       const reviews = await reviewService.getUserReviews(userId);
-      console.log('Loaded reviews:', reviews);
+      console.log('📋 Loaded reviews:', reviews); // ✅ DEBUG
       setReviewsData(reviews);
     } catch (error) {
       console.error('Failed to load reviews:', error);
@@ -157,57 +159,65 @@ const PublicProfilePage = () => {
   );
 };
 
-// Profile Header Component
-const ProfileHeader = ({ profileData, reviewsData }) => (
-  <div className="bg-gray-800 rounded-xl p-6 mb-6">
-    <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
-      <div className="w-24 h-24 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center flex-shrink-0">
-        <User className="w-12 h-12 text-white" />
-      </div>
-      
-      <div className="flex-1 text-center sm:text-left">
-        <h1 className="text-3xl font-bold text-white mb-2">{profileData.name}</h1>
-        <p className="text-purple-400 font-medium capitalize mb-3">{profileData.role}</p>
+// ✅ UPDATED Profile Header Component with Avatar
+const ProfileHeader = ({ profileData, reviewsData }) => {
+  console.log('👤 ProfileHeader - profileData:', profileData); // ✅ DEBUG
+  console.log('🖼️ Profile picture:', profileData?.profile_picture); // ✅ DEBUG
+  
+  return (
+    <div className="bg-gray-800 rounded-xl p-6 mb-6">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
+        {/* ✅ USE AVATAR COMPONENT */}
+        <Avatar 
+          user={profileData} 
+          size="2xl" 
+          className="flex-shrink-0"
+        />
         
-        {reviewsData.statistics?.averageRating && (
-          <div className="flex items-center justify-center sm:justify-start space-x-2 mb-3">
-            <div className="flex items-center space-x-1">
-              {Array.from({ length: 5 }, (_, index) => (
-                <Star
-                  key={index}
-                  className={`w-5 h-5 ${
-                    index < Math.round(reviewsData.statistics.averageRating)
-                      ? 'text-yellow-400 fill-current'
-                      : 'text-gray-400'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-white font-semibold">
-              {reviewsData.statistics.averageRating.toFixed(1)}
-            </span>
-            <span className="text-gray-400 text-sm">
-              ({reviewsData.statistics.totalReviews} reviews)
-            </span>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-2 sm:space-y-0 sm:space-x-4 text-sm text-gray-400">
-          {profileData.location && (
-            <div className="flex items-center">
-              <MapPin className="w-4 h-4 mr-1" />
-              <span>{profileData.location}</span>
+        <div className="flex-1 text-center sm:text-left">
+          <h1 className="text-3xl font-bold text-white mb-2">{profileData.name}</h1>
+          <p className="text-purple-400 font-medium capitalize mb-3">{profileData.role}</p>
+          
+          {reviewsData.statistics?.averageRating && (
+            <div className="flex items-center justify-center sm:justify-start space-x-2 mb-3">
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <Star
+                    key={index}
+                    className={`w-5 h-5 ${
+                      index < Math.round(reviewsData.statistics.averageRating)
+                        ? 'text-yellow-400 fill-current'
+                        : 'text-gray-400'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-white font-semibold">
+                {reviewsData.statistics.averageRating.toFixed(1)}
+              </span>
+              <span className="text-gray-400 text-sm">
+                ({reviewsData.statistics.totalReviews} reviews)
+              </span>
             </div>
           )}
-          <div className="flex items-center">
-            <Calendar className="w-4 h-4 mr-1" />
-            <span>Member since {new Date(profileData.created_at).getFullYear()}</span>
+
+          <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-2 sm:space-y-0 sm:space-x-4 text-sm text-gray-400">
+            {profileData.location && (
+              <div className="flex items-center">
+                <MapPin className="w-4 h-4 mr-1" />
+                <span>{profileData.location}</span>
+              </div>
+            )}
+            <div className="flex items-center">
+              <Calendar className="w-4 h-4 mr-1" />
+              <span>Member since {new Date(profileData.created_at).getFullYear()}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Profile Details Component
 const ProfileDetails = ({ profileData }) => (
@@ -221,7 +231,7 @@ const ProfileDetails = ({ profileData }) => (
   </div>
 );
 
-// Enhanced Reviews Section Component
+// Reviews Section Component
 const ReviewsSection = ({ reviewsData, reviewsLoading, renderStars, profileData, currentUser }) => (
   <div className="bg-gray-800 rounded-xl p-6">
     <h2 className="text-xl font-semibold text-white mb-6">Reviews</h2>
@@ -259,20 +269,28 @@ const ReviewsSection = ({ reviewsData, reviewsLoading, renderStars, profileData,
   </div>
 );
 
-// Enhanced Individual Review Card with Listing Context
+// ✅ UPDATED Enhanced Review Card with Avatar
 const EnhancedReviewCard = ({ review, renderStars, profileData, currentUser }) => {
   const isViewingAsClient = currentUser?.role === 'client';
   const isViewingAsHost = currentUser?.role === 'host';
   const profileIsHost = profileData?.role === 'host';
+
+  console.log('📝 Review data:', review); // ✅ DEBUG
 
   return (
     <div className="border border-gray-700 rounded-lg p-4 bg-gray-750">
       {/* Review Header with Context */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-indigo-600 rounded-full flex items-center justify-center">
-            <User className="w-5 h-5 text-white" />
-          </div>
+          {/* ✅ USE AVATAR FOR REVIEWER */}
+          <Avatar 
+            user={{
+              name: review.reviewer_name,
+              profile_picture: review.reviewer_profile_picture
+            }}
+            size="md"
+          />
+          
           <div className="flex-1">
             <div className="flex items-center space-x-2 mb-1">
               <p className="text-white font-medium">{review.reviewer_name}</p>
@@ -281,7 +299,7 @@ const EnhancedReviewCard = ({ review, renderStars, profileData, currentUser }) =
               </div>
             </div>
             
-            {/* Listing Context - Show if viewing as client or if profile is host */}
+            {/* Listing Context */}
             {(isViewingAsClient || profileIsHost) && review.listing_title && (
               <div className="flex items-center space-x-2 text-sm text-gray-400 mb-2">
                 <Home className="w-4 h-4" />
@@ -328,86 +346,6 @@ const EnhancedReviewCard = ({ review, renderStars, profileData, currentUser }) =
       {/* Review Content */}
       <p className="text-gray-300 text-sm leading-relaxed mb-3">{review.comment}</p>
 
-      {/* Performance Indicators for Host Reviews (visible to other hosts) */}
-      {isViewingAsHost && profileIsHost && review.performance_metrics && (
-        <div className="bg-gray-800 rounded-lg p-3 mt-3">
-          <h4 className="text-sm font-medium text-gray-300 mb-2">Performance Details:</h4>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            {review.performance_metrics.cleanliness && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">Cleanliness:</span>
-                <div className="flex items-center space-x-1">
-                  {renderStars(review.performance_metrics.cleanliness)}
-                </div>
-              </div>
-            )}
-            {review.performance_metrics.communication && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">Communication:</span>
-                <div className="flex items-center space-x-1">
-                  {renderStars(review.performance_metrics.communication)}
-                </div>
-              </div>
-            )}
-            {review.performance_metrics.check_in && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">Check-in:</span>
-                <div className="flex items-center space-x-1">
-                  {renderStars(review.performance_metrics.check_in)}
-                </div>
-              </div>
-            )}
-            {review.performance_metrics.accuracy && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">Accuracy:</span>
-                <div className="flex items-center space-x-1">
-                  {renderStars(review.performance_metrics.accuracy)}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Guest Behavior Indicators (for host viewing guest profiles) */}
-      {isViewingAsHost && !profileIsHost && review.guest_behavior && (
-        <div className="bg-gray-800 rounded-lg p-3 mt-3">
-          <h4 className="text-sm font-medium text-gray-300 mb-2">Guest Behavior:</h4>
-          <div className="flex flex-wrap gap-2">
-            {review.guest_behavior.respectful && (
-              <div className="flex items-center space-x-1 text-xs">
-                <ThumbsUp className="w-3 h-3 text-green-400" />
-                <span className="text-green-400">Respectful</span>
-              </div>
-            )}
-            {review.guest_behavior.clean && (
-              <div className="flex items-center space-x-1 text-xs">
-                <ThumbsUp className="w-3 h-3 text-green-400" />
-                <span className="text-green-400">Clean</span>
-              </div>
-            )}
-            {review.guest_behavior.followed_rules && (
-              <div className="flex items-center space-x-1 text-xs">
-                <ThumbsUp className="w-3 h-3 text-green-400" />
-                <span className="text-green-400">Followed Rules</span>
-              </div>
-            )}
-            {review.guest_behavior.issues && (
-              <div className="flex items-center space-x-1 text-xs">
-                <ThumbsDown className="w-3 h-3 text-red-400" />
-                <span className="text-red-400">Had Issues</span>
-              </div>
-            )}
-          </div>
-          
-          {review.guest_behavior.notes && (
-            <p className="text-gray-400 text-xs mt-2 italic">
-              Host notes: {review.guest_behavior.notes}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Response Time Indicator */}
       {review.response_time && (
         <div className="flex items-center space-x-2 mt-3 text-xs text-gray-400">
@@ -419,7 +357,7 @@ const EnhancedReviewCard = ({ review, renderStars, profileData, currentUser }) =
   );
 };
 
-// Profile Sidebar Component (unchanged)
+// Profile Sidebar Component
 const ProfileSidebar = ({ profileData, reviewsData, getBadgeText, getBadgeColor, renderStars }) => (
   <div className="space-y-6">
     {/* Verification & Badge */}
@@ -490,13 +428,13 @@ const ProfileSidebar = ({ profileData, reviewsData, getBadgeText, getBadgeColor,
         size="lg" 
         className="w-full"
         onClick={() => {
-            const param = profileData.role === 'host' ? 'host' : 'client';
-            window.open(`/messages?${param}=${profileData.id}`, '_blank');
+          const param = profileData.role === 'host' ? 'host' : 'client';
+          window.open(`/messages?${param}=${profileData.id}`, '_blank');
         }}
-        >
+      >
         <MessageSquare className="w-4 h-4 mr-2" />
         Send Message
-        </Button>
+      </Button>
     </div>
   </div>
 );

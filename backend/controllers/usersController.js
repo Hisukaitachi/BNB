@@ -137,8 +137,9 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Email and password are required', 400));
   }
 
+  // ✅ UPDATED: Added profile_picture to SELECT
   const [users] = await pool.query(
-    'SELECT id, name, email, password, role, is_banned, is_verified, failed_attempts, locked_until FROM users WHERE email = ?',
+    'SELECT id, name, email, password, role, is_banned, is_verified, failed_attempts, locked_until, profile_picture FROM users WHERE email = ?',
     [email]
   );
 
@@ -195,6 +196,7 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     { expiresIn: '7d' }
   );
 
+  // ✅ UPDATED: Added profile_picture to response
   res.status(200).json({
     status: 'success',
     message: 'Login successful',
@@ -205,7 +207,8 @@ exports.loginUser = catchAsync(async (req, res, next) => {
         name: user.name, 
         email: user.email, 
         role: user.role,
-        isVerified: user.is_verified === 1
+        isVerified: user.is_verified === 1,
+        profile_picture: user.profile_picture || null  // ✅ ADDED
       }
     }
   });
@@ -277,6 +280,7 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 exports.getMyProfile = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
 
+  // ✅ Already includes profile_picture - no changes needed
   const [rows] = await pool.query(
     'SELECT id, name, email, role, is_verified, phone, bio, location, profile_picture, created_at FROM users WHERE id = ?',
     [userId]
@@ -614,7 +618,7 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
         role: user.role,
         bio: user.bio || null,
         location: user.location || null,
-        profilePicture: user.profile_picture || null,
+        profile_picture: user.profile_picture || null,  // ✅ CHANGE THIS TO SNAKE_CASE
         isVerified: user.is_verified === 1,
         created_at: user.created_at,
         memberSince: user.created_at

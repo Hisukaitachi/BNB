@@ -41,6 +41,7 @@ const ProfilePictureUpload = ({ user, onUpdateSuccess, className = '' }) => {
     setSelectedFile(file);
   };
 
+// src/components/profile/ProfilePictureUpload.jsx
 const handleUpload = async () => {
   if (!selectedFile) {
     setError('Please select an image first');
@@ -53,20 +54,17 @@ const handleUpload = async () => {
   try {
     const result = await profilePictureService.uploadProfilePicture(selectedFile);
     
-    const updatedUser = {
-      ...user,
-      profile_picture: result.profilePicture
-    };
-
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    
-    // Update AuthContext to reflect in Header immediately
+    // ✅ Update context - this will update everywhere
     if (updateUser) {
       updateUser({ profile_picture: result.profilePicture });
     }
     
+    // Also update parent component
     if (onUpdateSuccess) {
-      onUpdateSuccess(updatedUser);
+      onUpdateSuccess({
+        ...user,
+        profile_picture: result.profilePicture
+      });
     }
 
     handleCancelPreview();
@@ -79,7 +77,6 @@ const handleUpload = async () => {
   }
 };
 
-// Update handleDelete function:
 const handleDelete = async () => {
   if (!user.profile_picture) return;
 
@@ -93,16 +90,13 @@ const handleDelete = async () => {
   try {
     await profilePictureService.deleteProfilePicture();
 
-    const updatedUser = { ...user, profile_picture: null };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    
-    // Update AuthContext to reflect in Header immediately
+    // ✅ Update context - this will update everywhere
     if (updateUser) {
       updateUser({ profile_picture: null });
     }
     
     if (onUpdateSuccess) {
-      onUpdateSuccess(updatedUser);
+      onUpdateSuccess({ ...user, profile_picture: null });
     }
 
     alert('Profile picture deleted successfully!');
@@ -112,6 +106,7 @@ const handleDelete = async () => {
     setIsUploading(false);
   }
 };
+
   const handleCancelPreview = () => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);

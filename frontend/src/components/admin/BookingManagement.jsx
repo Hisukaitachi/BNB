@@ -317,7 +317,7 @@ const BookingManagement = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Booking Management</h1>
           <p className="text-gray-400">
@@ -325,7 +325,7 @@ const BookingManagement = () => {
           </p>
         </div>
         
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => {
               const csvData = 'Booking ID,Property,Client,Host,Check-in,Check-out,Amount,Status\n' +
@@ -357,15 +357,15 @@ const BookingManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-400">Total Bookings</p>
-              <p className="text-2xl font-bold text-white">{totalBookings}</p>
+              <p className="text-2xl font-bold text-white truncate">{totalBookings}</p>
               <p className="text-xs text-gray-500">All time</p>
             </div>
-            <div className="p-3 rounded-full bg-blue-600/20">
+            <div className="p-3 rounded-full bg-blue-600/20 flex-shrink-0">
               <Calendar className="w-6 h-6 text-blue-400" />
             </div>
           </div>
@@ -373,14 +373,14 @@ const BookingManagement = () => {
 
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-400">Pending Review</p>
-              <p className="text-2xl font-bold text-yellow-400">
+              <p className="text-2xl font-bold text-yellow-400 truncate">
                 {statistics.statusDistribution?.pending || 0}
               </p>
               <p className="text-xs text-gray-500">Need attention</p>
             </div>
-            <div className="p-3 rounded-full bg-yellow-600/20">
+            <div className="p-3 rounded-full bg-yellow-600/20 flex-shrink-0">
               <Clock className="w-6 h-6 text-yellow-400" />
             </div>
           </div>
@@ -388,14 +388,14 @@ const BookingManagement = () => {
 
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-400">Approved</p>
-              <p className="text-2xl font-bold text-green-400">
+              <p className="text-2xl font-bold text-green-400 truncate">
                 {(statistics.statusDistribution?.confirmed || 0) + (statistics.statusDistribution?.approved || 0)}
               </p>
               <p className="text-xs text-gray-500">Active bookings</p>
             </div>
-            <div className="p-3 rounded-full bg-green-600/20">
+            <div className="p-3 rounded-full bg-green-600/20 flex-shrink-0">
               <Check className="w-6 h-6 text-green-400" />
             </div>
           </div>
@@ -403,14 +403,17 @@ const BookingManagement = () => {
 
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="min-w-0 flex-1 overflow-hidden">
               <p className="text-sm text-gray-400">Total Revenue</p>
-              <p className="text-2xl font-bold text-purple-400">
-                ₱{bookings.reduce((sum, b) => sum + (b.total_price || 0), 0).toLocaleString()}
+              <p className="text-xl md:text-2xl font-bold text-purple-400 break-all">
+{`₱${(
+  bookings.reduce((sum, b) => sum + (parseFloat(b.total_price) || 0), 0)
+).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+
               </p>
               <p className="text-xs text-gray-500">From bookings</p>
             </div>
-            <div className="p-3 rounded-full bg-purple-600/20">
+            <div className="p-3 rounded-full bg-purple-600/20 flex-shrink-0 ml-2">
               <DollarSign className="w-6 h-6 text-purple-400" />
             </div>
           </div>
@@ -418,8 +421,8 @@ const BookingManagement = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-gray-800 rounded-xl p-4 md:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
@@ -473,23 +476,23 @@ const BookingManagement = () => {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[800px]">
                 <thead className="bg-gray-700">
                   <tr>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Booking Details</th>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Participants</th>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Dates</th>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Status</th>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Amount</th>
-                    <th className="text-left py-3 px-6 text-gray-300 font-medium">Actions</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Booking Details</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Participants</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Dates</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Status</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Amount</th>
+                    <th className="text-left py-3 px-4 md:px-6 text-gray-300 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
                   {bookings.map((booking) => (
                     <tr key={booking.id} className="hover:bg-gray-700/50">
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-4 md:px-6">
                         <div className="flex items-start space-x-3">
-                          <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-600 rounded-lg flex items-center justify-center">
+                          <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Home className="w-6 h-6 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -502,45 +505,45 @@ const BookingManagement = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-4 md:px-6">
                         <div className="space-y-2">
                           <div className="flex items-center space-x-2">
-                            <User className="w-4 h-4 text-blue-400" />
-                            <span className="text-white text-sm">{booking.client_name}</span>
+                            <User className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                            <span className="text-white text-sm truncate">{booking.client_name}</span>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <Home className="w-4 h-4 text-green-400" />
-                            <span className="text-gray-300 text-sm">{booking.host_name}</span>
+                            <Home className="w-4 h-4 text-green-400 flex-shrink-0" />
+                            <span className="text-gray-300 text-sm truncate">{booking.host_name}</span>
                           </div>
                           <div className="text-gray-400 text-xs">
                             {booking.guests || 1} guest{(booking.guests || 1) > 1 ? 's' : ''}
                           </div>
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-4 md:px-6">
                         <div className="text-white text-sm">
-                          <div>Check-in: {new Date(booking.start_date).toLocaleDateString()}</div>
-                          <div>Check-out: {new Date(booking.end_date).toLocaleDateString()}</div>
+                          <div className="whitespace-nowrap">Check-in: {new Date(booking.start_date).toLocaleDateString()}</div>
+                          <div className="whitespace-nowrap">Check-out: {new Date(booking.end_date).toLocaleDateString()}</div>
                         </div>
                         <div className="text-gray-400 text-xs mt-1">
                           {booking.duration_days} days
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-4 md:px-6">
                         <div className="space-y-1">
                           {getStatusBadge(booking.booking_status)}
                           {getPriorityIndicator(booking)}
                         </div>
                       </td>
-                      <td className="py-4 px-6">
-                        <div className="text-white font-semibold">
+                      <td className="py-4 px-4 md:px-6">
+                        <div className="text-white font-semibold whitespace-nowrap">
                           ₱{booking.total_price?.toLocaleString() || '0'}
                         </div>
-                        <div className="text-gray-400 text-xs">
+                        <div className="text-gray-400 text-xs whitespace-nowrap">
                           ₱{Math.round((booking.total_price || 0) * 0.1).toLocaleString()} commission
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-4 md:px-6">
                         <div className="flex items-center space-x-2">
                           <Button
                             size="sm"
@@ -672,18 +675,10 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
                 <h3 className="text-lg font-medium text-white mb-4">Participants</h3>
                 <div className="space-y-4">
                   <div className="p-4 bg-gray-700 rounded-lg">
-                    <h4 className="text-white font-medium mb-2">Client</h4>
-                    <div className="space-y-1">
-                      <div className="text-gray-300">{booking.client_name}</div>
-                      <div className="text-gray-400 text-sm">{booking.client_email || 'Email not available'}</div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-gray-700 rounded-lg">
                     <h4 className="text-white font-medium mb-2">Host</h4>
                     <div className="space-y-1">
                       <div className="text-gray-300">{booking.host_name}</div>
-                      <div className="text-gray-400 text-sm">{booking.host_email || 'Email not available'}</div>
+                      <div className="text-gray-400 text-sm break-words">{booking.host_email || 'Email not available'}</div>
                     </div>
                   </div>
                 </div>
@@ -695,7 +690,7 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
           <div className="mt-6">
             <h3 className="text-lg font-medium text-white mb-4">Financial Details</h3>
             <div className="bg-gray-700 p-4 rounded-lg">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-400">Total Amount:</span>
                   <span className="text-white ml-2 font-semibold">₱{booking.total_price?.toLocaleString() || '0'}</span>
@@ -721,11 +716,11 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-6 flex justify-end space-x-3 pt-4 border-t border-gray-700">
+          <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-700">
             <Button
               onClick={onClose}
               variant="outline"
-              className="border-gray-600 text-gray-300"
+              className="border-gray-600 text-gray-300 w-full sm:w-auto"
             >
               Close
             </Button>
@@ -738,7 +733,7 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
                     onClose();
                   }}
                   variant="outline"
-                  className="border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
+                  className="border-green-500 text-green-400 hover:bg-green-500 hover:text-white w-full sm:w-auto"
                 >
                   <Check className="w-4 h-4 mr-2" />
                   Approve
@@ -749,7 +744,7 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
                     onClose();
                   }}
                   variant="outline"
-                  className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
+                  className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white w-full sm:w-auto"
                 >
                   <X className="w-4 h-4 mr-2" />
                   Reject
@@ -763,7 +758,7 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
                 onClose();
               }}
               variant="outline"
-              className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
+              className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white w-full sm:w-auto"
             >
               Cancel Booking
             </Button>
@@ -774,7 +769,7 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
                 window.location.href = mailto;
               }}
               variant="gradient"
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
             >
               <MessageSquare className="w-4 h-4 mr-2" />
               Contact Client

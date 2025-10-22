@@ -282,9 +282,9 @@ exports.getConversation = catchAsync(async (req, res, next) => {
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  // Verify other user exists
+  // ✅ UPDATED: Add profile_picture
   const [userCheck] = await pool.query(
-    'SELECT id, name FROM users WHERE id = ?', 
+    'SELECT id, name, profile_picture FROM users WHERE id = ?', 
     [otherUserId]
   );
   
@@ -322,7 +322,7 @@ exports.getConversation = catchAsync(async (req, res, next) => {
 
   const totalCount = countResult[0].total;
 
-  // Process messages and parse media files JSON
+  // ✅ THIS SECTION WAS MISSING - Process messages and parse media files JSON
   const processedMessages = messages.reverse().map(msg => {
     let mediaFiles = [];
     if (msg.media_files) {
@@ -346,7 +346,7 @@ exports.getConversation = catchAsync(async (req, res, next) => {
     results: processedMessages.length,
     data: {
       messages: processedMessages,
-      otherUser: userCheck[0],
+      otherUser: userCheck[0],  // ✅ Now includes profile_picture
       pagination: {
         total: totalCount,
         page: parseInt(page),
@@ -378,16 +378,12 @@ exports.getInbox = catchAsync(async (req, res, next) => {
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  // COMPLEX INBOX QUERY - replaces sp_get_inbox stored procedure
-  // This query is complex because it:
-  // 1. Determines the "other user" for each conversation
-  // 2. Gets the last message from each conversation
-  // 3. Calculates unread count
-  // 4. Uses window functions for efficiency
+  // ✅ FIXED QUERY - Corrected GROUP BY
   const [conversations] = await pool.query(`
     SELECT 
       sub.other_user_id,
       sub.other_user_name,
+      sub.other_user_profile_picture,
       sub.last_message,
       sub.has_media,
       sub.media_count,
@@ -401,6 +397,7 @@ exports.getInbox = catchAsync(async (req, res, next) => {
           ELSE m.sender_id
         END AS other_user_id,
         u.name AS other_user_name,
+        u.profile_picture AS other_user_profile_picture,
         CASE 
           WHEN m.media_count > 0 AND m.message IS NOT NULL AND LENGTH(TRIM(m.message)) > 0 
             THEN CONCAT('📎 ', LEFT(m.message, 50))
@@ -436,7 +433,15 @@ exports.getInbox = catchAsync(async (req, res, next) => {
         (msg.sender_id = m.receiver_id AND msg.receiver_id = m.sender_id)
       )
       WHERE m.sender_id = ? OR m.receiver_id = ?
-      GROUP BY other_user_id, m.id, m.message, m.media_count, m.created_at, u.name, m.sender_id
+      GROUP BY 
+        other_user_id, 
+        other_user_name,
+        other_user_profile_picture,
+        m.id, 
+        m.message, 
+        m.media_count, 
+        m.created_at, 
+        m.sender_id
     ) sub
     WHERE sub.rn = 1
     ORDER BY sub.created_at DESC

@@ -2,6 +2,7 @@
 import React from 'react';
 import { Star } from 'lucide-react';
 import Button from '../ui/Button';
+import Avatar from '../ui/Avatar';
 
 const ReviewsSection = ({ reviews = [] }) => {
   if (reviews.length === 0) {
@@ -18,11 +19,13 @@ const ReviewsSection = ({ reviews = [] }) => {
           <div key={review.id} className="p-4 bg-gray-800 rounded-lg">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">
-                    {review.reviewer_name.charAt(0)}
-                  </span>
-                </div>
+                <Avatar 
+                  user={{
+                    name: review.reviewer_name,
+                    profile_picture: review.reviewer_avatar || review.reviewer_profile_picture
+                  }}
+                  size="sm"
+                />
                 <span className="font-medium text-white">{review.reviewer_name}</span>
               </div>
               <div className="flex items-center">

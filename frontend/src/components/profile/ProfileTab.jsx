@@ -97,7 +97,7 @@ const ProfileTab = ({ user, updateProfile }) => {
   const handleProfilePictureUpdate = (updatedUser) => {
     setCurrentUser(updatedUser);
     // Force parent component to refresh user data
-    window.location.reload();
+  
   };
 
   return (

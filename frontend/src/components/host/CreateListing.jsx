@@ -1,5 +1,5 @@
-// frontend/src/components/host/CreateListing.jsx - Multiple Images (3-4) + 1 Video
-import React, { useState } from 'react';
+// frontend/src/components/host/CreateListing.jsx - Updated with Amenities Checkboxes
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -12,25 +12,391 @@ import {
   Video,
   Save,
   Eye,
-  Target
+  Target,
+  Search,
+  Loader,
+  Navigation,
+  Check,
+  Wifi,
+  Car,
+  Tv,
+  Wind,
+  Coffee,
+  Waves,
+  Users,
+  Shield,
+  Sparkles
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Textarea } from '../ui/Input';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Location Picker Component
+// Amenities options with icons
+const AMENITIES_OPTIONS = [
+  { id: 'wifi', label: 'WiFi', icon: <Wifi className="w-4 h-4" /> },
+  { id: 'parking', label: 'Free Parking', icon: <Car className="w-4 h-4" /> },
+  { id: 'pool', label: 'Swimming Pool', icon: <Waves className="w-4 h-4" /> },
+  { id: 'aircon', label: 'Air Conditioning', icon: <Wind className="w-4 h-4" /> },
+  { id: 'tv', label: 'Cable TV', icon: <Tv className="w-4 h-4" /> },
+  { id: 'kitchen', label: 'Kitchen', icon: <Coffee className="w-4 h-4" /> },
+  { id: 'washer', label: 'Washer', icon: '🧺' },
+  { id: 'dryer', label: 'Dryer', icon: '👔' },
+  { id: 'workspace', label: 'Dedicated Workspace', icon: '💼' },
+  { id: 'breakfast', label: 'Breakfast Included', icon: '🍳' },
+  { id: 'gym', label: 'Gym/Fitness Center', icon: '🏋️' },
+  { id: 'hottub', label: 'Hot Tub', icon: '🛁' },
+  { id: 'balcony', label: 'Balcony/Terrace', icon: '🏞️' },
+  { id: 'garden', label: 'Garden View', icon: '🌳' },
+  { id: 'beachfront', label: 'Beachfront', icon: '🏖️' },
+  { id: 'security', label: '24/7 Security', icon: <Shield className="w-4 h-4" /> },
+  { id: 'elevator', label: 'Elevator', icon: '🛗' },
+  { id: 'pets', label: 'Pets Allowed', icon: '🐕' },
+  { id: 'smoking', label: 'Smoking Area', icon: '🚬' },
+  { id: 'events', label: 'Events Allowed', icon: '🎉' }
+];
+
+// Amenities Checkbox Component
+const AmenitiesSelector = ({ selectedAmenities, onChange }) => {
+  const handleToggle = (amenityId) => {
+    if (selectedAmenities.includes(amenityId)) {
+      onChange(selectedAmenities.filter(id => id !== amenityId));
+    } else {
+      onChange([...selectedAmenities, amenityId]);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <label className="block text-sm text-gray-300 mb-3">
+        Select Amenities (Choose all that apply)
+      </label>
+      
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {AMENITIES_OPTIONS.map((amenity) => (
+          <button
+            key={amenity.id}
+            type="button"
+            onClick={() => handleToggle(amenity.id)}
+            className={`
+              flex items-center space-x-2 p-3 rounded-lg border transition-all
+              ${selectedAmenities.includes(amenity.id)
+                ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                : 'bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500'
+              }
+            `}
+          >
+            <div className={`
+              w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0
+              ${selectedAmenities.includes(amenity.id)
+                ? 'bg-purple-600 border-purple-600'
+                : 'border-gray-500'
+              }
+            `}>
+              {selectedAmenities.includes(amenity.id) && (
+                <Check className="w-3 h-3 text-white" />
+              )}
+            </div>
+            <span className="text-sm flex items-center space-x-1.5">
+              {typeof amenity.icon === 'string' ? (
+                <span>{amenity.icon}</span>
+              ) : (
+                amenity.icon
+              )}
+              <span>{amenity.label}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {selectedAmenities.length > 0 && (
+        <div className="mt-4 p-3 bg-green-900/20 border border-green-600 rounded-lg">
+          <p className="text-green-400 text-sm">
+            <Sparkles className="w-4 h-4 inline mr-1" />
+            {selectedAmenities.length} amenities selected
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// [Keep your existing Map Controller and Location Search components as they are]
+const MapController = ({ center, zoom }) => {
+  const map = useMap();
+  
+  React.useEffect(() => {
+    if (center) {
+      map.flyTo(center, zoom || 16, {
+        duration: 1.5
+      });
+    }
+  }, [center, zoom, map]);
+  
+  return null;
+};
+
+const LocationSearch = ({ onLocationFound, onSearch }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimeoutRef = useRef(null);
+
+  React.useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.length > 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchLocation(searchQuery);
+      }, 500);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  const searchLocation = async (query) => {
+    if (!query.trim()) return;
+    
+    setSearching(true);
+    onSearch(true);
+    
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?` + 
+        `format=json&` +
+        `q=${encodeURIComponent(query)}&` +
+        `limit=8&` +
+        `countrycodes=ph&` +
+        `addressdetails=1&` +
+        `extratags=1`
+      );
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        const enhancedResults = data.map(location => ({
+          ...location,
+          displayName: formatDisplayName(location),
+          category: getCategoryIcon(location)
+        }));
+        setSuggestions(enhancedResults);
+        setShowSuggestions(true);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Error searching location:', error);
+      setSuggestions([]);
+    } finally {
+      setSearching(false);
+      onSearch(false);
+    }
+  };
+
+  const formatDisplayName = (location) => {
+    if (location.namedetails?.name) {
+      return location.namedetails.name;
+    }
+    
+    const parts = location.display_name.split(',');
+    if (parts.length > 3) {
+      return parts.slice(0, 3).join(',');
+    }
+    return location.display_name;
+  };
+
+  const getCategoryIcon = (location) => {
+    const type = location.type || location.class;
+    
+    if (type?.includes('mall') || type?.includes('shop')) return '🏬';
+    if (type?.includes('hotel') || type?.includes('resort')) return '🏨';
+    if (type?.includes('beach')) return '🏖️';
+    if (type?.includes('airport')) return '✈️';
+    if (type?.includes('hospital')) return '🏥';
+    if (type?.includes('school') || type?.includes('university')) return '🎓';
+    if (type?.includes('restaurant') || type?.includes('food')) return '🍽️';
+    if (type?.includes('park')) return '🌳';
+    if (location.class === 'tourism') return '🎯';
+    if (location.class === 'building') return '🏢';
+    return '📍';
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      searchLocation(searchQuery);
+    }
+  };
+
+  const selectLocation = (location) => {
+    const lat = parseFloat(location.lat);
+    const lng = parseFloat(location.lon);
+    
+    onLocationFound({
+      lat: Number(lat.toFixed(6)),
+      lng: Number(lng.toFixed(6)),
+      displayName: location.displayName || location.display_name,
+      fullAddress: location.display_name
+    });
+    
+    setSearchQuery(location.displayName || location.display_name);
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
+  const handleInputFocus = () => {
+    if (suggestions.length > 0) {
+      setShowSuggestions(true);
+    }
+  };
+
+  const handleInputBlur = () => {
+    setTimeout(() => {
+      setShowSuggestions(false);
+    }, 200);
+  };
+
+  const popularLocations = [
+    { name: 'Ayala Center Cebu', lat: 10.3181, lng: 123.9054, icon: '🏬' },
+    { name: 'SM City Cebu', lat: 10.3114, lng: 123.9185, icon: '🏬' },
+    { name: 'IT Park Cebu', lat: 10.3279, lng: 123.9056, icon: '🏢' },
+    { name: 'BGC Taguig', lat: 14.5547, lng: 121.0244, icon: '🏙️' },
+    { name: 'Greenbelt Makati', lat: 14.5524, lng: 121.0215, icon: '🏬' },
+    { name: 'Boracay Station 2', lat: 11.9604, lng: 121.9248, icon: '🏖️' },
+    { name: 'Mactan Airport', lat: 10.3074, lng: 123.9794, icon: '✈️' },
+    { name: 'Mall of Asia', lat: 14.5351, lng: 120.9821, icon: '🏬' }
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <form onSubmit={handleSearch} className="relative">
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 z-10" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              placeholder="Search for a place (e.g., Ayala Mall, BGC, Boracay)"
+              className="w-full pl-10 pr-12 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+              autoComplete="off"
+            />
+            {searching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <Loader className="w-5 h-5 animate-spin text-purple-500" />
+              </div>
+            )}
+            {searchQuery && !searching && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSuggestions([]);
+                  setShowSuggestions(false);
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </form>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
+            {suggestions.map((location, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => selectLocation(location)}
+                className="w-full px-4 py-3 text-left hover:bg-gray-700 text-white border-b border-gray-700 last:border-b-0 transition-colors"
+              >
+                <div className="flex items-start space-x-3">
+                  <span className="text-xl mt-0.5">{location.category}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-white">
+                      {location.displayName}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {location.display_name.split(',').slice(1, 3).join(',')}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {location.type?.replace(/_/g, ' ') || location.class}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-sm text-gray-400 mb-2">Popular locations:</p>
+        <div className="flex flex-wrap gap-2">
+          {popularLocations.map((loc) => (
+            <button
+              key={loc.name}
+              type="button"
+              onClick={() => {
+                onLocationFound({
+                  lat: loc.lat,
+                  lng: loc.lng,
+                  displayName: loc.name
+                });
+                                setSearchQuery(loc.name);
+                setShowSuggestions(false);
+              }}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-full transition flex items-center space-x-1"
+            >
+              <span>{loc.icon}</span>
+              <span>{loc.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LocationPicker = ({ onLocationSelect, selectedLocation }) => {
+  const [mapCenter, setMapCenter] = useState([10.3157, 123.8854]);
+  const [mapZoom, setMapZoom] = useState(12);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleLocationSearch = (location) => {
+    setMapCenter([location.lat, location.lng]);
+    setMapZoom(17);
+    onLocationSelect(location);
+  };
+
+  const handleSearchStatus = (searching) => {
+    setIsSearching(searching);
+  };
+
   const LocationMarker = () => {
     useMapEvents({
       click(e) {
         const { lat, lng } = e.latlng;
         onLocationSelect({
           lat: Number(lat.toFixed(6)),
-          lng: Number(lng.toFixed(6))
+          lng: Number(lng.toFixed(6)),
+          displayName: 'Custom Location'
         });
       },
     });
@@ -40,48 +406,148 @@ const LocationPicker = ({ onLocationSelect, selectedLocation }) => {
         position={[selectedLocation.lat, selectedLocation.lng]}
         icon={L.divIcon({
           className: 'custom-location-marker',
-          html: `<div style="
-            width: 30px; 
-            height: 30px; 
-            border-radius: 50%; 
-            background: linear-gradient(135deg, #10b981, #059669); 
-            border: 4px solid white;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <span style="color: white; font-size: 14px; font-weight: bold;">📍</span>
-          </div>`,
-          iconSize: [30, 30],
-          iconAnchor: [15, 15]
+          html: `
+            <div style="position: relative;">
+              <div style="
+                width: 40px; 
+                height: 40px; 
+                background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                border: 3px solid white;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+              "></div>
+              <div style="
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(45deg);
+                width: 12px;
+                height: 12px;
+                background: white;
+                border-radius: 50%;
+              "></div>
+            </div>
+          `,
+          iconSize: [40, 40],
+          iconAnchor: [20, 40],
+          popupAnchor: [0, -40]
         })}
       />
     ) : null;
   };
 
   return (
-    <div className="relative">
-      <MapContainer 
-        center={[10.3157, 123.8854]} // Cebu City default
-        zoom={12} 
-        style={{ height: '400px', width: '100%' }}
-        className="rounded-lg cursor-crosshair"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <LocationMarker />
-      </MapContainer>
-      
-      {/* Instructions overlay */}
-      <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded-lg backdrop-blur-sm">
-        <div className="flex items-center space-x-2">
-          <Target className="w-4 h-4" />
-          <span>Click on the map to set location</span>
+    <div className="space-y-4">
+      <LocationSearch 
+        onLocationFound={handleLocationSearch}
+        onSearch={handleSearchStatus}
+      />
+
+      <div className="relative">
+        <MapContainer 
+          center={mapCenter}
+          zoom={mapZoom}
+          style={{ height: '450px', width: '100%' }}
+          className="rounded-lg"
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <LocationMarker />
+          <MapController center={mapCenter} zoom={mapZoom} />
+        </MapContainer>
+        
+        {isSearching && (
+          <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center z-10">
+            <div className="bg-gray-800 px-4 py-3 rounded-lg flex items-center space-x-3">
+              <Loader className="w-5 h-5 animate-spin text-purple-500" />
+              <span className="text-white">Searching location...</span>
+            </div>
+          </div>
+        )}
+
+        <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded-lg backdrop-blur-sm">
+          <div className="flex items-center space-x-2">
+            <Search className="w-4 h-4" />
+            <span>Search or click on map to set location</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(
+                (position) => {
+                  const { latitude, longitude } = position.coords;
+                  const location = {
+                    lat: Number(latitude.toFixed(6)),
+                    lng: Number(longitude.toFixed(6)),
+                    displayName: 'My Current Location'
+                  };
+                  handleLocationSearch(location);
+                },
+                (error) => {
+                  console.error('Error getting location:', error);
+                  alert('Unable to get your current location. Please search or click on the map.');
+                }
+              );
+            } else {
+              alert('Geolocation is not supported by your browser');
+            }
+          }}
+          className="absolute bottom-4 right-4 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 transition"
+        >
+          <Navigation className="w-4 h-4" />
+          <span>Use My Location</span>
+        </button>
+
+        <div className="absolute bottom-4 left-4 flex flex-col space-y-2">
+          <button
+            type="button"
+            onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))}
+            className="bg-white hover:bg-gray-100 text-gray-700 w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapZoom(prev => Math.max(prev - 1, 5))}
+            className="bg-white hover:bg-gray-100 text-gray-700 w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition"
+          >
+            −
+          </button>
         </div>
       </div>
+
+      {selectedLocation && (
+        <div className="bg-purple-900/20 border border-purple-600 rounded-lg p-4 animate-fadeIn">
+          <h4 className="text-purple-400 font-medium mb-2 flex items-center">
+            <MapPin className="w-4 h-4 mr-2" />
+            Location Selected
+          </h4>
+          <div className="text-purple-300 text-sm space-y-2">
+            {selectedLocation.displayName && (
+              <p className="font-medium text-white">{selectedLocation.displayName}</p>
+            )}
+            {selectedLocation.fullAddress && selectedLocation.fullAddress !== selectedLocation.displayName && (
+              <p className="text-xs text-gray-400">{selectedLocation.fullAddress}</p>
+            )}
+            <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-purple-800">
+              <div>
+                <span className="text-gray-400 text-xs">Latitude:</span>
+                <p className="font-mono">{selectedLocation.lat}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs">Longitude:</span>
+                <p className="font-mono">{selectedLocation.lng}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -96,20 +562,17 @@ const CreateListing = () => {
     max_guests: 1,
     bedrooms: 1,
     bathrooms: 1,
-    amenities: '',
+    amenities: '', // Will be converted from array
     house_rules: '',
-    check_in_time: '15:00',
-    check_out_time: '11:00',
-    minimum_stay: 1,
-    maximum_stay: 30,
     latitude: '',
     longitude: ''
   });
   
-  // UPDATED: Multiple images support
-  const [imageFiles, setImageFiles] = useState([]); // Array for multiple images
+  // UPDATED: Separate state for amenities array
+  const [selectedAmenities, setSelectedAmenities] = useState([]);
+  const [imageFiles, setImageFiles] = useState([]);
   const [videoFile, setVideoFile] = useState(null);
-  const [imagePreviews, setImagePreviews] = useState([]); // Array for multiple previews
+  const [imagePreviews, setImagePreviews] = useState([]);
   const [videoPreview, setVideoPreview] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -123,7 +586,6 @@ const CreateListing = () => {
       [name]: type === 'number' ? Number(value) : value
     }));
     
-    // Clear errors when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -134,10 +596,12 @@ const CreateListing = () => {
     setFormData(prev => ({
       ...prev,
       latitude: location.lat,
-      longitude: location.lng
+      longitude: location.lng,
+      ...(location.displayName && location.displayName !== 'Custom Location' 
+        ? { location: location.displayName }
+        : {})
     }));
     
-    // Clear location-related errors
     setErrors(prev => ({ 
       ...prev, 
       latitude: '', 
@@ -154,40 +618,42 @@ const CreateListing = () => {
       [field]: numValue
     }));
 
-    // Update map marker if both coordinates are valid
     if (field === 'latitude' && formData.longitude && numValue) {
-      setSelectedMapLocation({ lat: numValue, lng: formData.longitude });
+      setSelectedMapLocation({ 
+        lat: numValue, 
+        lng: formData.longitude,
+        displayName: 'Manual Coordinates'
+      });
     } else if (field === 'longitude' && formData.latitude && numValue) {
-      setSelectedMapLocation({ lat: formData.latitude, lng: numValue });
+      setSelectedMapLocation({ 
+        lat: formData.latitude, 
+        lng: numValue,
+        displayName: 'Manual Coordinates'
+      });
     }
   };
 
-  // UPDATED: Handle multiple image uploads
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
-    // Check if adding these files would exceed the limit
     if (imageFiles.length + files.length > 4) {
       setErrors(prev => ({ ...prev, image: 'Maximum 4 images allowed' }));
       return;
     }
-
-    console.log(`📁 ${files.length} image files selected`);
 
     const validFiles = [];
     const newPreviews = [];
     let hasErrors = false;
 
     files.forEach((file, index) => {
-      // Validate each image
       if (!file.type.startsWith('image/')) {
         setErrors(prev => ({ ...prev, image: 'Please select valid image files only' }));
         hasErrors = true;
         return;
       }
 
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      if (file.size > 10 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, image: 'Each image must be less than 10MB' }));
         hasErrors = true;
         return;
@@ -195,7 +661,6 @@ const CreateListing = () => {
 
       validFiles.push(file);
 
-      // Create preview for each valid file
       const reader = new FileReader();
       reader.onload = (e) => {
         newPreviews.push({
@@ -204,11 +669,9 @@ const CreateListing = () => {
           file: file
         });
 
-        // Update state when all previews are ready
         if (newPreviews.length === validFiles.length) {
           setImageFiles(prev => [...prev, ...validFiles]);
           setImagePreviews(prev => [...prev, ...newPreviews]);
-          console.log(`✅ ${validFiles.length} image previews created`);
         }
       };
       reader.readAsDataURL(file);
@@ -218,7 +681,6 @@ const CreateListing = () => {
       setErrors(prev => ({ ...prev, image: '' }));
     }
 
-    // Clear the file input
     e.target.value = '';
   };
 
@@ -226,36 +688,28 @@ const CreateListing = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    console.log('🎥 Video file selected:', file.name, file.type, file.size);
-
-    // Validate video
     const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/avi'];
     if (!allowedVideoTypes.includes(file.type)) {
       setErrors(prev => ({ ...prev, video: 'Please select a valid video file (MP4, MOV, WebM, AVI)' }));
       return;
     }
 
-    if (file.size > 100 * 1024 * 1024) { // 100MB limit for videos
+    if (file.size > 100 * 1024 * 1024) {
       setErrors(prev => ({ ...prev, video: 'Video size must be less than 100MB' }));
       return;
     }
 
-    // CRITICAL: Store the actual File object
     setVideoFile(file);
     setErrors(prev => ({ ...prev, video: '' }));
 
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
-      console.log('✅ Video preview created');
       setVideoPreview(e.target.result);
     };
     reader.readAsDataURL(file);
   };
 
-  // UPDATED: Remove individual image by ID
   const removeImage = (imageId) => {
-    console.log('🗑️ Removing image with ID:', imageId);
     setImageFiles(prev => {
       const imageToRemove = imagePreviews.find(img => img.id === imageId);
       if (imageToRemove) {
@@ -267,25 +721,20 @@ const CreateListing = () => {
     setErrors(prev => ({ ...prev, image: '' }));
   };
 
-  // UPDATED: Remove all images
   const removeAllImages = () => {
-    console.log('🗑️ Removing all images');
     setImageFiles([]);
     setImagePreviews([]);
     setErrors(prev => ({ ...prev, image: '' }));
     
-    // Clear the file input
     const input = document.getElementById('image-upload');
     if (input) input.value = '';
   };
 
   const removeVideo = () => {
-    console.log('🗑️ Removing video');
     setVideoFile(null);
     setVideoPreview(null);
     setErrors(prev => ({ ...prev, video: '' }));
     
-    // Clear the file input
     const input = document.getElementById('video-upload');
     if (input) input.value = '';
   };
@@ -303,7 +752,6 @@ const CreateListing = () => {
     if (formData.bedrooms < 0) newErrors.bedrooms = 'Bedrooms cannot be negative';
     if (formData.bathrooms < 0) newErrors.bathrooms = 'Bathrooms cannot be negative';
 
-    // UPDATED: At least one image is required
     if (imageFiles.length === 0) {
       newErrors.image = 'At least 1 property image is required';
     }
@@ -317,7 +765,6 @@ const CreateListing = () => {
     const formErrors = validateForm();
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
-      // If image is missing, go back to step 4
       if (formErrors.image && currentStep !== 4) {
         setCurrentStep(4);
       }
@@ -326,42 +773,30 @@ const CreateListing = () => {
 
     try {
       setLoading(true);
-      console.log('🚀 Submitting listing with data:', formData);
-      console.log(`📁 ${imageFiles.length} image files:`, imageFiles.map(f => f.name));
-      console.log('🎥 Video file:', videoFile ? `${videoFile.name} (${videoFile.type})` : 'None');
       
-      // UPDATED: Pass multiple images
+      // Convert selected amenities array to comma-separated string
+      const amenitiesString = selectedAmenities
+        .map(id => AMENITIES_OPTIONS.find(a => a.id === id)?.label)
+        .filter(Boolean)
+        .join(', ');
+      
       const submissionData = {
-        // Text fields
         title: formData.title.trim(),
         description: formData.description.trim(),
         location: formData.location.trim(),
-        price_per_night: formData.price_per_night,
+                price_per_night: formData.price_per_night,
         max_guests: formData.max_guests,
         bedrooms: formData.bedrooms,
         bathrooms: formData.bathrooms,
-        amenities: formData.amenities?.trim() || '',
+        amenities: amenitiesString, // Converted from array to string
         house_rules: formData.house_rules?.trim() || '',
-        check_in_time: formData.check_in_time,
-        check_out_time: formData.check_out_time,
-        minimum_stay: formData.minimum_stay,
-        maximum_stay: formData.maximum_stay,
         latitude: formData.latitude,
         longitude: formData.longitude,
-        
-        // UPDATED: Pass array of image File objects
-        images: imageFiles, // Array of File objects
-        video: videoFile    // Single File object or null
+        images: imageFiles,
+        video: videoFile
       };
 
-      console.log('📋 Final submission data structure:', {
-        ...submissionData,
-        images: submissionData.images ? `${submissionData.images.length} image files` : 'None',
-        video: submissionData.video ? `File: ${submissionData.video.name}` : 'None'
-      });
-
       const result = await hostService.createListing(submissionData);
-      console.log('✅ Create listing result:', result);
       
       if (result.success) {
         navigate('/host/listings', { 
@@ -369,8 +804,7 @@ const CreateListing = () => {
         });
       }
     } catch (error) {
-      console.error('❌ Create listing error:', error);
-      console.error('❌ Error response:', error.response?.data);
+      console.error('Create listing error:', error);
       
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
@@ -397,7 +831,6 @@ const CreateListing = () => {
     }
     
     if (currentStep === 4) {
-      // UPDATED: Validate at least one image is uploaded
       if (imageFiles.length === 0) {
         setErrors({ image: 'At least 1 property image is required' });
         return;
@@ -444,12 +877,12 @@ const CreateListing = () => {
                 />
 
                 <Input
-                  label="Location *"
+                  label="Location Name *"
                   name="location"
                   value={formData.location}
                   onChange={handleInputChange}
                   error={errors.location}
-                  placeholder="Cebu City, Philippines"
+                  placeholder="e.g., Cebu City, BGC Taguig, Boracay"
                   className="bg-gray-700 border-gray-600 text-white"
                 />
               </div>
@@ -467,10 +900,9 @@ const CreateListing = () => {
               </h3>
               
               <div className="space-y-6">
-                {/* Interactive Map */}
                 <div>
                   <label className="block text-sm text-gray-300 mb-3">
-                    Click on the map to select your property location *
+                    Search and click on your exact property location *
                   </label>
                   <LocationPicker 
                     onLocationSelect={handleLocationSelect}
@@ -481,21 +913,6 @@ const CreateListing = () => {
                   )}
                 </div>
 
-                {/* Selected Coordinates Display */}
-                {selectedMapLocation && (
-                  <div className="bg-green-900/20 border border-green-600 rounded-lg p-4">
-                    <h4 className="text-green-400 font-medium mb-2 flex items-center">
-                      <Target className="w-4 h-4 mr-2" />
-                      Selected Location
-                    </h4>
-                    <div className="text-green-300 text-sm space-y-1">
-                      <p>Latitude: {selectedMapLocation.lat}</p>
-                      <p>Longitude: {selectedMapLocation.lng}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Manual Input (Optional) */}
                 <div className="border-t border-gray-700 pt-6">
                   <h4 className="text-sm font-medium text-gray-300 mb-4">
                     Or enter coordinates manually (optional)
@@ -524,14 +941,14 @@ const CreateListing = () => {
                   </div>
                 </div>
 
-                {/* Location Tips */}
                 <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4">
                   <h4 className="text-blue-400 font-medium mb-2">📍 Location Tips</h4>
                   <ul className="text-blue-300 text-sm space-y-1">
-                    <li>• Click directly on your property's location on the map</li>
-                    <li>• The more accurate the location, the easier it is for guests to find</li>
-                    <li>• You can zoom in for better precision</li>
-                    <li>• The location will be shown to guests on the listing page</li>
+                    <li>• Type your property address or nearby landmark in the search box</li>
+                    <li>• Click on a search result to navigate there instantly</li>
+                    <li>• Use popular locations for quick navigation</li>
+                    <li>• Click "Use My Location" if you're at the property</li>
+                    <li>• Fine-tune by clicking directly on the map</li>
                   </ul>
                 </div>
               </div>
@@ -545,7 +962,7 @@ const CreateListing = () => {
             <div>
               <h3 className="text-lg font-semibold text-white mb-4">Property Details</h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <Input
                   label="Price per Night *"
                   name="price_per_night"
@@ -590,62 +1007,23 @@ const CreateListing = () => {
                   error={errors.bathrooms}
                   className="bg-gray-700 border-gray-600 text-white"
                 />
+              </div>
 
-                <Input
-                  label="Check-in Time"
-                  name="check_in_time"
-                  type="time"
-                  value={formData.check_in_time}
-                  onChange={handleInputChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-
-                <Input
-                  label="Check-out Time"
-                  name="check_out_time"
-                  type="time"
-                  value={formData.check_out_time}
-                  onChange={handleInputChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-
-                <Input
-                  label="Minimum Stay (nights)"
-                  name="minimum_stay"
-                  type="number"
-                  min="1"
-                  value={formData.minimum_stay}
-                  onChange={handleInputChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-
-                <Input
-                  label="Maximum Stay (nights)"
-                  name="maximum_stay"
-                  type="number"
-                  min="1"
-                  value={formData.maximum_stay}
-                  onChange={handleInputChange}
-                  className="bg-gray-700 border-gray-600 text-white"
+              {/* UPDATED: Amenities Checkboxes */}
+              <div className="mb-6">
+                <AmenitiesSelector 
+                  selectedAmenities={selectedAmenities}
+                  onChange={setSelectedAmenities}
                 />
               </div>
 
+              {/* House Rules */}
               <Textarea
-                label="Amenities"
-                name="amenities"
-                value={formData.amenities}
-                onChange={handleInputChange}
-                placeholder="WiFi, Pool, Air Conditioning, Kitchen, Parking..."
-                rows={3}
-                className="bg-gray-700 border-gray-600 text-white"
-              />
-
-              <Textarea
-                label="House Rules"
+                label="House Rules (Optional)"
                 name="house_rules"
                 value={formData.house_rules}
                 onChange={handleInputChange}
-                placeholder="No smoking, No pets, Check-in after 3 PM..."
+                placeholder="No smoking, No pets, Quiet hours after 10 PM..."
                 rows={3}
                 className="bg-gray-700 border-gray-600 text-white"
               />
@@ -659,13 +1037,11 @@ const CreateListing = () => {
             <div>
               <h3 className="text-lg font-semibold text-white mb-4">Media Upload</h3>
               
-              {/* UPDATED: Multiple Image Upload */}
               <div className="mb-6">
                 <label className="block text-sm text-gray-300 mb-3">
                   Property Images * (1-4 images)
                 </label>
                 
-                {/* Display Current Images */}
                 {imagePreviews.length > 0 && (
                   <div className="mb-4">
                     <div className="flex justify-between items-center mb-3">
@@ -705,7 +1081,6 @@ const CreateListing = () => {
                   </div>
                 )}
 
-                {/* Upload Area */}
                 {imagePreviews.length < 4 && (
                   <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition cursor-pointer">
                     <input
@@ -734,7 +1109,6 @@ const CreateListing = () => {
                 {errors.image && <p className="text-red-400 text-sm mt-2">{errors.image}</p>}
               </div>
 
-              {/* Video Upload */}
               <div className="mb-6">
                 <label className="block text-sm text-gray-300 mb-3">Property Video (Optional)</label>
                 {videoPreview ? (
@@ -774,7 +1148,6 @@ const CreateListing = () => {
                 {errors.video && <p className="text-red-400 text-sm mt-2">{errors.video}</p>}
               </div>
 
-              {/* Upload Tips */}
               <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4">
                 <h4 className="text-blue-400 font-medium mb-2">📸 Photo & Video Tips</h4>
                 <ul className="text-blue-300 text-sm space-y-1">
@@ -786,28 +1159,6 @@ const CreateListing = () => {
                   <li>• Ensure clean and tidy spaces</li>
                 </ul>
               </div>
-
-              {/* File Status Debug Info (Remove in production) */}
-              {(imageFiles.length > 0 || videoFile) && (
-                <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 text-xs">
-                  <h4 className="text-gray-300 font-medium mb-2">Debug: File Status</h4>
-                  <div className="text-gray-400 space-y-1">
-                    {imageFiles.length > 0 && (
-                      <div>
-                        <p className="font-medium">📁 Images ({imageFiles.length}):</p>
-                        {imageFiles.map((file, index) => (
-                          <p key={index} className="ml-4">
-                            {index + 1}. {file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    {videoFile && (
-                      <p>🎥 Video: {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(2)}MB)</p>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         );
@@ -824,8 +1175,7 @@ const CreateListing = () => {
           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
             step === currentStep ? 'bg-purple-600 text-white' :
             step < currentStep ? 'bg-green-600 text-white' :
-            'bg-gray-700 text-gray-400'
-          }`}>
+            'bg-gray-700 text-gray-400'          }`}>
             {step < currentStep ? '✓' : step}
           </div>
           {step < 4 && (
@@ -837,6 +1187,13 @@ const CreateListing = () => {
       ))}
     </div>
   );
+
+  // Helper function to get selected amenities labels for preview
+  const getSelectedAmenitiesLabels = () => {
+    return selectedAmenities
+      .map(id => AMENITIES_OPTIONS.find(a => a.id === id)?.label)
+      .filter(Boolean);
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -921,7 +1278,7 @@ const CreateListing = () => {
       </div>
 
       {/* Preview Section */}
-      {(formData.title || formData.description || imagePreviews.length > 0) && (
+      {(formData.title || formData.description || imagePreviews.length > 0 || selectedAmenities.length > 0) && (
         <div className="mt-8 bg-gray-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
             <Eye className="w-5 h-5 mr-2" />
@@ -962,23 +1319,54 @@ const CreateListing = () => {
                   <span>{formData.location}</span>
                   {selectedMapLocation && (
                     <span className="ml-2 text-xs text-green-400">
-                      ({selectedMapLocation.lat}, {selectedMapLocation.lng})
+                      📍 Location set
                     </span>
                   )}
                 </div>
               )}
               
               {formData.description && (
-                <p className="text-gray-300 text-sm line-clamp-3">
+                <p className="text-gray-300 text-sm line-clamp-3 mb-3">
                   {formData.description}
                 </p>
               )}
               
               {(formData.bedrooms > 0 || formData.bathrooms > 0 || formData.max_guests > 0) && (
-                <div className="flex space-x-4 mt-3 text-sm text-gray-400">
+                <div className="flex flex-wrap gap-3 mb-3 text-sm text-gray-400">
                   {formData.max_guests > 0 && <span>👥 {formData.max_guests} guests</span>}
                   {formData.bedrooms > 0 && <span>🛏️ {formData.bedrooms} bedrooms</span>}
                   {formData.bathrooms > 0 && <span>🚿 {formData.bathrooms} bathrooms</span>}
+                </div>
+              )}
+
+              {/* Display selected amenities in preview */}
+              {selectedAmenities.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-600">
+                  <p className="text-xs text-gray-400 mb-2">Amenities:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {getSelectedAmenitiesLabels().slice(0, 5).map((amenity, index) => (
+                      <span 
+                        key={index}
+                        className="px-2 py-1 bg-gray-600 text-gray-300 text-xs rounded-full"
+                      >
+                        {amenity}
+                      </span>
+                    ))}
+                    {getSelectedAmenitiesLabels().length > 5 && (
+                      <span className="px-2 py-1 bg-gray-600 text-gray-300 text-xs rounded-full">
+                        +{getSelectedAmenitiesLabels().length - 5} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {formData.house_rules && (
+                <div className="mt-3 pt-3 border-t border-gray-600">
+                  <p className="text-xs text-gray-400 mb-1">House Rules:</p>
+                  <p className="text-gray-300 text-sm line-clamp-2">
+                    {formData.house_rules}
+                  </p>
                 </div>
               )}
             </div>

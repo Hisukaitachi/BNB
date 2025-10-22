@@ -17,8 +17,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { notificationService } from '../../services/notificationService';
+import { getImageUrl } from '../../services/api';
 import ClientNotificationBell from '../client/ClientNotificationBell';
 import Button from '../ui/Button';
+import Avatar from '../ui/Avatar';
 
 const Header = () => {
   // Menu states
@@ -324,14 +326,6 @@ const Header = () => {
         badge: unreadMessagesCount // NEW: Add badge count
       },
     ];
-
-    if (user?.role === 'host') {
-      baseItems.splice(1, 0, 
-        { label: 'My Listings', path: '/host/listings', icon: Building2 },
-        { label: 'Analytics', path: '/host/analytics', icon: BarChart3 }
-      );
-    }
-
     if (user?.role === 'client') {
       baseItems.splice(1, 0, 
         { label: 'My Bookings', path: '/my-bookings', icon: Calendar }
@@ -462,21 +456,13 @@ const Header = () => {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <Link
+             <Link
               to="/"
               className={`text-gray-300 hover:text-purple-400 transition ${
                 isActive('/') ? 'text-purple-400 font-medium' : ''
               }`}
             >
               Discover
-            </Link>
-            <Link
-              to="/listings"
-              className={`text-gray-300 hover:text-purple-400 transition ${
-                isActive('/listings') ? 'text-purple-400 font-medium' : ''
-              }`}
-            >
-              Experiences
             </Link>
             {isAuthenticated && user?.role === 'host' && (
               <Link
@@ -529,32 +515,12 @@ const Header = () => {
                     onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                     className="flex items-center space-x-2 p-2 rounded-full hover:bg-gray-800 transition"
                   >
-                    {/* Profile Picture or Avatar */}
-                    {user?.profile_picture ? (
-                      <img
-                        src={user.profile_picture}
-                        alt={user?.name || 'Profile'}
-                        className="w-8 h-8 rounded-full object-cover border-2 border-purple-400"
-                        onError={(e) => {
-                          // Fallback to gradient avatar if image fails to load
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    
-                    {/* Gradient Avatar Fallback */}
-                    <div 
-                      className={`w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-sm ${
-                        user?.profile_picture ? 'hidden' : 'flex'
-                      }`}
-                      style={{ display: user?.profile_picture ? 'none' : 'flex' }}
-                    >
-                      {user?.name ? 
-                        user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
-                        'U'
-                      }
-                    </div>
+                    {/* ✅ Use Avatar component */}
+                    <Avatar 
+                      user={user} 
+                      size="sm" 
+                      className="border-2 border-purple-400"
+                    />
                     
                     <span className="text-sm font-medium text-gray-300 hidden sm:block">
                       {user?.name}
@@ -570,20 +536,12 @@ const Header = () => {
                       {/* Add user info section at the top of dropdown */}
                       <div className="px-4 py-3 border-b border-gray-700">
                         <div className="flex items-center space-x-3">
-                          {user?.profile_picture ? (
-                            <img
-                              src={user.profile_picture}
-                              alt={user?.name || 'Profile'}
-                              className="w-10 h-10 rounded-full object-cover border-2 border-gray-700"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium">
-                              {user?.name ? 
-                                user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
-                                'U'
-                              }
-                            </div>
-                          )}
+                          {/* ✅ Avatar handles both cases automatically */}
+                          <Avatar 
+                            user={user} 
+                            size="md" 
+                            className="border-2 border-gray-700"
+                          />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-white truncate">
                               {user?.name}

@@ -1,7 +1,8 @@
-// src/components/profile/ProfileSidebar.jsx - Fixed version
+// src/components/profile/ProfileSidebar.jsx - UPDATED WITH AVATAR
 import React, { useState } from 'react';
-import { User, RefreshCw, Star } from 'lucide-react';
+import { RefreshCw, Star } from 'lucide-react';
 import Button from '../ui/Button';
+import Avatar from '../ui/Avatar'; // ✅ ADD THIS
 
 const ProfileSidebar = ({ user, reviewsData, switchRole }) => {
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
@@ -26,7 +27,7 @@ const ProfileSidebar = ({ user, reviewsData, switchRole }) => {
 
   return (
     <div className="space-y-6">
-      {/* Profile Card - FIXED */}
+      {/* Profile Card */}
       <ProfileCard user={user} reviewsData={reviewsData} />
 
       {/* Role Switching */}
@@ -45,50 +46,19 @@ const ProfileSidebar = ({ user, reviewsData, switchRole }) => {
   );
 };
 
-// FIXED Profile Card Component - Built-in logic without service
+// ✅ UPDATED Profile Card with Avatar
 const ProfileCard = ({ user, reviewsData }) => {
-  // Built-in avatar logic (no service needed)
-  const getAvatarDisplay = () => {
-    if (user.profile_picture) {
-      return (
-        <img
-          src={user.profile_picture}
-          alt={`${user.name}'s profile picture`}
-          className="w-20 h-20 rounded-full object-cover border-4 border-purple-500/20"
-          onError={(e) => {
-            // Fallback to initials on error
-            const initials = user.name 
-              ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-              : 'U';
-            
-            e.target.style.display = 'none';
-            const placeholder = document.createElement('div');
-            placeholder.className = 'w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-2xl border-4 border-purple-500/20';
-            placeholder.textContent = initials;
-            e.target.parentNode.appendChild(placeholder);
-          }}
-        />
-      );
-    } else {
-      // Default avatar with initials
-      const initials = user.name 
-        ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-        : 'U';
-      
-      return (
-        <div className="w-20 h-20 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center text-white font-medium text-2xl border-4 border-purple-500/20">
-          {initials}
-        </div>
-      );
-    }
-  };
-  
   return (
     <div className="bg-gray-800 rounded-xl p-6">
       <h3 className="text-lg font-semibold text-white mb-4">Account Info</h3>
       <div className="space-y-4">
         <div className="flex items-center justify-center">
-          {getAvatarDisplay()}
+          {/* ✅ USE AVATAR COMPONENT */}
+          <Avatar 
+            user={user} 
+            size="xl" 
+            className="border-4 border-purple-500/20"
+          />
         </div>
         
         <div className="text-center">
@@ -131,7 +101,6 @@ const ProfileCard = ({ user, reviewsData }) => {
   );
 };
 
-// Keep other components unchanged...
 const RoleSwitchCard = ({ user, handleRoleSwitch, isSwitchingRole, errors }) => (
   <div className="bg-gray-800 rounded-xl p-6">
     <h3 className="text-lg font-semibold text-white mb-4">Switch Role</h3>

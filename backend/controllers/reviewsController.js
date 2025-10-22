@@ -1,3 +1,4 @@
+const pool = require('../db');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -37,7 +38,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
   }
 
   // Comment length validation
-  if (!comment || comment.length < 10 || comment.length > 500) {
+  if (!comment || comment.trim().length < 10 || comment.trim().length > 500) {
     return next(new AppError('Comment must be between 10-500 characters long', 400));
   }
 
@@ -51,6 +52,15 @@ exports.createReview = catchAsync(async (req, res, next) => {
   if (reviewer_id === parseInt(reviewee_id)) {
     return next(new AppError('You cannot review yourself', 400));
   }
+
+  // ✅ DEBUG LOG
+  console.log('📝 Review submission:', {
+    reviewer_id,
+    reviewee_id,
+    booking_id,
+    type,
+    rating
+  });
 
   // CHECK BOOKING EXISTS AND STATUS
   const [bookingCheck] = await pool.query(`
@@ -66,9 +76,18 @@ exports.createReview = catchAsync(async (req, res, next) => {
 
   const booking = bookingCheck[0];
 
+  // ✅ DEBUG LOG
+  console.log('🏠 Booking details:', {
+    client_id: booking.client_id,
+    host_id: booking.host_id,
+    status: booking.status
+  });
+
   // Verify reviewer is part of this booking
   const isClient = booking.client_id === reviewer_id;
   const isHost = booking.host_id === reviewer_id;
+
+  console.log('👤 Reviewer role:', { isClient, isHost });
 
   if (!isClient && !isHost) {
     return next(new AppError('You can only review bookings you participated in', 403));
@@ -79,23 +98,38 @@ exports.createReview = catchAsync(async (req, res, next) => {
     return next(new AppError('You can only review completed bookings', 400));
   }
 
-  // Validate reviewee based on reviewer role
-  if (isClient && parseInt(reviewee_id) !== booking.host_id) {
-    return next(new AppError('Clients can only review the host of their booking', 400));
+  // ✅ UPDATED VALIDATION - More flexible for host/client reviews
+  if (type === 'client') {
+    // Reviewing a client - must be the host
+    if (!isHost) {
+      return next(new AppError('Only the host can review the client', 403));
+    }
+    if (parseInt(reviewee_id) !== booking.client_id) {
+      return next(new AppError('Reviewee ID must match the booking client', 400));
+    }
+  } else if (type === 'host') {
+    // Reviewing a host - must be the client
+    if (!isClient) {
+      return next(new AppError('Only the client can review the host', 403));
+    }
+    if (parseInt(reviewee_id) !== booking.host_id) {
+      return next(new AppError('Reviewee ID must match the booking host', 400));
+    }
+  } else if (type === 'listing') {
+    // Reviewing a listing - must be the client
+    if (!isClient) {
+      return next(new AppError('Only clients can review listings', 403));
+    }
   }
 
-  if (isHost && parseInt(reviewee_id) !== booking.client_id) {
-    return next(new AppError('Hosts can only review the client of their booking', 400));
-  }
-
-  // CHECK IF REVIEW ALREADY EXISTS - replaces check in sp_create_review_safe
+  // CHECK IF REVIEW ALREADY EXISTS
   const [existingReview] = await pool.query(
-    'SELECT id FROM reviews WHERE booking_id = ? AND reviewer_id = ?',
-    [booking_id, reviewer_id]
+    'SELECT id FROM reviews WHERE booking_id = ? AND reviewer_id = ? AND type = ?',
+    [booking_id, reviewer_id, type]
   );
 
   if (existingReview.length > 0) {
-    return next(new AppError('You have already reviewed this booking', 400));
+    return next(new AppError(`You have already submitted a ${type} review for this booking`, 400));
   }
 
   // CHECK REVIEW TIME LIMIT (30 days after completion)
@@ -108,7 +142,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
   }
 
   // PROFANITY CHECK (basic implementation)
-  const profanityWords = ['badword1', 'badword2']; // Add actual words
+  const profanityWords = ['badword1', 'badword2'];
   const containsProfanity = profanityWords.some(word => 
     comment.toLowerCase().includes(word.toLowerCase())
   );
@@ -118,15 +152,16 @@ exports.createReview = catchAsync(async (req, res, next) => {
   }
 
   try {
-    // INSERT REVIEW - replaces sp_create_review_safe stored procedure
-    await pool.query(
+    // INSERT REVIEW
+    const [result] = await pool.query(
       'INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, type, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-      [booking_id, reviewer_id, reviewee_id, rating, comment, type]
+      [booking_id, reviewer_id, reviewee_id, rating, comment.trim(), type]
     );
+
+    console.log('✅ Review created successfully:', result.insertId);
 
     // UPDATE LISTING AVERAGE RATING if it's a listing review
     if (type === 'listing') {
-      // Calculate new average rating - replaces sp_update_listing_rating
       const [avgResult] = await pool.query(`
         SELECT AVG(r.rating) as avg_rating
         FROM reviews r
@@ -146,11 +181,9 @@ exports.createReview = catchAsync(async (req, res, next) => {
       status: 'success',
       message: 'Review created successfully',
       data: {
-        booking: {
-          id: booking_id,
-          title: booking.title
-        },
         review: {
+          id: result.insertId,
+          booking_id: booking_id,
           rating: parseInt(rating),
           type,
           reviewerRole: isClient ? 'client' : 'host',
@@ -159,9 +192,7 @@ exports.createReview = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    if (error.message && error.message.includes('already reviewed')) {
-      return next(new AppError('You have already reviewed this booking', 409));
-    }
+    console.error('❌ Review creation error:', error);
     throw error;
   }
 });
@@ -248,6 +279,8 @@ exports.getAllReviews = catchAsync(async (req, res, next) => {
  * Retrieves all reviews for a specific listing with statistics
  * Replaced: sp_get_reviews_for_listing stored procedure
  * 
+ * ✅ FIXED: Only shows reviews of type 'listing', not 'client' or 'host' reviews
+ * 
  * Features:
  * - Rating distribution (5-star breakdown)
  * - Average rating calculation
@@ -287,7 +320,8 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
 
   queryParams.push(parseInt(limit), offset);
 
-  // GET REVIEWS FOR LISTING - replaces sp_get_reviews_for_listing
+  // ✅ FIXED: Only get reviews where type = 'listing'
+  // This prevents client/host reviews from showing on the listing page
   const [rows] = await pool.query(`
     SELECT r.*, 
            u.name AS reviewer_name,
@@ -298,20 +332,24 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
     FROM reviews r
     JOIN users u ON u.id = r.reviewer_id
     JOIN bookings b ON r.booking_id = b.id
-    WHERE b.listing_id = ? ${ratingFilter}
+    WHERE b.listing_id = ? 
+      AND r.type = 'listing'
+      ${ratingFilter}
     ORDER BY r.created_at DESC
     LIMIT ? OFFSET ?
   `, queryParams);
 
-  // Get total count
+  // Get total count - also filter by type = 'listing'
   const [countResult] = await pool.query(`
     SELECT COUNT(*) as total 
     FROM reviews r
     JOIN bookings b ON r.booking_id = b.id
-    WHERE b.listing_id = ? ${ratingFilter}
+    WHERE b.listing_id = ? 
+      AND r.type = 'listing'
+      ${ratingFilter}
   `, queryParams.slice(0, -2));
 
-  // GET RATING STATISTICS
+  // ✅ FIXED: Rating statistics only for listing reviews
   const [ratingStats] = await pool.query(`
     SELECT 
       AVG(r.rating) as average_rating,
@@ -323,7 +361,7 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
       SUM(CASE WHEN r.rating = 1 THEN 1 ELSE 0 END) as one_star
     FROM reviews r
     JOIN bookings b ON r.booking_id = b.id
-    WHERE b.listing_id = ?
+    WHERE b.listing_id = ? AND r.type = 'listing'
   `, [listingId]);
   
   res.status(200).json({
@@ -333,7 +371,7 @@ exports.getReviewsForListing = catchAsync(async (req, res, next) => {
       listing: listingCheck[0],
       reviews: rows,
       statistics: {
-        averageRating: parseFloat(ratingStats[0].average_rating || 0).toFixed(2),
+        averageRating: parseFloat(ratingStats[0].average_rating || 0),
         totalReviews: ratingStats[0].total_reviews,
         distribution: {
           5: ratingStats[0].five_star,
@@ -445,7 +483,7 @@ exports.getMyReviews = catchAsync(async (req, res, next) => {
       statistics: {
         totalWritten: writtenCount[0].total,
         totalReceived: receivedStats[0].total,
-        averageRating: parseFloat(receivedStats[0].averageRating || 0).toFixed(2)
+        averageRating: parseFloat(receivedStats[0].averageRating || 0)
       },
       pagination: {
         page: parseInt(page),

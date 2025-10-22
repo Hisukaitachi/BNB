@@ -2,17 +2,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { 
-  Send, Phone, Video, Paperclip, Image, X, User, Search, 
-  MoreVertical, ArrowLeft, Smile, Check, CheckCheck, 
-  Clock, MessageCircle, Users, Settings, Play, Download,
+  Send, Paperclip, Image, X, User, Search, 
+  ArrowLeft, Smile, Check, CheckCheck, 
+  Clock, MessageCircle, Settings, Play, Download,
   FileText, Trash2, Copy
 } from 'lucide-react';
 import messageService from '../../services/messageService';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/AppContext';
-import { messageAPI } from '../../services/api';
+import { messageAPI, getImageUrl } from '../../services/api';
 import Button from '../../components/ui/Button';
-import CallModal from '../../components/messaging/CallModal';
+import Avatar from '../../components/ui/Avatar';
 
 // Simple Emoji Picker Component
 const EmojiPicker = ({ isOpen, onEmojiSelect, onClose }) => {
@@ -204,10 +204,6 @@ const MessagesPage = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, position: null, message: null });
-  
-  // Call modal state
-  const [showCallModal, setShowCallModal] = useState(false);
-  const [currentCall, setCurrentCall] = useState(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -229,27 +225,27 @@ const MessagesPage = () => {
   }, [contextMenu.visible, showEmojiPicker]);
 
   // Initialize socket service and handle URL params
-useEffect(() => {
-  if (user && !socket) {
-    connectSocket(user.id);
-  }
+  useEffect(() => {
+    if (user && !socket) {
+      connectSocket(user.id);
+    }
 
-  if (socket) {
-    messageService.setSocket(socket);
-  }
+    if (socket) {
+      messageService.setSocket(socket);
+    }
 
-  loadConversations();
-  
-  // Check for both host and client parameters
-  const hostId = searchParams.get('host');
-  const clientId = searchParams.get('client');
-  const targetUserId = hostId || clientId; // Use whichever one exists
-  const initialMessage = searchParams.get('message');
-  
-  if (targetUserId && user) {
-    handleDirectUserMessage(parseInt(targetUserId), initialMessage);
-  }
-}, [socket, user, searchParams]);
+    loadConversations();
+    
+    // Check for both host and client parameters
+    const hostId = searchParams.get('host');
+    const clientId = searchParams.get('client');
+    const targetUserId = hostId || clientId; // Use whichever one exists
+    const initialMessage = searchParams.get('message');
+    
+    if (targetUserId && user) {
+      handleDirectUserMessage(parseInt(targetUserId), initialMessage);
+    }
+  }, [socket, user, searchParams]);
 
   // Socket listeners
   useEffect(() => {
@@ -406,7 +402,7 @@ useEffect(() => {
 
     const maxTotalSize = 200 * 1024 * 1024;
     if (totalSize > maxTotalSize) {
-      alert(`Total file size cannot exceed 200MB. Current: ${(totalSize / (1024 * 1024)).toFixed(2)}MB`);
+            alert(`Total file size cannot exceed 200MB. Current: ${(totalSize / (1024 * 1024)).toFixed(2)}MB`);
       return;
     }
 
@@ -507,54 +503,6 @@ useEffect(() => {
     }
   };
 
-  const initiateCall = async (callType) => {
-  if (!activeConversation) {
-    alert('Please select a conversation first');
-    return;
-  }
-
-  try {
-    // Check for media permissions first
-    const constraints = {
-      video: callType === 'video',
-      audio: true
-    };
-
-    await navigator.mediaDevices.getUserMedia(constraints);
-    
-    // Set up call state
-    setCurrentCall({
-      type: callType,
-      isIncoming: false,
-      participantName: activeConversation.name,
-      participantId: activeConversation.id
-    });
-    
-    setShowCallModal(true);
-    
-    // Notify the other user via socket
-    if (socket) {
-      socket.emit('incoming-call', {
-        to: activeConversation.id,
-        from: user.id,
-        callerName: user.name,
-        callType
-      });
-    }
-
-  } catch (error) {
-    console.error('Call initiation error:', error);
-    
-    if (error.name === 'NotAllowedError') {
-      alert('Camera/microphone access denied. Please enable permissions and try again.');
-    } else if (error.name === 'NotFoundError') {
-      alert('No camera/microphone found. Please connect a device and try again.');
-    } else {
-      alert('Failed to start call. Please check your camera/microphone settings.');
-    }
-  }
-};
-
   const getMessageStatus = (message) => {
     if (message.isSender) {
       if (message.is_read) {
@@ -571,41 +519,53 @@ useEffect(() => {
     return (
       <div className="mt-2 space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          {mediaFiles.map((media, index) => (
-            <div key={index} className="relative group">
-              {media.type === 'image' ? (
-                <img
-                  src={media.url}
-                  alt={media.originalName}
-                  className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
-                  onClick={() => window.open(media.url, '_blank')}
-                />
-              ) : media.type === 'video' ? (
-                <div className="relative">
-                  <video
-                    src={media.url}
-                    className="w-full h-32 object-cover rounded-lg"
-                    controls
+          {mediaFiles.map((media, index) => {
+            // ✅ Convert relative path to full URL
+            const fullMediaUrl = getImageUrl(media.url);
+            
+            return (
+              <div key={index} className="relative group">
+                {media.type === 'image' ? (
+                  <img
+                    src={fullMediaUrl}  // ✅ Use full URL
+                    alt={media.originalName}
+                    className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
+                    onClick={() => window.open(fullMediaUrl, '_blank')}  // ✅ Use full URL
+                    onError={(e) => {
+                      console.error('Image load error:', fullMediaUrl);
+                      e.target.src = 'https://via.placeholder.com/150?text=Image+Not+Found';
+                    }}
                   />
-                  <Play className="absolute inset-0 m-auto w-8 h-8 text-white opacity-80 pointer-events-none" />
-                </div>
-              ) : (
-                <div className="w-full h-32 bg-gray-600 rounded-lg flex items-center justify-center">
-                  <div className="text-center">
-                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-xs text-gray-300 truncate px-2">{media.originalName}</p>
+                ) : media.type === 'video' ? (
+                  <div className="relative">
+                    <video
+                      src={fullMediaUrl}  // ✅ Use full URL
+                      className="w-full h-32 object-cover rounded-lg"
+                      controls
+                      onError={(e) => {
+                        console.error('Video load error:', fullMediaUrl);
+                      }}
+                    />
+                    <Play className="absolute inset-0 m-auto w-8 h-8 text-white opacity-80 pointer-events-none" />
                   </div>
-                </div>
-              )}
-              
-              <button
-                onClick={() => window.open(media.url, '_blank')}
-                className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+                ) : (
+                  <div className="w-full h-32 bg-gray-600 rounded-lg flex items-center justify-center">
+                    <div className="text-center">
+                      <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-xs text-gray-300 truncate px-2">{media.originalName}</p>
+                    </div>
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => window.open(fullMediaUrl, '_blank')}  // ✅ Use full URL
+                  className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -614,32 +574,6 @@ useEffect(() => {
   const filteredConversations = conversations.filter(conv =>
     conv.other_user_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  useEffect(() => {
-  if (socket) {
-    const handleIncomingCall = (callData) => {
-      // Show incoming call notification
-      if (window.confirm(`Incoming ${callData.callType} call from ${callData.callerName}. Accept?`)) {
-        setCurrentCall({
-          type: callData.callType,
-          isIncoming: true,
-          participantName: callData.callerName,
-          participantId: callData.from
-        });
-        setShowCallModal(true);
-      } else {
-        // Decline the call
-        socket.emit('call-declined', { to: callData.from });
-      }
-    };
-
-    socket.on('incoming-call', handleIncomingCall);
-    
-    return () => {
-      socket.off('incoming-call', handleIncomingCall);
-    };
-  }
-}, [socket, user]);
 
   if (loading) {
     return (
@@ -660,20 +594,12 @@ useEffect(() => {
           <div className="p-4 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-xl font-semibold text-white">Messages</h1>
-              <div className="flex space-x-2">
-                <button 
-                  onClick={() => setShowSearchModal(true)}
-                  className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
-                >
-                  <Search className="w-5 h-5" />
-                </button>
-                <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300">
-                  <Users className="w-5 h-5" />
-                </button>
-                <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300">
-                  <MoreVertical className="w-5 h-5" />
-                </button>
-              </div>
+              <button 
+                onClick={() => setShowSearchModal(true)}
+                className="p-2 rounded-lg hover:bg-gray-700 text-gray-300"
+              >
+                <Search className="w-5 h-5" />
+              </button>
             </div>
             
             {/* Search */}
@@ -712,11 +638,15 @@ useEffect(() => {
                 >
                   <div className="flex items-center space-x-3">
                     <div className="relative">
-                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
-                        <span className="text-white font-semibold text-lg">
-                          {conv.other_user_name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      {/* ✅ USE AVATAR */}
+                      <Avatar 
+                        user={{
+                          name: conv.other_user_name,
+                          profile_picture: conv.other_user_profile_picture  // ✅ Make sure backend returns this
+                        }}
+                        size="md"
+                        className="shadow-lg"
+                      />
                       <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></div>
                     </div>
                     
@@ -758,12 +688,14 @@ useEffect(() => {
                   >
                     <ArrowLeft className="w-5 h-5" />
                   </button>
-                  
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
-                    <span className="text-white font-semibold">
-                      {activeConversation.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <Avatar 
+                    user={{
+                      name: activeConversation.name,
+                      profile_picture: activeConversation.profile_picture
+                    }}
+                    size="md"
+                    className="shadow-lg"
+                  />
                   
                   <div>
                     <h3 className="text-white font-medium">{activeConversation.name}</h3>
@@ -780,24 +712,6 @@ useEffect(() => {
                       <p className="text-sm text-green-400">online</p>
                     )}
                   </div>
-                </div>
-                
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => initiateCall('audio')}
-                    className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors"
-                  >
-                    <Phone className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => initiateCall('video')}
-                    className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors"
-                  >
-                    <Video className="w-5 h-5" />
-                  </button>
-                  <button className="p-2 rounded-lg hover:bg-gray-700 text-gray-300 transition-colors">
-                    <MoreVertical className="w-5 h-5" />
-                  </button>
                 </div>
               </div>
 
@@ -820,11 +734,14 @@ useEffect(() => {
                     >
                       <div className="flex items-end space-x-2 max-w-[70%]">
                         {!message.isSender && (
-                          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-sm">
-                            <span className="text-white text-xs font-semibold">
-                              {activeConversation.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          <Avatar 
+                            user={{
+                              name: activeConversation.name,
+                              profile_picture: activeConversation.profile_picture
+                            }}
+                            size="sm"
+                            className="shadow-sm"
+                          />
                         )}
                         
                         <div
@@ -842,7 +759,7 @@ useEffect(() => {
                           
                           <div className="flex items-center justify-end mt-1 space-x-1">
                             <span className={`text-xs opacity-70 ${message.isSender ? 'text-purple-100' : 'text-gray-400'}`}>
-                              {message.timeFormatted}
+                                                            {message.timeFormatted}
                             </span>
                             {getMessageStatus(message)}
                           </div>
@@ -1007,20 +924,6 @@ useEffect(() => {
       </div>
 
       {/* Modals */}
-      {showCallModal && currentCall && (
-  <CallModal
-    isOpen={showCallModal}
-    onClose={() => {
-      setShowCallModal(false);
-      setCurrentCall(null);
-    }}
-    callType={currentCall.type}
-    isIncoming={currentCall.isIncoming}
-    callerName={currentCall.participantName}
-    receiverId={currentCall.participantId}
-    socket={socket}
-  />
-)}
       <MessageSearchModal 
         isOpen={showSearchModal} 
         onClose={() => setShowSearchModal(false)} 

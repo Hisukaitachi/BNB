@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - COMPLETE VERSION WITH updateUser
+// src/context/AuthContext.jsx - FIXED VERSION
 import React from 'react'
 import { createContext, useContext, useReducer, useEffect } from 'react';
 import authService from '../services/authService';
@@ -97,20 +97,27 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  // Regular login
+  // Regular login - FIXED to return complete response
   const login = async (credentials) => {
     dispatch({ type: 'LOGIN_START' });
     try {
       const response = await authService.login(credentials);
+      
+      // Log for debugging
+      console.log('Login response:', response);
+      
       dispatch({
         type: 'LOGIN_SUCCESS',
         payload: response.data
       });
+      
+      // Return the complete response so LoginPage can access response.data.user.role
       return response;
     } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed';
       dispatch({
         type: 'LOGIN_FAILURE',
-        payload: error.message
+        payload: errorMessage
       });
       throw error;
     }
@@ -159,9 +166,10 @@ export const AuthProvider = ({ children }) => {
       const response = await authService.register(userData);
       return response;
     } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
       dispatch({
         type: 'LOGIN_FAILURE',
-        payload: error.message
+        payload: errorMessage
       });
       throw error;
     }
@@ -219,7 +227,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // NEW: Simple update user function for immediate updates (like profile pictures)
+  // Simple update user function for immediate updates (like profile pictures)
   const updateUser = (updates) => {
     const currentUser = state.user;
     const updatedUser = { ...currentUser, ...updates };
@@ -250,7 +258,7 @@ export const AuthProvider = ({ children }) => {
     googleLogin,
     switchRole,
     updateProfile,
-    updateUser,  // NEW: Added updateUser to the context value
+    updateUser,
     logout,
     clearError
   };

@@ -1,22 +1,29 @@
-// src/components/listings/HostInfo.jsx
+// src/components/listings/HostInfo.jsx - UPDATED WITH AVATAR
 import React from 'react';
-import { User, MessageSquare, AlertCircle } from 'lucide-react';
+import { MessageSquare, AlertCircle } from 'lucide-react';
 import Button from '../ui/Button';
 import UserProfileLink from '../ui/UserProfileLink';
+import Avatar from '../ui/Avatar';
 
 const HostInfo = ({ listing, isAuthenticated, onContactHost, onReportHost }) => {
   return (
     <div className="mb-8 p-6 bg-gray-800 rounded-xl">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-600 rounded-full flex items-center justify-center">
-            <User className="w-6 h-6 text-white" />
-          </div>
+          {/* ✅ Replace the gradient circle with Avatar */}
+          <Avatar 
+            user={{
+              name: listing.host_name,
+              profile_picture: listing.host_profile_picture
+            }}
+            size="xl"
+          />
           <div>
             <UserProfileLink
               userId={listing.host_id}
               name={`Hosted by ${listing.host_name}`}
               role="host"
+              profilePicture={listing.host_profile_picture}  // ✅ Pass profile picture
               size="md"
               showAvatar={false}
               className="text-white hover:text-purple-400"

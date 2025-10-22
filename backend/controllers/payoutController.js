@@ -135,10 +135,11 @@ exports.requestPayout = catchAsync(async (req, res, next) => {
 });
 
 // ✅ UPDATED: Host: Get available balance for payout
+// ✅ UPDATED: Host: Get available balance for payout
 exports.getAvailableBalance = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
 
-  // ✅ FIXED: Get total earned from SUCCEEDED payments, EXCLUDING cancelled/rejected bookings
+  // Get total earned from SUCCEEDED payments, EXCLUDING cancelled/rejected bookings
   const [earningsData] = await pool.query(`
     SELECT COALESCE(SUM(p.host_earnings), 0) as total_earned
     FROM payments p
@@ -148,9 +149,9 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
       AND b.status NOT IN ('cancelled', 'rejected')
   `, [hostId]);
 
-  const totalEarned = earningsData[0]?.total_earned || 0;
+  const totalEarned = parseFloat(earningsData[0]?.total_earned) || 0; // ✅ Add parseFloat
 
-  // Get pending payouts (sum of amounts)
+  // Get pending payouts
   const [pendingData] = await pool.query(`
     SELECT COALESCE(SUM(amount), 0) as pending_amount
     FROM payouts
@@ -158,9 +159,9 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
       AND status IN ('pending', 'approved', 'processing')
   `, [hostId]);
 
-  const pendingPayout = pendingData[0]?.pending_amount || 0;
+  const pendingPayout = parseFloat(pendingData[0]?.pending_amount) || 0; // ✅ Add parseFloat
 
-  // Get completed payouts (sum of amounts)
+  // Get completed payouts
   const [completedData] = await pool.query(`
     SELECT COALESCE(SUM(amount), 0) as withdrawn_amount
     FROM payouts
@@ -168,9 +169,9 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
       AND status = 'completed'
   `, [hostId]);
 
-  const totalWithdrawn = completedData[0]?.withdrawn_amount || 0;
+  const totalWithdrawn = parseFloat(completedData[0]?.withdrawn_amount) || 0; // ✅ Add parseFloat
 
-  // ✅ NEW: Get pending/processing refunds
+  // Get pending/processing refunds
   const [pendingRefundsData] = await pool.query(`
     SELECT COALESCE(SUM(r.platform_refund), 0) as pending_refund_amount
     FROM refunds r
@@ -180,9 +181,9 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
       AND r.status IN ('pending', 'processing', 'approved')
   `, [hostId]);
 
-  const pendingRefunds = pendingRefundsData[0]?.pending_refund_amount || 0;
+  const pendingRefunds = parseFloat(pendingRefundsData[0]?.pending_refund_amount) || 0; // ✅ Add parseFloat
 
-  // ✅ NEW: Get completed refunds
+  // Get completed refunds
   const [completedRefundsData] = await pool.query(`
     SELECT COALESCE(SUM(r.platform_refund), 0) as completed_refund_amount
     FROM refunds r
@@ -192,9 +193,9 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
       AND r.status IN ('completed', 'partial_completed')
   `, [hostId]);
 
-  const completedRefunds = completedRefundsData[0]?.completed_refund_amount || 0;
+  const completedRefunds = parseFloat(completedRefundsData[0]?.completed_refund_amount) || 0; // ✅ Add parseFloat
 
-  // ✅ UPDATED: Calculate available for payout (subtract refunds)
+  // Calculate available for payout
   const availableForPayout = totalEarned - (pendingPayout + totalWithdrawn + pendingRefunds + completedRefunds);
 
   // Calculate fees for different methods
@@ -206,26 +207,25 @@ exports.getAvailableBalance = catchAsync(async (req, res, next) => {
   res.json({
     status: 'success',
     data: {
-      balance: {
-        total_bookings: 0,
-        total_earned: totalEarned,
-        available_for_payout: availableForPayout > 0 ? availableForPayout : 0,
-        pending_payout: pendingPayout,
-        total_withdrawn: totalWithdrawn,
-        pending_refunds: pendingRefunds, // ✅ NEW
-        completed_refunds: completedRefunds, // ✅ NEW
-        estimated_fees: fees,
-        minimum_payout: MINIMUM_PAYOUT
-      }
+      // ✅ RETURN AS NUMBERS - Remove the nested 'balance' object
+      total_earned: totalEarned,
+      available_for_payout: availableForPayout > 0 ? availableForPayout : 0,
+      pending_payout: pendingPayout,
+      total_withdrawn: totalWithdrawn,
+      pending_refunds: pendingRefunds,
+      completed_refunds: completedRefunds,
+      estimated_fees: fees,
+      minimum_payout: MINIMUM_PAYOUT
     }
   });
 });
 
 // ✅ UPDATED: Host: Get earnings summary
+// ✅ UPDATED: Host: Get earnings summary
 exports.getHostEarnings = catchAsync(async (req, res, next) => {
   const hostId = req.user.id;
 
-  // ✅ FIXED: Get summary - ONLY succeeded payments from non-cancelled bookings
+  // Get summary
   const [summary] = await pool.query(`
     SELECT 
       SUM(p.host_earnings) as total_earnings,
@@ -237,7 +237,7 @@ exports.getHostEarnings = catchAsync(async (req, res, next) => {
       AND b.status NOT IN ('cancelled', 'rejected')
   `, [hostId]);
 
-  // ✅ NEW: Get refund summary
+  // Get refund summary
   const [refundSummary] = await pool.query(`
     SELECT 
       COALESCE(SUM(CASE WHEN r.status IN ('pending', 'processing', 'approved') THEN r.platform_refund ELSE 0 END), 0) as pending_refunds,
@@ -266,14 +266,20 @@ exports.getHostEarnings = catchAsync(async (req, res, next) => {
     ORDER BY created_at DESC
   `, [hostId]);
 
+  // ✅ Convert all to numbers
+  const totalEarnings = parseFloat(summary[0]?.total_earnings) || 0;
+  const totalBookings = parseInt(summary[0]?.total_bookings) || 0;
+  const pendingRefunds = parseFloat(refundSummary[0]?.pending_refunds) || 0;
+  const completedRefunds = parseFloat(refundSummary[0]?.completed_refunds) || 0;
+
   res.json({
     status: 'success',
     data: {
-      totalEarnings: summary[0]?.total_earnings || 0,
-      totalBookings: summary[0]?.total_bookings || 0,
-      pendingRefunds: refundSummary[0]?.pending_refunds || 0, // ✅ NEW
-      completedRefunds: refundSummary[0]?.completed_refunds || 0, // ✅ NEW
-      netEarnings: (summary[0]?.total_earnings || 0) - (refundSummary[0]?.completed_refunds || 0), // ✅ NEW
+      totalEarnings: totalEarnings,
+      totalBookings: totalBookings,
+      pendingRefunds: pendingRefunds,
+      completedRefunds: completedRefunds,
+      netEarnings: totalEarnings - completedRefunds,
       payouts: payouts
     }
   });

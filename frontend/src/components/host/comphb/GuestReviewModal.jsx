@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { X, User, Star, Send } from 'lucide-react';
 import Button from '../../ui/Button';
-import reviewService, { REVIEW_TYPES } from '../../../services/reviewService';
+import reviewService from '../../../services/reviewService';
 
 const GuestReviewModal = ({ booking, onClose, onReviewSubmitted }) => {
   const [rating, setRating] = useState(0);
@@ -10,42 +10,69 @@ const GuestReviewModal = ({ booking, onClose, onReviewSubmitted }) => {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmitReview = async () => {
-    if (rating === 0) {
-      alert('Please select a rating');
+const handleSubmitReview = async () => {
+  if (rating === 0) {
+    alert('Please select a rating');
+    return;
+  }
+
+  if (comment.trim().length < 10) {
+    alert('Please provide a comment with at least 10 characters');
+    return;
+  }
+
+  if (comment.trim().length > 500) {
+    alert('Comment cannot exceed 500 characters');
+    return;
+  }
+
+  try {
+    setIsSubmitting(true);
+    
+    console.log('🔍 Full booking object:', booking);
+    
+    const bookingId = booking.booking_id || booking.id;
+    
+    if (!bookingId) {
+      alert('Error: Booking ID not found');
+      console.error('❌ Booking object:', booking);
       return;
     }
 
-    if (comment.trim().length < 10) {
-      alert('Please provide a comment with at least 10 characters');
+    if (!booking.client_id) {
+      alert('Error: Client ID not found');
+      console.error('❌ Booking object:', booking);
       return;
     }
+    
+    // ✅ FIXED: This is a HOST reviewing a CLIENT (guest)
+    // The review should be associated with the CLIENT, not the listing
+    const reviewData = {
+      booking_id: parseInt(bookingId),
+      reviewee_id: parseInt(booking.client_id),  // ✅ The person being reviewed (client/guest)
+      rating: parseInt(rating),
+      comment: comment.trim(),
+      type: 'client',  // ✅ Indicates this is a review of a client/guest
+      // ❌ DO NOT include listing_id here - this review is for the CLIENT, not the listing
+    };
 
-    if (comment.trim().length > 500) {
-      alert('Comment cannot exceed 500 characters');
-      return;
-    }
+    console.log('📤 Guest review data being sent:', reviewData);
+    console.log('📝 Reviewing client_id:', booking.client_id);
+    console.log('📝 Review type: client (host reviewing guest)');
 
-    try {
-      setIsSubmitting(true);
-      
-      const reviewData = {
-        booking_id: booking.booking_id,
-        reviewee_id: booking.client_id,
-        rating: rating,
-        comment: comment.trim(),
-        type: REVIEW_TYPES.CLIENT
-      };
-
-      await reviewService.createReview(reviewData);
-      onReviewSubmitted();
-      
-    } catch (error) {
-      alert(error.message || 'Failed to submit review');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    await reviewService.createReview(reviewData);
+    
+    alert('Guest review submitted successfully!');
+    onReviewSubmitted();
+    onClose();
+    
+  } catch (error) {
+    console.error('❌ Review submission error:', error);
+    alert(error.message || 'Failed to submit review');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const renderStarRating = () => {
     return Array.from({ length: 5 }, (_, index) => {
