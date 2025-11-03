@@ -260,20 +260,6 @@ const LoginPage = () => {
             </p>
           </div>
         </div>
-
-        {/* Additional Help */}
-        <div className="text-center">
-          <p className="text-xs text-gray-500">
-            By signing in, you agree to our{' '}
-            <Link to="/terms" className="text-purple-400 hover:text-purple-300">
-              Terms of Service
-            </Link>
-            {' '}and{' '}
-            <Link to="/privacy" className="text-purple-400 hover:text-purple-300">
-              Privacy Policy
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   );

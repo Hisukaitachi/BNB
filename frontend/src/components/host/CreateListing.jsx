@@ -3,16 +3,12 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
-  Upload, 
   X, 
   MapPin, 
-  DollarSign, 
-  Home,
   Image as ImageIcon,
   Video,
   Save,
   Eye,
-  Target,
   Search,
   Loader,
   Navigation,
@@ -23,7 +19,6 @@ import {
   Wind,
   Coffee,
   Waves,
-  Users,
   Shield,
   Sparkles
 } from 'lucide-react';
@@ -637,8 +632,8 @@ const CreateListing = () => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
-    if (imageFiles.length + files.length > 4) {
-      setErrors(prev => ({ ...prev, image: 'Maximum 4 images allowed' }));
+    if (imageFiles.length + files.length > 8) {
+      setErrors(prev => ({ ...prev, image: 'Maximum 8 images allowed' }));
       return;
     }
 
@@ -1039,7 +1034,7 @@ const CreateListing = () => {
               
               <div className="mb-6">
                 <label className="block text-sm text-gray-300 mb-3">
-                  Property Images * (1-4 images)
+                  Property Images * (1-8 images)
                 </label>
                 
                 {imagePreviews.length > 0 && (
@@ -1081,7 +1076,7 @@ const CreateListing = () => {
                   </div>
                 )}
 
-                {imagePreviews.length < 4 && (
+                {imagePreviews.length < 8 && (
                   <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition cursor-pointer">
                     <input
                       type="file"
@@ -1097,7 +1092,7 @@ const CreateListing = () => {
                       <p className="text-gray-300 mb-1">
                         {imagePreviews.length === 0 
                           ? 'Click to upload property images' 
-                          : `Add more images (${4 - imagePreviews.length} remaining)`
+                          : `Add more images (${8 - imagePreviews.length} remaining)`
                         }
                       </p>
                       <p className="text-gray-500 text-sm">PNG, JPG, GIF up to 10MB each</p>

@@ -111,7 +111,7 @@ const PaymentStatus = () => {
         buttons.push(
           <Button
             key="home"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/')}
             variant="outline"
           >
             Back to Dashboard

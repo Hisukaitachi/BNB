@@ -130,6 +130,48 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
   });
 });
 
+// ✅ ADDED: Resend verification code endpoint
+exports.resendVerificationCode = catchAsync(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new AppError('Email is required', 400));
+  }
+
+  const [users] = await pool.query(
+    'SELECT id, name, is_verified FROM users WHERE email = ?',
+    [email]
+  );
+
+  if (users.length === 0) {
+    return next(new AppError('User not found', 404));
+  }
+
+  if (users[0].is_verified === 1) {
+    return next(new AppError('Email is already verified', 400));
+  }
+
+  // Generate new code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+  await pool.query(
+    'UPDATE users SET verification_code = ? WHERE email = ?',
+    [code, email]
+  );
+
+  try {
+    await sendVerificationCode(email, code);
+    res.status(200).json({
+      status: 'success',
+      message: 'Verification code resent successfully'
+    });
+  } catch (error) {
+    console.error('Resend verification failed:', error);
+    return next(new AppError('Failed to send verification code. Please try again.', 500));
+  }
+});
+
+// ✅ FIXED: Check if user is verified before allowing login
 exports.loginUser = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -137,7 +179,6 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Email and password are required', 400));
   }
 
-  // ✅ UPDATED: Added profile_picture to SELECT
   const [users] = await pool.query(
     'SELECT id, name, email, password, role, is_banned, is_verified, failed_attempts, locked_until, profile_picture FROM users WHERE email = ?',
     [email]
@@ -148,6 +189,11 @@ exports.loginUser = catchAsync(async (req, res, next) => {
   }
 
   const user = users[0];
+
+  // ✅ CHECK: Verify email first before checking other conditions
+  if (user.is_verified === 0) {
+    return next(new AppError('Please verify your email before logging in. Check your inbox for the verification code.', 403));
+  }
 
   // Check if banned
   if (user.is_banned === 1) {
@@ -196,7 +242,6 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     { expiresIn: '7d' }
   );
 
-  // ✅ UPDATED: Added profile_picture to response
   res.status(200).json({
     status: 'success',
     message: 'Login successful',
@@ -208,7 +253,7 @@ exports.loginUser = catchAsync(async (req, res, next) => {
         email: user.email, 
         role: user.role,
         isVerified: user.is_verified === 1,
-        profile_picture: user.profile_picture || null  // ✅ ADDED
+        profile_picture: user.profile_picture || null
       }
     }
   });
@@ -280,7 +325,6 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 exports.getMyProfile = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
 
-  // ✅ Already includes profile_picture - no changes needed
   const [rows] = await pool.query(
     'SELECT id, name, email, role, is_verified, phone, bio, location, profile_picture, created_at FROM users WHERE id = ?',
     [userId]
@@ -306,30 +350,24 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   
   try {
-    // Get current profile picture to delete old files
     const [currentUser] = await pool.query(
       'SELECT profile_picture FROM users WHERE id = ?',
       [userId]
     );
 
-    // Generate base filename without extension
     const baseFilename = `profile-${userId}-${Date.now()}`;
     
-    // Generate multiple sizes
     const profilePictures = await generateProfilePictureSizes(
       req.file.path, 
       req.file.destination, 
       baseFilename
     );
 
-    // Delete original uploaded file
     await fs.unlink(req.file.path);
     console.log('Original uploaded image processed and deleted');
 
-    // Store the medium size as the main profile picture
     const profilePictureUrl = profilePictures.medium;
 
-    // Update database with new profile picture
     const [result] = await pool.query(
       'UPDATE users SET profile_picture = ?, updated_at = NOW() WHERE id = ?',
       [profilePictureUrl, userId]
@@ -339,9 +377,7 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
       return next(new AppError('User not found', 404));
     }
 
-    // Delete old profile pictures if they exist
     if (currentUser[0]?.profile_picture) {
-      // Delete all old sizes
       const oldBasePath = currentUser[0].profile_picture.replace('-medium.jpg', '');
       const sizesToDelete = ['thumbnail', 'small', 'medium'];
       
@@ -361,13 +397,11 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
       message: 'Profile picture updated successfully',
       data: {
         profilePicture: profilePictureUrl,
-        // Optionally return all sizes for frontend flexibility
         profilePictures: profilePictures
       }
     });
 
   } catch (error) {
-    // Clean up uploaded file on error
     if (req.file) {
       try {
         await fs.unlink(req.file.path);
@@ -380,11 +414,9 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
   }
 });
 
-// Updated delete function to handle multiple sizes
 exports.deleteProfilePicture = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
 
-  // Get current profile picture
   const [user] = await pool.query(
     'SELECT profile_picture FROM users WHERE id = ?',
     [userId]
@@ -401,7 +433,6 @@ exports.deleteProfilePicture = catchAsync(async (req, res, next) => {
   }
 
   try {
-    // Delete all sizes
     const basePath = currentProfilePicture.replace('-medium.jpg', '');
     const sizesToDelete = ['thumbnail', 'small', 'medium'];
     
@@ -416,10 +447,8 @@ exports.deleteProfilePicture = catchAsync(async (req, res, next) => {
     }
   } catch (error) {
     console.log('Error deleting profile picture files:', error.message);
-    // Continue with database update even if files don't exist
   }
 
-  // Update database to remove profile picture
   await pool.query(
     'UPDATE users SET profile_picture = NULL, updated_at = NOW() WHERE id = ?',
     [userId]
@@ -479,7 +508,6 @@ exports.updateMyProfile = catchAsync(async (req, res, next) => {
     return next(new AppError('User not found', 404));
   }
 
-  // Get updated user data including profile picture
   const [updatedUser] = await pool.query(
     'SELECT name, phone, bio, location, profile_picture FROM users WHERE id = ?',
     [userId]
@@ -534,7 +562,6 @@ exports.changePassword = catchAsync(async (req, res, next) => {
   });
 });
 
-// Role management functions
 exports.promoteToHost = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
@@ -590,7 +617,6 @@ exports.checkMyBanStatus = catchAsync(async (req, res, next) => {
   });
 });
 
-// Get public profile (limited info for other users to view)
 exports.getPublicProfile = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -618,7 +644,7 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
         role: user.role,
         bio: user.bio || null,
         location: user.location || null,
-        profile_picture: user.profile_picture || null,  // ✅ CHANGE THIS TO SNAKE_CASE
+        profile_picture: user.profile_picture || null,
         isVerified: user.is_verified === 1,
         created_at: user.created_at,
         memberSince: user.created_at
@@ -627,7 +653,6 @@ exports.getPublicProfile = catchAsync(async (req, res, next) => {
   });
 });
 
-// Get user's public reviews (reviews about this user)
 exports.getUserReviews = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -635,14 +660,12 @@ exports.getUserReviews = catchAsync(async (req, res, next) => {
     return next(new AppError('User ID is required', 400));
   }
 
-  // Check if user exists
   const [userExists] = await pool.query('SELECT id FROM users WHERE id = ?', [userId]);
   if (userExists.length === 0) {
     return next(new AppError('User not found', 404));
   }
 
   try {
-    // Updated query with JOIN to get reviewer name AND profile picture
     const [reviews] = await pool.query(`
       SELECT 
         r.id,
@@ -652,8 +675,8 @@ exports.getUserReviews = catchAsync(async (req, res, next) => {
         r.booking_id,
         r.reviewer_id,
         u.name as reviewer_name,
-        u.profile_picture as reviewer_profile_picture,  -- Add this
-        u.role as reviewer_role  -- Add this if you want role too
+        u.profile_picture as reviewer_profile_picture,
+        u.role as reviewer_role
       FROM reviews r
       JOIN users u ON r.reviewer_id = u.id
       WHERE r.reviewee_id = ?
@@ -661,7 +684,6 @@ exports.getUserReviews = catchAsync(async (req, res, next) => {
       LIMIT 10
     `, [userId]);
 
-    // Simple stats
     const [stats] = await pool.query(`
       SELECT 
         COUNT(*) as totalReviews,

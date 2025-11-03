@@ -619,7 +619,7 @@ const HostCalendar = () => {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-gray-600 text-gray-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5"
+                              className="border-gray-600 text-white text-xs sm:text-sm px-2 sm:px-3 py-1.5"
                               onClick={() => window.open(`/messages?client=${booking.extendedProps?.clientId}`, '_blank')}
                             >
                               <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />

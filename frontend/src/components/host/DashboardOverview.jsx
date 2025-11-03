@@ -95,22 +95,6 @@ const DashboardOverview = ({ data, onRefresh }) => {
       urgent: data.pendingBookings > 0,
       type: 'bookings'
     },
-    {
-      title: 'Total Earnings',
-      value: `₱${data.totalEarnings.toLocaleString()}`,
-      change: `${data.monthlyStats?.growth || 0}% vs last month`,
-      icon: DollarSign,
-      color: 'text-green-400',
-      type: 'earnings'
-    },
-    {
-      title: "Today's Check-ins",
-      value: data.todaysCheckIns,
-      change: 'Guests arriving',
-      icon: Users,
-      color: 'text-purple-400',
-      type: 'checkins'
-    }
   ];
 
   return (
@@ -129,7 +113,7 @@ const DashboardOverview = ({ data, onRefresh }) => {
       </div>
 
       {/* Stats Cards - Now Clickable */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (

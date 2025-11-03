@@ -214,7 +214,7 @@ formatBookingSummary(booking) {
     // For reservations, check deposit and remaining payment status
     needsPayment = (booking.status === 'approved' && !booking.deposit_paid) ||
                    (booking.status === 'confirmed' && !booking.remaining_paid && 
-                    booking.remaining_payment_method === 'platform');
+                    booking.remaining_payment_method === 'personal');
     hasPaymentPending = booking.payment_status === 'pending';
   } else {
     // For full bookings

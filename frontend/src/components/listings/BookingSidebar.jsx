@@ -20,7 +20,7 @@ const BookingSidebar = ({
     endDate: '',
     guests: 1,
     bookingType: 'book', // 'book' or 'reserve'
-    remainingPaymentMethod: 'platform' // 'platform' or 'personal'
+    remainingPaymentMethod: 'personal' // 'platform' or 'personal'
   });
   const [totalPrice, setTotalPrice] = useState(0);
   const [priceBreakdown, setPriceBreakdown] = useState(null);
@@ -158,7 +158,6 @@ const BookingSidebar = ({
                 />
                 <div className="flex-1">
                   <span className="text-white font-medium">Reserve (50% Deposit)</span>
-                  <p className="text-xs text-gray-400 mt-1">Pay 50% now, remaining 3 days before check-in</p>
                 </div>
               </label>
             </div>
@@ -172,12 +171,8 @@ const BookingSidebar = ({
                   onChange={(e) => setBookingData({...bookingData, remainingPaymentMethod: e.target.value})}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="personal">Direct to Host</option>
+                  <option value="personal">Direct to Host (Recommended)</option>
                 </select>
-                <p className="text-xs text-gray-400 mt-2">
-                  <Info className="inline w-3 h-3 mr-1" />
-                  Platform payment offers buyer protection
-                </p>
               </div>
             )}
           </div>

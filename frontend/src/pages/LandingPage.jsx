@@ -4,8 +4,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, 
   MapPin, 
-  Calendar, 
-  Users, 
   ArrowRight, 
   Star, 
   Heart, 
@@ -571,15 +569,6 @@ const LandingPage = () => {
                         alt={listing.title}
                         className="w-full h-48 object-cover"
                       />
-                      <button 
-                        className="absolute top-3 right-3 p-2 rounded-full bg-black/20 hover:bg-black/40 transition"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('Add to favorites:', listing.id);
-                        }}
-                      >
-                        <Heart className="w-4 h-4 text-white" />
-                      </button>
                     </div>
                   )}
 

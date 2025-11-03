@@ -5,9 +5,7 @@ const autoCompleteBookings = require('../utils/autoCompleteBookings');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../middleware/errorHandler');
 
-// ==========================================
-// CREATE BOOKING
-// ==========================================
+// Create a new booking
 exports.createBooking = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   const { 
@@ -16,7 +14,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     end_date, 
     total_price,
     booking_type = 'book', // 'book' (full payment) or 'reserve' (50% deposit)
-    remaining_payment_method = 'platform' // 'platform' or 'personal'
+    remaining_payment_method = 'personal' //'personal'
   } = req.body;
 
   // Validation
@@ -28,8 +26,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     return next(new AppError('Booking type must be "book" or "reserve"', 400));
   }
 
-  if (booking_type === 'reserve' && !['platform', 'personal'].includes(remaining_payment_method)) {
-    return next(new AppError('Remaining payment method must be "platform" or "personal"', 400));
+  if (booking_type === 'reserve' && !['personal'].includes(remaining_payment_method)) {
+    return next(new AppError('Remaining payment method must be "personal"', 400));
   }
 
   // Date validation
@@ -186,9 +184,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   }
 });
 
-// ==========================================
-// GET BOOKINGS BY CLIENT
-// ==========================================
+// Get bookings by client
 exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   const clientId = req.user.id;
   await autoCompleteBookings();
@@ -221,9 +217,7 @@ exports.getBookingsByClient = catchAsync(async (req, res, next) => {
   });
 });
 
-// ==========================================
-// GET BOOKINGS BY HOST
-// ==========================================
+//Get bookings by host
 exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   const hostId = req.user?.id;
   
@@ -261,9 +255,7 @@ exports.getBookingsByHost = catchAsync(async (req, res, next) => {
   });
 });
 
-// ==========================================
-// GET BOOKINGS BY LISTING
-// ==========================================
+//Get bookings by listing
 exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
   
@@ -296,9 +288,7 @@ exports.getBookingsByListing = catchAsync(async (req, res, next) => {
   }
 });
 
-// ==========================================
-// GET BOOKED DATES BY LISTING (Calendar)
-// ==========================================
+//Get bookings by listing
 exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
   const { listingId } = req.params;
 
@@ -342,9 +332,7 @@ exports.getBookedDatesByListing = catchAsync(async (req, res, next) => {
   });
 });
 
-// ==========================================
-// UPDATE BOOKING STATUS
-// ==========================================
+//Get update booking status
 exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   const userRole = req.user.role;
@@ -447,7 +435,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
       message: `A client cancelled their booking for '${booking.title}'.`,
       type: 'booking_cancelled'
     });
-    
+
     // Notify admins for refund review
     const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin'");
     for (const admin of admins) {
@@ -539,9 +527,7 @@ exports.updateBookingStatus = catchAsync(async (req, res, next) => {
   });
 });
 
-// ==========================================
-// GET BOOKING HISTORY
-// ==========================================
+//Get booking history
 exports.getBookingHistory = catchAsync(async (req, res, next) => {
   const bookingId = req.params.id;
 
@@ -564,9 +550,7 @@ exports.getBookingHistory = catchAsync(async (req, res, next) => {
   });
 });
 
-// ==========================================
-// UPDATE CUSTOMER INFO (ID Verification)
-// ==========================================
+//Update booking customer info
 exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
   const clientId = req.user.id;

@@ -48,6 +48,7 @@ router.delete('/profile-picture', authenticateToken, usersController.deleteProfi
 router.post('/forgot-password', validate(forgotPasswordSchema), usersController.sendResetPasswordCode);
 router.post('/reset-password', validate(resetPasswordSchema), usersController.resetPassword);
 router.post('/verify-email', validate(verifyEmailSchema), usersController.verifyEmail);
+router.post('/resend-verification', validate(verifyEmailSchema), usersController.resendVerificationCode);
 router.post('/register', validate(registerSchema), usersController.createUser);
 router.post('/login', validate(loginSchema), usersController.loginUser);
 

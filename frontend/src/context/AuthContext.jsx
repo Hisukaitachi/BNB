@@ -123,43 +123,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Google login - separate method
-  const googleLogin = async (googleToken) => {
-    dispatch({ type: 'LOGIN_START' });
-    try {
-      const response = await fetch('http://localhost:5000/api/users/google-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ token: googleToken })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Google login failed');
-      }
-
-      // Store in localStorage
-      localStorage.setItem('token', data.data.token);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
-
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: { user: data.data.user, token: data.data.token }
-      });
-
-      return data;
-    } catch (error) {
-      dispatch({
-        type: 'LOGIN_FAILURE',
-        payload: error.message
-      });
-      throw error;
-    }
-  };
-
   const register = async (userData) => {
     dispatch({ type: 'LOGIN_START' });
     try {
@@ -255,7 +218,6 @@ export const AuthProvider = ({ children }) => {
     ...state,
     login,
     register,
-    googleLogin,
     switchRole,
     updateProfile,
     updateUser,

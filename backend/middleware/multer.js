@@ -79,7 +79,7 @@ const upload = multer({
   fileFilter,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB max file size
-    files: 5,
+    files: 9,
     fields: 50,
     fieldNameSize: 100,
     fieldSize: 10 * 1024 * 1024
@@ -208,7 +208,7 @@ module.exports = {
   // Existing exports...
   uploadSingle: upload.single('image'),
   uploadFields: upload.fields([
-    { name: 'images', maxCount: 4 },
+    { name: 'images', maxCount: 8 },
     { name: 'video', maxCount: 1 }
   ]),
   uploadMessageMedia: messageUpload.fields([

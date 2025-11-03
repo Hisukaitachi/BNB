@@ -249,9 +249,6 @@ const handleBooking = async (bookingData) => {
                   {listing.title}
                 </h1>
                 <div className="flex items-center space-x-2">
-                  <button className="p-2 rounded-full hover:bg-gray-800 transition">
-                    <Share2 className="w-5 h-5 text-gray-300" />
-                  </button>
                   <button 
                     onClick={handleFavoriteToggle}
                     disabled={favoritesLoading}
