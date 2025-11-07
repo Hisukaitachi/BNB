@@ -283,7 +283,10 @@ exports.deleteListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  const [result] = await pool.query('CALL sp_delete_listing(?, ?)', [id, hostId]);
+  const [result] = await pool.query(
+    'DELETE FROM listings WHERE id = ? AND host_id = ?',
+    [id, hostId]
+  );
 
   if (result.affectedRows === 0) {
     return next(new AppError('Listing not found or you do not have permission to delete it', 404));

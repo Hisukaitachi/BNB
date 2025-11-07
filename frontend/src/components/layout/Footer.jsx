@@ -36,7 +36,7 @@ const Footer = () => {
           <div>
             <h4 className="text-lg font-semibold mb-4">Hosting</h4>
             <ul className="space-y-2">
-              <li><a href="/register" className="text-gray-400 hover:text-purple-400 transition">Become a Host</a></li>
+              <li><a href="/auth/register" className="text-gray-400 hover:text-purple-400 transition">Become a Host</a></li>
               <li><a href="#" className="text-gray-400 hover:text-purple-400 transition">Host Resources</a></li>
               <li><a href="#" className="text-gray-400 hover:text-purple-400 transition">Safety</a></li>
               <li><a href="#" className="text-gray-400 hover:text-purple-400 transition">Community</a></li>
