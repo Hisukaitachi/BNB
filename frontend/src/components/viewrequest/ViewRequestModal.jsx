@@ -117,7 +117,7 @@ const ViewRequestModal = ({ listing, onClose, onSubmit }) => {
                 name="preferred_time"
                 value={formData.preferred_time}
                 onChange={handleChange}
-                className="w-full px-3 py-2 bg-white/10 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:blue-2 focus:ring-blue-500"
               >
                 <option value="">Select time</option>
                 <option value="09:00">9:00 AM</option>

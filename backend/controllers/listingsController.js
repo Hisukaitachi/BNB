@@ -118,7 +118,7 @@ exports.getAllListings = catchAsync(async (req, res, next) => {
   });
 });
 
-// backend/controllers/listingController.js
+// Fix for getListingById - Add max_guests to SELECT
 exports.getListingById = catchAsync(async (req, res, next) => {
   const listingId = req.params.id;
 
@@ -126,14 +126,14 @@ exports.getListingById = catchAsync(async (req, res, next) => {
     return next(new AppError('Valid listing ID is required', 400));
   }
 
-  // ✅ Direct query instead of stored procedure
+  // ✅ Added max_guests to SELECT
   const [rows] = await pool.query(`
     SELECT 
       l.*,
       u.name as host_name,
       u.email as host_email,
       u.bio as host_bio,
-      u.profile_picture as host_profile_picture,  -- ✅ Includes profile picture
+      u.profile_picture as host_profile_picture,
       u.created_at as host_created_at,
       COUNT(DISTINCT r.id) as total_reviews,
       AVG(r.rating) as average_rating
@@ -229,20 +229,38 @@ exports.updateListing = catchAsync(async (req, res, next) => {
 
   // UPDATED: Handle multiple new images
   if (req.files && req.files.images) {
-    const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-    const newImageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
-    
-    // Get existing images
-    const existingImages = existingListing[0].images ? JSON.parse(existingListing[0].images) : [];
-    
-    // Combine existing + new (limit to 4)
-    const allImages = [...existingImages, ...newImageUrls].slice(0, 4);
-    
-    updateFields.images = JSON.stringify(allImages);
-    updateFields.image_url = allImages[0]; // Keep first image for legacy
-    
-    console.log(`📁 Updated images: ${allImages.length} total`);
+      const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+      const newImageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
+
+      // Use existing images provided by the frontend (the kept ones after removals)
+      const keepImages = req.body.existingImages
+        ? Array.isArray(req.body.existingImages)
+          ? req.body.existingImages
+          : [req.body.existingImages]
+        : [];
+
+      // Combine kept + new (limit to 8)
+      const allImages = [...keepImages, ...newImageUrls].slice(0, 8);
+
+      updateFields.images = JSON.stringify(allImages);
+      updateFields.image_url = allImages[0] || null;
+
+      console.log(`📁 Updated images: ${allImages.length} total`);
+    } else {
+      // If no new files were uploaded, but the frontend sent existingImages (pure removal case)
+      if (req.body.existingImages !== undefined) {
+        const keepImages = Array.isArray(req.body.existingImages)
+          ? req.body.existingImages
+          : [req.body.existingImages];
+
+        const allImages = keepImages.slice(0, 8);
+        updateFields.images = JSON.stringify(allImages);
+        updateFields.image_url = allImages[0] || null;
+
+      console.log(`📁 Images updated without new uploads: ${allImages.length} total`);
+    }
   }
+
 
   // Handle video
   if (req.files && req.files.video && req.files.video[0]) {
@@ -307,6 +325,7 @@ exports.searchListings = catchAsync(async (req, res, next) => {
     min_rating,
     check_in,
     check_out,
+    guests,
     page = 1,
     limit = 10,
     sortBy = 'created_at',
@@ -356,7 +375,14 @@ exports.searchListings = catchAsync(async (req, res, next) => {
     countParams.push(parseFloat(min_rating));
   }
 
-  // Availability filter - FIXED VERSION
+  // ✅ NEW: Guests filter
+  if (guests && !isNaN(guests)) {
+    baseQuery += ' AND l.max_guests >= ?';
+    queryParams.push(parseInt(guests));
+    countParams.push(parseInt(guests));
+  }
+
+  // Availability filter
   if (check_in && check_out) {
     baseQuery += `
       AND l.id NOT IN (
@@ -379,7 +405,7 @@ exports.searchListings = catchAsync(async (req, res, next) => {
   // Add pagination params
   queryParams.push(parseInt(limit), offset);
 
-  // Main listings query
+  // ✅ Added max_guests to SELECT
   const listingsQuery = `
     SELECT 
       l.id,
@@ -392,6 +418,7 @@ exports.searchListings = catchAsync(async (req, res, next) => {
       l.average_rating,
       l.latitude,
       l.longitude,
+      l.max_guests,
       l.created_at,
       u.name as host_name
     ${baseQuery} 
@@ -416,6 +443,7 @@ exports.searchListings = catchAsync(async (req, res, next) => {
           priceRange: [price_min, price_max].filter(p => p !== undefined),
           keyword: keyword || null,
           minRating: min_rating || null,
+          guests: guests || null,
           dates: check_in && check_out ? [check_in, check_out] : null
         },
         pagination: {

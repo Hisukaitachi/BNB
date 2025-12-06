@@ -762,18 +762,6 @@ const BookingDetailModal = ({ booking, onClose, onAction }) => {
             >
               Cancel Booking
             </Button>
-            
-            <Button
-              onClick={() => {
-                const mailto = `mailto:${booking.client_email}?subject=Booking ${booking.id}`;
-                window.location.href = mailto;
-              }}
-              variant="gradient"
-              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
-            >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Contact Client
-            </Button>
           </div>
         </div>
       </div>

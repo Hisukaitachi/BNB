@@ -31,7 +31,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 // Amenities options with icons
-const AMENITIES_OPTIONS = [
+export const AMENITIES_OPTIONS = [
   { id: 'wifi', label: 'WiFi', icon: <Wifi className="w-4 h-4" /> },
   { id: 'parking', label: 'Free Parking', icon: <Car className="w-4 h-4" /> },
   { id: 'pool', label: 'Swimming Pool', icon: <Waves className="w-4 h-4" /> },

@@ -465,7 +465,7 @@ class PaymentService {
    * @returns {string} Return URL or default
    */
   getReturnUrl() {
-    return sessionStorage.getItem('payment_return_url') || '/bookings';
+    return sessionStorage.getItem('payment_return_url') || '/my-bookings';
   }
 
   /**

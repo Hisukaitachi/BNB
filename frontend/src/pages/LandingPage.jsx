@@ -11,7 +11,8 @@ import {
   Map,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Users
 } from 'lucide-react';
 import { getImageUrl } from '../services/api';
 import listingService from '../services/listingService';
@@ -217,7 +218,7 @@ const LandingPage = () => {
           {/* Search Bar in Hero */}
           <div ref={searchBarRef}>
             <form onSubmit={handleSearch} className="glass-effect rounded-xl p-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
@@ -228,21 +229,20 @@ const LandingPage = () => {
                   />
                 </div>
                 
-                <Input
-                  type="date"
-                  placeholder="Check in"
-                  value={searchParams.check_in}
-                  onChange={(e) => handleFilterChange('check_in', e.target.value)}
-                  className="bg-white/10 border-0 text-white"
-                />
-                
-                <Input
-                  type="date"
-                  placeholder="Check out"
-                  value={searchParams.check_out}
-                  onChange={(e) => handleFilterChange('check_out', e.target.value)}
-                  className="bg-white/10 border-0 text-white"
-                />
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <select
+                    value={searchParams.guests}
+                    onChange={(e) => handleFilterChange('guests', parseInt(e.target.value))}
+                    className="w-full pl-10 px-3 py-2 bg-white/10 border-0 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                      <option key={num} value={num} className="bg-gray-800">
+                        {num} Guest{num > 1 ? 's' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <Input
                   placeholder="Keywords..."
@@ -285,7 +285,7 @@ const LandingPage = () => {
         <div className="fixed top-16 left-0 right-0 bg-gray-900/95 backdrop-blur-lg shadow-xl z-30 transition-all duration-300">
           <div className="container mx-auto px-6 py-4">
             <form onSubmit={handleSearch} className="glass-effect-light rounded-xl p-4">
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
@@ -296,21 +296,20 @@ const LandingPage = () => {
                   />
                 </div>
                 
-                <Input
-                  type="date"
-                  placeholder="Check in"
-                  value={searchParams.check_in}
-                  onChange={(e) => handleFilterChange('check_in', e.target.value)}
-                  className="bg-white/10 border-0 text-white"
-                />
-                
-                <Input
-                  type="date"
-                  placeholder="Check out"
-                  value={searchParams.check_out}
-                  onChange={(e) => handleFilterChange('check_out', e.target.value)}
-                  className="bg-white/10 border-0 text-white"
-                />
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <select
+                    value={searchParams.guests}
+                    onChange={(e) => handleFilterChange('guests', parseInt(e.target.value))}
+                    className="w-full pl-10 px-3 py-2 bg-white/10 border-0 rounded-lg text-white focus:ring-2 focus:ring-purple-500"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                      <option key={num} value={num} className="bg-gray-800">
+                        {num} Guest{num > 1 ? 's' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <Input
                   placeholder="Keywords..."
@@ -367,7 +366,7 @@ const LandingPage = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                                <Map className="w-5 h-5" />
+                <Map className="w-5 h-5" />
                 Properties on Map ({listings.length})
               </h3>
               <div className="flex items-center gap-2">
@@ -596,7 +595,7 @@ const LandingPage = () => {
                       {listing.description}
                     </p>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-3">
                       <div>
                         <span className="text-white font-bold text-lg">
                           ₱{Number(listing.price_per_night).toLocaleString()}
@@ -606,6 +605,11 @@ const LandingPage = () => {
                       <span className="text-xs text-gray-500">
                         by {listing.host_name}
                       </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 text-gray-300">
+                      <Users className="w-5 h-5" />
+                      <span>{listing.max_guests} guests</span>
                     </div>
                   </div>
                 </div>

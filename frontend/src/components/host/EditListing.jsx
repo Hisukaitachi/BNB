@@ -1,11 +1,10 @@
-// frontend/src/components/host/EditListing.jsx - Multiple Images (3-4) + 1 Video Support
+// frontend/src/components/host/EditListing.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Save, 
-  X, 
-  Upload, 
+import {
+  ArrowLeft,
+  Save,
+  X,
   Image as ImageIcon,
   Video,
   RefreshCw,
@@ -16,14 +15,15 @@ import {
 } from 'lucide-react';
 import hostService from '../../services/hostService';
 import listingService from '../../services/listingService';
+import { getImageUrl } from '../../services/api';
+import { AMENITIES_OPTIONS } from './CreateListing';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
-import { Textarea } from '../ui/Input';
+import Input, { Textarea } from '../ui/Input';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Location Picker Component for Edit
+// Location Picker Component
 const LocationPickerEdit = ({ onLocationSelect, selectedLocation, initialLocation }) => {
   const LocationMarker = () => {
     useMapEvents({
@@ -37,15 +37,15 @@ const LocationPickerEdit = ({ onLocationSelect, selectedLocation, initialLocatio
     });
 
     return selectedLocation ? (
-      <Marker 
+      <Marker
         position={[selectedLocation.lat, selectedLocation.lng]}
         icon={L.divIcon({
           className: 'custom-location-marker',
           html: `<div style="
-            width: 30px; 
-            height: 30px; 
-            border-radius: 50%; 
-            background: linear-gradient(135deg, #10b981, #059669); 
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #10b981, #059669);
             border: 4px solid white;
             box-shadow: 0 3px 10px rgba(0,0,0,0.4);
             display: flex;
@@ -61,23 +61,22 @@ const LocationPickerEdit = ({ onLocationSelect, selectedLocation, initialLocatio
     ) : null;
   };
 
-  // Determine map center - use selected location, initial location, or default to Cebu
   const getMapCenter = () => {
     if (selectedLocation) return [selectedLocation.lat, selectedLocation.lng];
-    if (initialLocation && initialLocation.lat && initialLocation.lng) {
+    if (initialLocation?.lat && initialLocation?.lng) {
       return [initialLocation.lat, initialLocation.lng];
     }
-    return [10.3157, 123.8854]; // Cebu City default
+    return [10.3157, 123.8854]; // Cebu default
   };
 
   return (
     <div className="relative">
-      <MapContainer 
+      <MapContainer
         center={getMapCenter()}
-        zoom={14} 
+        zoom={14}
         style={{ height: '300px', width: '100%' }}
         className="rounded-lg cursor-crosshair"
-        key={`${selectedLocation?.lat}-${selectedLocation?.lng}`} // Force re-render when location changes
+        key={`${selectedLocation?.lat}-${selectedLocation?.lng}`}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -85,8 +84,7 @@ const LocationPickerEdit = ({ onLocationSelect, selectedLocation, initialLocatio
         />
         <LocationMarker />
       </MapContainer>
-      
-      {/* Instructions overlay */}
+
       <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded-lg backdrop-blur-sm">
         <div className="flex items-center space-x-2">
           <Target className="w-4 h-4" />
@@ -103,7 +101,7 @@ const EditListing = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -118,32 +116,30 @@ const EditListing = () => {
     longitude: '',
     status: 'active'
   });
-  
-  // UPDATED: Multiple images support
-  const [newImageFiles, setNewImageFiles] = useState([]); // New images to upload
+
+  const [newImageFiles, setNewImageFiles] = useState([]);
   const [videoFile, setVideoFile] = useState(null);
   const [newImagePreviews, setNewImagePreviews] = useState([]);
   const [videoPreview, setVideoPreview] = useState(null);
-  const [currentImages, setCurrentImages] = useState([]); // Existing images
+  const [currentImages, setCurrentImages] = useState([]);
   const [currentVideo, setCurrentVideo] = useState(null);
   const [errors, setErrors] = useState({});
+  const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [selectedMapLocation, setSelectedMapLocation] = useState(null);
   const [initialMapLocation, setInitialMapLocation] = useState(null);
 
   useEffect(() => {
-    if (id) {
-      loadListing();
-    }
+    if (id) loadListing();
   }, [id]);
 
   const loadListing = async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await listingService.getListingById(id);
       const listing = response.data.listing;
-      
+
       setFormData({
         title: listing.title || '',
         description: listing.description || '',
@@ -159,7 +155,6 @@ const EditListing = () => {
         status: listing.status || 'active'
       });
 
-      // Set map location if coordinates exist
       if (listing.latitude && listing.longitude) {
         const mapLocation = {
           lat: Number(listing.latitude),
@@ -169,17 +164,20 @@ const EditListing = () => {
         setInitialMapLocation(mapLocation);
       }
 
-      // UPDATED: Handle multiple existing images - FIXED JSON PARSING
+      if (listing.amenities) {
+        const amenitiesArray = listing.amenities.split(',').map(a => a.trim());
+        const selectedIds = AMENITIES_OPTIONS
+          .filter(option => amenitiesArray.includes(option.label))
+          .map(option => option.id);
+        setSelectedAmenities(selectedIds);
+      }
+
       let existingImages = [];
-      
-      // Try to get images from the new 'images' JSON column first
       if (listing.images) {
         try {
-          // Parse JSON string to array
-          const parsedImages = typeof listing.images === 'string' 
-            ? JSON.parse(listing.images) 
+          const parsedImages = typeof listing.images === 'string'
+            ? JSON.parse(listing.images)
             : listing.images;
-          
           if (Array.isArray(parsedImages) && parsedImages.length > 0) {
             existingImages = parsedImages.map((img, index) => ({
               id: index + 1,
@@ -191,22 +189,17 @@ const EditListing = () => {
           console.warn('Failed to parse images JSON:', e);
         }
       }
-      
-      // Fallback to single image_url if no images found
       if (existingImages.length === 0 && listing.image_url) {
-        const imageUrl = listing.image_url.startsWith('/uploads/') 
-          ? listing.image_url 
+        const imageUrl = listing.image_url.startsWith('/uploads/')
+          ? listing.image_url
           : `/uploads/${listing.image_url.split('/').pop()}`;
         existingImages = [{ id: 1, url: imageUrl, isExisting: true }];
       }
-      
       setCurrentImages(existingImages);
-      console.log('📁 Loaded existing images:', existingImages);
-      
+
       if (listing.video_url) {
         setCurrentVideo(`/uploads/${listing.video_url.split('/').pop()}`);
       }
-      
     } catch (err) {
       setError(err.message);
     } finally {
@@ -220,7 +213,6 @@ const EditListing = () => {
       ...prev,
       [name]: type === 'number' ? Number(value) : value
     }));
-    
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -233,91 +225,62 @@ const EditListing = () => {
       latitude: location.lat,
       longitude: location.lng
     }));
-    
-    // Clear location-related errors
-    setErrors(prev => ({ 
-      ...prev, 
-      latitude: '', 
-      longitude: '',
-      location_coordinates: ''
-    }));
   };
 
   const handleManualCoordinates = (field, value) => {
     const numValue = value === '' ? '' : Number(value);
-    
-    setFormData(prev => ({
-      ...prev,
-      [field]: numValue
-    }));
-
-    // Update map marker if both coordinates are valid
-    if (field === 'latitude' && formData.longitude && numValue) {
-      setSelectedMapLocation({ lat: numValue, lng: formData.longitude });
-    } else if (field === 'longitude' && formData.latitude && numValue) {
-      setSelectedMapLocation({ lat: formData.latitude, lng: numValue });
-    }
+    setFormData(prev => {
+      const updated = { ...prev, [field]: numValue };
+      if (updated.latitude && updated.longitude) {
+        setSelectedMapLocation({ lat: updated.latitude, lng: updated.longitude });
+      }
+      return updated;
+    });
   };
 
-  // UPDATED: Handle multiple new image uploads
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
-    // Check total image limit (existing + new)
     const totalImages = currentImages.length + newImageFiles.length + files.length;
-    if (totalImages > 4) {
-      setErrors(prev => ({ ...prev, image: 'Maximum 4 images allowed total' }));
+    if (totalImages > 8) {
+      setErrors(prev => ({ ...prev, image: 'Maximum 8 images allowed total' }));
       return;
     }
 
-    console.log(`📁 ${files.length} new image files selected`);
-
     const validFiles = [];
     const newPreviews = [];
-    let hasErrors = false;
-
     files.forEach((file, index) => {
-      // Validate each image
       if (!file.type.startsWith('image/')) {
         setErrors(prev => ({ ...prev, image: 'Please select valid image files only' }));
-        hasErrors = true;
         return;
       }
-
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+     if (file.size > 10 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, image: 'Each image must be less than 10MB' }));
-        hasErrors = true;
         return;
       }
 
       validFiles.push(file);
 
-      // Create preview for each valid file
       const reader = new FileReader();
       reader.onload = (e) => {
         newPreviews.push({
           id: Date.now() + index,
           url: e.target.result,
-          file: file,
+          file,
           isNew: true
         });
-
-        // Update state when all previews are ready
         if (newPreviews.length === validFiles.length) {
           setNewImageFiles(prev => [...prev, ...validFiles]);
           setNewImagePreviews(prev => [...prev, ...newPreviews]);
-          console.log(`✅ ${validFiles.length} new image previews created`);
         }
       };
       reader.readAsDataURL(file);
     });
 
-    if (!hasErrors) {
+    if (validFiles.length > 0) {
       setErrors(prev => ({ ...prev, image: '' }));
     }
-
-    // Clear the file input
     e.target.value = '';
   };
 
@@ -330,7 +293,6 @@ const EditListing = () => {
       setErrors(prev => ({ ...prev, video: 'Please select a valid video file (MP4, MOV, WebM, AVI)' }));
       return;
     }
-
     if (file.size > 100 * 1024 * 1024) {
       setErrors(prev => ({ ...prev, video: 'Video size must be less than 100MB' }));
       return;
@@ -344,21 +306,14 @@ const EditListing = () => {
     reader.readAsDataURL(file);
   };
 
-  // UPDATED: Remove existing image
   const removeExistingImage = (imageId) => {
-    console.log('🗑️ Removing existing image with ID:', imageId);
     setCurrentImages(prev => prev.filter(img => img.id !== imageId));
   };
 
-  // UPDATED: Remove new image
   const removeNewImage = (imageId) => {
-    console.log('🗑️ Removing new image with ID:', imageId);
     setNewImageFiles(prev => {
       const imageToRemove = newImagePreviews.find(img => img.id === imageId);
-      if (imageToRemove) {
-        return prev.filter(file => file !== imageToRemove.file);
-      }
-      return prev;
+      return imageToRemove ? prev.filter(file => file !== imageToRemove.file) : prev;
     });
     setNewImagePreviews(prev => prev.filter(img => img.id !== imageId));
   };
@@ -371,20 +326,17 @@ const EditListing = () => {
 
   const validateForm = () => {
     const newErrors = {};
-
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.description.trim()) newErrors.description = 'Description is required';
     if (!formData.location.trim()) newErrors.location = 'Location is required';
     if (!formData.price_per_night || formData.price_per_night <= 0) {
       newErrors.price_per_night = 'Valid price is required';
     }
-
     return newErrors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     const formErrors = validateForm();
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
@@ -393,8 +345,14 @@ const EditListing = () => {
 
     try {
       setSaving(true);
-      
-      // Prepare data for hostService update
+
+      // Convert selected amenities to string
+      const amenitiesString = selectedAmenities
+        .map(id => AMENITIES_OPTIONS.find(a => a.id === id)?.label)
+        .filter(Boolean)
+        .join(', ');
+
+      // Build update payload
       const updateData = {
         title: formData.title?.trim(),
         description: formData.description?.trim(),
@@ -403,34 +361,37 @@ const EditListing = () => {
         max_guests: formData.max_guests,
         bedrooms: formData.bedrooms,
         bathrooms: formData.bathrooms,
-        amenities: formData.amenities?.trim(),
+        amenities: amenitiesString,
         house_rules: formData.house_rules?.trim(),
         latitude: formData.latitude,
         longitude: formData.longitude,
         status: formData.status
       };
 
-      // UPDATED: Add new images if they exist
-      if (newImageFiles.length > 0) {
-        updateData.images = newImageFiles; // Array of File objects
+      // Combine images
+      const allImages = [
+        ...currentImages.map(img => ({ type: 'existing', url: img.url })),
+        ...newImageFiles.map(file => ({ type: 'new', file }))
+      ];
+      if (allImages.length > 0) {
+        updateData.images = allImages;
       }
+
+      // Handle video
       if (videoFile) {
-        updateData.video = videoFile;
+        updateData.video = { type: 'new', file: videoFile };
+      } else if (currentVideo) {
+        updateData.video = { type: 'existing', url: currentVideo };
       }
 
-      console.log('🚀 Using hostService.updateListing with data:', updateData);
-
-      // Use hostService instead of direct API call
+      // Send to hostService
       const result = await hostService.updateListing(id, updateData);
-      
       if (result.success) {
-        navigate('/host/listings', { 
+        navigate('/host/listings', {
           state: { message: result.message || 'Listing updated successfully!' }
         });
       }
-      
     } catch (error) {
-      console.error('❌ Update error:', error);
       setErrors({ submit: error.message });
     } finally {
       setSaving(false);
@@ -461,9 +422,8 @@ const EditListing = () => {
     );
   }
 
-  // Calculate total images (existing + new)
   const totalImages = currentImages.length + newImageFiles.length;
-  const canAddMoreImages = totalImages < 4;
+  const canAddMoreImages = totalImages < 8;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -644,15 +604,29 @@ const EditListing = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 mt-4">
-                  <Textarea
-                    label="Amenities"
-                    name="amenities"
-                    value={formData.amenities}
-                    onChange={handleInputChange}
-                    placeholder="WiFi, Pool, Air Conditioning, Kitchen, Parking..."
-                    rows={3}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
+                  {/* Amenities Selector */}
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-2">Amenities</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {AMENITIES_OPTIONS.map((option) => (
+                        <label key={option.id} className="flex items-center space-x-2 text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={selectedAmenities.includes(option.id)}
+                            onChange={(e) => {
+                              const updated = e.target.checked
+                                ? [...selectedAmenities, option.id]
+                                : selectedAmenities.filter((id) => id !== option.id);
+                              setSelectedAmenities(updated);
+                            }}
+                            className="form-checkbox h-4 w-4 text-purple-500 bg-gray-700 border-gray-600"
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
 
                   <Textarea
                     label="House Rules"
@@ -707,7 +681,7 @@ const EditListing = () => {
           {/* UPDATED: Multiple Images Section */}
           <div className="bg-gray-800 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">
-              Property Images ({totalImages}/4)
+              Property Images ({totalImages}/8)
             </h3>
             
             {/* Existing Images */}
@@ -718,7 +692,7 @@ const EditListing = () => {
                   {currentImages.map((image, index) => (
                     <div key={image.id} className="relative">
                       <img 
-                        src={image.url} 
+                        src={getImageUrl(image.url) || '/placeholder.jpg'} 
                         alt={`Current ${index + 1}`}
                         className="w-full h-24 object-cover rounded-lg"
                       />
@@ -782,7 +756,7 @@ const EditListing = () => {
                   <p className="text-gray-300 text-sm">
                     {currentImages.length === 0 && newImageFiles.length === 0
                       ? 'Add Images'
-                      : `Add More (${4 - totalImages} remaining)`
+                      : `Add More (${8 - totalImages} remaining)`
                     }
                   </p>
                   <p className="text-gray-500 text-xs">PNG, JPG, GIF up to 10MB each</p>
@@ -873,7 +847,7 @@ const EditListing = () => {
             <div className="mt-4 pt-4 border-t border-gray-700">
               <p className="text-sm text-gray-300 mb-2">Media Files</p>
               <div className="text-xs text-gray-400 space-y-1">
-                <p>Images: {totalImages}/4</p>
+                <p>Images: {totalImages}/8</p>
                 <p>Video: {currentVideo || videoFile ? 'Yes' : 'None'}</p>
               </div>
             </div>
@@ -898,5 +872,4 @@ const EditListing = () => {
     </div>
   );
 };
-
 export default EditListing;

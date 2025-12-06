@@ -275,7 +275,7 @@ const ListingManagement = () => {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-white flex-1"
+                      className="border border-gray-500 text-white flex-1"
                       onClick={() => {
                         setSelectedListing(listing);
                         setShowListingModal(true);
@@ -310,7 +310,7 @@ const ListingManagement = () => {
                           onClick={() => window.open(`/listings/${listing.id}`, '_blank')}
                           className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-gray-500 w-full text-left"
                         >
-                          <Home className="w-4 h-4" />
+                          <Home className="w-2 h-2" />
                           <span>View Public</span>
                         </button>
                         

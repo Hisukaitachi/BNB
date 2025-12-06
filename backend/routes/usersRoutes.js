@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const usersController = require('../controllers/usersController');
-const googleAuthController = require('../controllers/googleAuthController'); // ADDED
 const { uploadProfilePicture } = require('../middleware/multer');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -18,10 +17,6 @@ const {
   userRoleSchema,
   publicProfileSchema
 } = require('../validation/userValidation');
-
-// Google OAuth routes - ADDED
-router.post('/google-login', googleAuthController.googleLogin);
-router.get('/google-config', googleAuthController.getGoogleConfig);
 
 // Promote to admin route (no validation changes needed)
 router.put('/:id/promote-admin', validate(userRoleSchema), async (req, res) => {

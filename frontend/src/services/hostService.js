@@ -230,53 +230,66 @@ async createListing(listingData) {
  * @param {object} updateData - Update data
  * @returns {Promise<object>} Update result
  */
+// hostService.js
 async updateListing(listingId, updateData) {
   try {
     console.log('🚀 HostService updateListing called:', listingId);
-    
+
     // Check if we have files
-    const hasImages = updateData.images && Array.isArray(updateData.images) && updateData.images.length > 0;
-    const hasVideo = updateData.video && updateData.video instanceof File;
+    const hasImages =
+      updateData.images &&
+      Array.isArray(updateData.images) &&
+      updateData.images.length > 0;
+
+    const hasVideo =
+      updateData.video &&
+      updateData.video.type === 'new' &&
+      updateData.video.file instanceof File;
+
     const hasFiles = hasImages || hasVideo;
 
     if (hasFiles) {
       // Use FormData for file uploads
       const formData = new FormData();
-      
-      // Add text fields
+
+      // Add text fields (skip images/video keys)
       Object.entries(updateData).forEach(([key, value]) => {
         if (key !== 'images' && key !== 'video' && value !== '' && value != null) {
           formData.append(key, value);
         }
       });
-      
+
       // Add multiple images
       if (hasImages) {
         updateData.images.forEach((image) => {
-          if (image instanceof File) {
-            formData.append('images', image);
+          if (image.type === 'new' && image.file instanceof File) {
+            formData.append('images', image.file);
+          } else if (image.type === 'existing' && image.url) {
+            formData.append('existingImages', image.url);
           }
         });
-        console.log(`📁 ${updateData.images.length} images added`);
-      }
-      
-      // Add video
-      if (hasVideo) {
-        formData.append('video', updateData.video);
-        console.log('🎥 Video added');
       }
 
+
+      // Add video
+      if (hasVideo) {
+        formData.append('video', updateData.video.file);
+        console.log('🎥 Video added');
+      } else if (updateData.video?.type === 'existing') {
+        formData.append('existingVideo', updateData.video.url);
+      }
+
+      // Send multipart request
       const response = await api.put(`/listings/${listingId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000
+        timeout: 120000,
       });
-      
+
       return {
         success: true,
         data: response.data.data,
-        message: 'Listing updated successfully'
+        message: 'Listing updated successfully',
       };
-      
     } else {
       // JSON for text-only updates
       const fieldsToSend = {};
@@ -287,16 +300,15 @@ async updateListing(listingId, updateData) {
       });
 
       const response = await api.put(`/listings/${listingId}`, fieldsToSend, {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       });
-      
+
       return {
         success: true,
         data: response.data.data,
-        message: 'Listing updated successfully'
+        message: 'Listing updated successfully',
       };
     }
-    
   } catch (error) {
     console.error('❌ UpdateListing error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to update listing');

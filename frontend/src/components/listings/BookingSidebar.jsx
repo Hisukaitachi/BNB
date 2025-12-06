@@ -27,14 +27,46 @@ const BookingSidebar = ({
   const [showCalendar, setShowCalendar] = useState(false);
   const [availabilityChecking, setAvailabilityChecking] = useState(false);
   const [availabilityMessage, setAvailabilityMessage] = useState('');
+  const [durationError, setDurationError] = useState('');
 
   useEffect(() => {
+    validateDuration();
     calculateTotalPrice();
     checkAvailability();
   }, [bookingData.startDate, bookingData.endDate, listing, bookingData.bookingType]);
 
+  const validateDuration = () => {
+    if (!bookingData.startDate || !bookingData.endDate) {
+      setDurationError('');
+      return true;
+    }
+
+    const startDate = new Date(bookingData.startDate);
+    const endDate = new Date(bookingData.endDate);
+    const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+
+    if (daysDifference > 31) {
+      setDurationError('⚠️ Maximum booking duration is 1 month (31 days)');
+      return false;
+    }
+
+    setDurationError('');
+    return true;
+  };
+
   const calculateTotalPrice = () => {
     if (!listing || !bookingData.startDate || !bookingData.endDate) {
+      setTotalPrice(0);
+      setPriceBreakdown(null);
+      return;
+    }
+
+    // Check duration before calculating price
+    const startDate = new Date(bookingData.startDate);
+    const endDate = new Date(bookingData.endDate);
+    const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+
+    if (daysDifference > 31) {
       setTotalPrice(0);
       setPriceBreakdown(null);
       return;
@@ -68,6 +100,15 @@ const BookingSidebar = ({
       return;
     }
 
+    // Don't check availability if duration is invalid
+    const startDate = new Date(bookingData.startDate);
+    const endDate = new Date(bookingData.endDate);
+    const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+
+    if (daysDifference > 31) {
+      return;
+    }
+
     try {
       setAvailabilityChecking(true);
       const isAvailable = await bookingService.checkAvailability(
@@ -97,6 +138,11 @@ const BookingSidebar = ({
   };
 
   const handleBookingSubmit = () => {
+    // Final validation before submission
+    if (!validateDuration()) {
+      return;
+    }
+
     const submitData = {
       ...bookingData,
       listing_id: listing.id,
@@ -105,6 +151,14 @@ const BookingSidebar = ({
       remaining_payment_method: bookingData.bookingType === 'reserve' ? bookingData.remainingPaymentMethod : undefined
     };
     onBooking(submitData);
+  };
+
+  const isBookingDisabled = () => {
+    return !bookingData.startDate || 
+           !bookingData.endDate || 
+           totalPrice <= 0 || 
+           availabilityMessage.includes('❌') ||
+           !!durationError;
   };
 
   return (
@@ -126,6 +180,16 @@ const BookingSidebar = ({
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Booking Duration Notice */}
+          <div className="mb-4 p-3 bg-blue-900/20 border border-blue-600 rounded-lg">
+            <div className="flex items-start">
+              <Info className="w-4 h-4 text-blue-400 mr-2 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-blue-300">
+                Maximum booking duration is 1 month (31 days)
+              </p>
+            </div>
           </div>
 
           {/* Booking Type Selection */}
@@ -241,8 +305,15 @@ const BookingSidebar = ({
               </>
             )}
 
+            {/* Duration Error */}
+            {durationError && (
+              <div className="p-3 rounded-lg text-sm bg-orange-900/20 text-orange-400 border border-orange-600">
+                {durationError}
+              </div>
+            )}
+
             {/* Availability Status */}
-            {(bookingData.startDate && bookingData.endDate) && (
+            {(bookingData.startDate && bookingData.endDate && !durationError) && (
               <div className={`p-3 rounded-lg text-sm ${
                 availabilityMessage.includes('✅') ? 'bg-green-900/20 text-green-400 border border-green-600' :
                 availabilityMessage.includes('❌') ? 'bg-red-900/20 text-red-400 border border-red-600' :
@@ -261,7 +332,7 @@ const BookingSidebar = ({
           </div>
 
           {/* Price Breakdown */}
-          {priceBreakdown && priceBreakdown.total > 0 && (
+          {priceBreakdown && priceBreakdown.total > 0 && !durationError && (
             <div className="mb-6 p-4 bg-gray-700 rounded-lg">
               <div className="flex justify-between text-gray-300 mb-2">
                 <span>₱{Number(listing.price_per_night).toLocaleString()} x {priceBreakdown.nights} nights</span>
@@ -306,7 +377,7 @@ const BookingSidebar = ({
               variant="gradient"
               size="lg"
               className="w-full"
-              disabled={!bookingData.startDate || !bookingData.endDate || totalPrice <= 0 || availabilityMessage.includes('❌')}
+              disabled={isBookingDisabled()}
             >
               {!isAuthenticated ? 'Sign in to Book' : 
                bookingData.bookingType === 'reserve' ? 

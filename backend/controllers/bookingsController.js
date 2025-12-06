@@ -55,8 +55,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
   const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
   
-  if (daysDifference > 365) {
-    return next(new AppError('Booking cannot exceed 365 days', 400));
+  // Maximum 1 month (31 days) booking duration
+  if (daysDifference > 31) {
+    return next(new AppError('Maximum booking duration is 1 month (31 days)', 400));
   }
 
   // Check listing exists
