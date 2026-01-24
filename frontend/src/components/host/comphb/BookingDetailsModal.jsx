@@ -330,7 +330,7 @@ const GuestInfo = ({ booking, customerInfo, loadingCustomerInfo }) => {
                         className="relative group cursor-pointer"
                       >
                         <img
-                          src={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}${customerInfo.idFrontUrl}`}
+                          src={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'https://bnb-production-15c3.up.railway.app'}${customerInfo.idFrontUrl}`}
                           alt="ID Front"
                           className="w-full h-24 object-cover rounded border border-gray-600 group-hover:border-purple-500 transition"
                         />

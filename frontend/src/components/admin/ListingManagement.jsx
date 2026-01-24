@@ -382,7 +382,7 @@ const ListingDetailModal = ({ listing, onClose, onRemove }) => {
                   if (listing.image_url) {
                     imageUrl = listing.image_url.startsWith('http') 
                       ? listing.image_url 
-                      : `http://localhost:5000${listing.image_url}`;
+                      : `https://bnb-production-15c3.up.railway.app${listing.image_url}`;
                   } else if (listing.images) {
                     try {
                       const imagesArray = typeof listing.images === 'string' 
@@ -391,7 +391,7 @@ const ListingDetailModal = ({ listing, onClose, onRemove }) => {
                       if (Array.isArray(imagesArray) && imagesArray.length > 0) {
                         imageUrl = imagesArray[0].startsWith('http') 
                           ? imagesArray[0] 
-                          : `http://localhost:5000${imagesArray[0]}`;
+                          : `https://bnb-production-15c3.up.railway.app${imagesArray[0]}`;
                       }
                     } catch (e) {
                       console.error('Failed to parse images JSON:', e);

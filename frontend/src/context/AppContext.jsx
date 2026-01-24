@@ -37,7 +37,7 @@ const connectSocket = (userId) => {
   try {
     setConnectionStatus('connecting');
     
-    const newSocket = io('http://localhost:5000', { // Hardcode for now
+    const newSocket = io('https://bnb-production-15c3.up.railway.app', { // Hardcode for now
       transports: ['websocket', 'polling'],
       timeout: 20000,
       forceNew: true,
