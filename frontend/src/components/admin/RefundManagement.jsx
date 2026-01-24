@@ -848,8 +848,8 @@ const RefundDetailsModal = ({ refund, onClose, onProcess, onConfirmIntent, onCom
 
               <Button
                 onClick={handleCompleteManual}
-                variant="gradient"
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                variant="primary"
+                className="w-full bg-green-600 hover:bg-blue-700"
                 loading={processing}
                 disabled={processing || manualNotes.length < 10}
               >

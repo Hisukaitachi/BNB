@@ -1,7 +1,7 @@
 // frontend/src/services/api.js - FIXED ADMIN PAYOUT SECTION
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ✅ ADD THIS: Helper for backend base URL (without /api)
 export const BACKEND_BASE_URL = API_BASE_URL.replace('/api', '');
