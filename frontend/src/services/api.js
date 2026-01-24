@@ -410,7 +410,7 @@ export const listingAPI = {
 // ROLE MANAGEMENT FUNCTIONS (unchanged)
 export const roleAPI = {
   // Switch role
-  switchRole: (newRole) => api.post('api/role/switch', { newRole }),
+  switchRole: (newRole) => api.post('/role/switch', { newRole }),
   
   // Get role info
   getRoleInfo: () => api.get('/role/info')
