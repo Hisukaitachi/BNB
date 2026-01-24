@@ -1,7 +1,7 @@
 // frontend/src/services/api.js - FIXED ADMIN PAYOUT SECTION
 import axios from 'axios';
 
-const API_BASE_URL = 'https://bnb-production-15c3.up.railway.app/api';
+const API_BASE_URL = 'https://bnb-production-15c3.up.railway.app';
 
 // ✅ ADD THIS: Helper for backend base URL (without /api)
 export const BACKEND_BASE_URL = API_BASE_URL.replace('/api', '');
