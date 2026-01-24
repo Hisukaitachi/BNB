@@ -1,39 +1,39 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 
-console.log("EMAIL_USER:", process.env.EMAIL_USER);
-console.log("EMAIL_PASS:", process.env.EMAIL_PASS);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const FROM_EMAIL = 'onboarding@resend.dev'; // Resend's test domain
 
 exports.sendVerificationCode = async (to, code) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Your Verification Code',
-    text: `Your verification code is: ${code}`,
+    html: `
+      <h2>Email Verification</h2>
+      <p>Your verification code is: <strong>${code}</strong></p>
+      <p>This code will expire in 10 minutes.</p>
+    `,
   });
 };
 
 exports.sendResetCode = async (to, code) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Your Password Reset Code',
-    text: `Use this code to reset your password: ${code}`,
+    html: `
+      <h2>Password Reset</h2>
+      <p>Use this code to reset your password: <strong>${code}</strong></p>
+      <p>This code will expire in 10 minutes.</p>
+    `,
   });
 };
 
 exports.sendPayoutRequestEmail = async (to, amount) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Payout Request Received',
     html: `
@@ -48,8 +48,8 @@ exports.sendPayoutRequestEmail = async (to, amount) => {
 };
 
 exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Payout Being Processed',
     html: `
@@ -64,8 +64,8 @@ exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
 };
 
 exports.sendPayoutCompletedEmail = async (to, amount) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Payout Completed',
     html: `
@@ -80,8 +80,8 @@ exports.sendPayoutCompletedEmail = async (to, amount) => {
 };
 
 exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to,
     subject: 'Payout Request Rejected',
     html: `
@@ -97,8 +97,8 @@ exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
 };
 
 exports.sendReservationRequestEmail = async (hostEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to: hostEmail,
     subject: 'New Reservation Request',
     html: `
@@ -117,8 +117,8 @@ exports.sendReservationRequestEmail = async (hostEmail, details) => {
 };
 
 exports.sendReservationApprovedEmail = async (guestEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to: guestEmail,
     subject: 'Reservation Approved - Payment Required',
     html: `
@@ -132,8 +132,8 @@ exports.sendReservationApprovedEmail = async (guestEmail, details) => {
 };
 
 exports.sendPaymentReminderEmail = async (guestEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to: guestEmail,
     subject: 'Payment Reminder - Remaining Balance Due',
     html: `
@@ -152,8 +152,8 @@ exports.sendPaymentReminderEmail = async (guestEmail, details) => {
 };
 
 exports.sendCancellationEmail = async (email, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: `StayBnB <${FROM_EMAIL}>`,
     to: email,
     subject: 'Reservation Cancelled',
     html: `
