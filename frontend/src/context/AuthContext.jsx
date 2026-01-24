@@ -141,7 +141,7 @@ export const AuthProvider = ({ children }) => {
   // Fixed switch role
   const switchRole = async (newRole) => {
     try {
-      const response = await fetch('https://bnb-production-15c3.up.railway.app/role/switch', {
+      const response = await fetch('https://bnb-production-15c3.up.railway.app/api/role/switch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

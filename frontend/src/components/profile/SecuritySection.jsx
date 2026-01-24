@@ -63,7 +63,7 @@ const SecuritySection = () => {
     try {
       const token = localStorage.getItem('token');
       
-      const response = await fetch('https://bnb-production-15c3.up.railway.app/users/me/change-password', {
+      const response = await fetch('https://bnb-production-15c3.up.railway.app/api/users/me/change-password', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
