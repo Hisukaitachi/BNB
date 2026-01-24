@@ -90,7 +90,7 @@ const RegisterPage = () => {
     
     try {
       // Direct API call instead of using AuthContext for debugging
-      const response = await fetch('http://localhost:5000/api/users/register', {
+      const response = await fetch('https://bnb-production-15c3.up.railway.app/api/users/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
