@@ -86,18 +86,11 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static files (uploads) - FIXED with permissive CORS
-// Handle OPTIONS requests for uploads
-app.options('/uploads/*', cors({ origin: '*' }));
-
-// Then your static middleware
-app.use('/uploads', (req, res, next) => {
-  res.set({
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Cross-Origin-Resource-Policy': 'cross-origin'
-  });
-  next();
-}, express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', cors({ origin: '*' }), express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
