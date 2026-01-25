@@ -55,7 +55,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
   const senderId = req.user.id;
   const { receiverId, message } = req.body;
 
-  console.log('📨 Send message request:', {
+  console.log('📨 SEND message request:', {
     senderId,
     receiverId,
     message,
