@@ -1,47 +1,63 @@
-const nodemailer = require('nodemailer');
+const brevo = require('@getbrevo/brevo');
 require('dotenv').config();
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Initialize Brevo API
+let apiInstance = new brevo.TransactionalEmailsApi();
+apiInstance.setApiKey(
+  brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
+
+// Helper function to send emails
+const sendEmail = async (to, subject, html) => {
+  try {
+    const result = await apiInstance.sendTransacEmail({
+      sender: { 
+        email: process.env.EMAIL_USER,
+        name: 'StayBnB'
+      },
+      to: [{ email: to }],
+      subject: subject,
+      htmlContent: html,
+    });
+    
+    console.log('✅ Email sent successfully to:', to);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('❌ Brevo email error:', error);
+    throw error;
+  }
+};
 
 exports.sendVerificationCode = async (to, code) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Your Verification Code',
-    html: `
+    'Your Verification Code',
+    `
       <h2>Email Verification</h2>
       <p>Your verification code is: <strong>${code}</strong></p>
       <p>This code will expire in 10 minutes.</p>
-    `,
-  });
+    `
+  );
 };
 
 exports.sendResetCode = async (to, code) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Your Password Reset Code',
-    html: `
+    'Your Password Reset Code',
+    `
       <h2>Password Reset</h2>
       <p>Use this code to reset your password: <strong>${code}</strong></p>
       <p>This code will expire in 10 minutes.</p>
-    `,
-  });
+    `
+  );
 };
 
 exports.sendPayoutRequestEmail = async (to, amount) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Payout Request Received',
-    html: `
+    'Payout Request Received',
+    `
       <h2>Payout Request Received</h2>
       <p>Your payout request for <strong>₱${amount.toLocaleString()}</strong> has been received.</p>
       <p>Processing time: 2-3 business days</p>
@@ -49,15 +65,14 @@ exports.sendPayoutRequestEmail = async (to, amount) => {
       <br>
       <p>Thank you,<br>StayBnB Team</p>
     `
-  });
+  );
 };
 
 exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Payout Being Processed',
-    html: `
+    'Payout Being Processed',
+    `
       <h2>Your Payout is Being Processed</h2>
       <p>Your payout of <strong>₱${amount.toLocaleString()}</strong> is being transferred to your account.</p>
       <p>Transaction Reference: ${transactionRef}</p>
@@ -65,15 +80,14 @@ exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
       <br>
       <p>Thank you,<br>StayBnB Team</p>
     `
-  });
+  );
 };
 
 exports.sendPayoutCompletedEmail = async (to, amount) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Payout Completed',
-    html: `
+    'Payout Completed',
+    `
       <h2>Payout Successfully Sent</h2>
       <p>Your payout of <strong>₱${amount.toLocaleString()}</strong> has been successfully sent to your account.</p>
       <p>Please check your bank account or GCash.</p>
@@ -81,15 +95,14 @@ exports.sendPayoutCompletedEmail = async (to, amount) => {
       <br>
       <p>Thank you,<br>StayBnB Team</p>
     `
-  });
+  );
 };
 
 exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
+  await sendEmail(
     to,
-    subject: 'Payout Request Rejected',
-    html: `
+    'Payout Request Rejected',
+    `
       <h2>Payout Request Rejected</h2>
       <p>Your payout request for <strong>₱${amount.toLocaleString()}</strong> has been rejected.</p>
       <p><strong>Reason:</strong> ${reason}</p>
@@ -98,15 +111,14 @@ exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
       <br>
       <p>Thank you,<br>StayBnB Team</p>
     `
-  });
+  );
 };
 
 exports.sendReservationRequestEmail = async (hostEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
-    to: hostEmail,
-    subject: 'New Reservation Request',
-    html: `
+  await sendEmail(
+    hostEmail,
+    'New Reservation Request',
+    `
       <h2>New Reservation Request</h2>
       <p>You have a new reservation request for <strong>${details.listingTitle}</strong></p>
       <ul>
@@ -118,30 +130,28 @@ exports.sendReservationRequestEmail = async (hostEmail, details) => {
       </ul>
       <p>Please log in to approve or decline this request.</p>
     `
-  });
+  );
 };
 
 exports.sendReservationApprovedEmail = async (guestEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
-    to: guestEmail,
-    subject: 'Reservation Approved - Payment Required',
-    html: `
+  await sendEmail(
+    guestEmail,
+    'Reservation Approved - Payment Required',
+    `
       <h2>Your Reservation Has Been Approved!</h2>
       <p>Great news! Your reservation for <strong>${details.listingTitle}</strong> has been approved.</p>
       <p>To secure your booking, please pay the deposit of <strong>₱${details.depositAmount}</strong></p>
       <a href="${details.paymentUrl}" style="display:inline-block;background:#10b981;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Pay Deposit Now</a>
       <p>Note: The remaining 50% will be due 3 days before your check-in date.</p>
     `
-  });
+  );
 };
 
 exports.sendPaymentReminderEmail = async (guestEmail, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
-    to: guestEmail,
-    subject: 'Payment Reminder - Remaining Balance Due',
-    html: `
+  await sendEmail(
+    guestEmail,
+    'Payment Reminder - Remaining Balance Due',
+    `
       <h2>Payment Reminder</h2>
       <p>This is a reminder that the remaining balance for your reservation is due soon.</p>
       <ul>
@@ -153,15 +163,14 @@ exports.sendPaymentReminderEmail = async (guestEmail, details) => {
       <a href="${details.paymentUrl}" style="display:inline-block;background:#10b981;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Pay Now</a>
       <p>Please complete payment to avoid cancellation of your reservation.</p>
     `
-  });
+  );
 };
 
 exports.sendCancellationEmail = async (email, details) => {
-  await transporter.sendMail({
-    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: 'Reservation Cancelled',
-    html: `
+  await sendEmail(
+    email,
+    'Reservation Cancelled',
+    `
       <h2>Reservation Cancelled</h2>
       <p>Your reservation has been cancelled.</p>
       <h3>Cancellation Details:</h3>
@@ -174,5 +183,5 @@ exports.sendCancellationEmail = async (email, details) => {
       </ul>
       ${details.refundAmount > 0 ? '<p>Your refund is being processed and should appear in your account within 5-10 business days.</p>' : ''}
     `
-  });
+  );
 };
