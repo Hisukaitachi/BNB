@@ -1,13 +1,18 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const FROM_EMAIL = 'onboarding@resend.dev'; // Resend's test domain
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 exports.sendVerificationCode = async (to, code) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Your Verification Code',
     html: `
@@ -19,8 +24,8 @@ exports.sendVerificationCode = async (to, code) => {
 };
 
 exports.sendResetCode = async (to, code) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Your Password Reset Code',
     html: `
@@ -32,8 +37,8 @@ exports.sendResetCode = async (to, code) => {
 };
 
 exports.sendPayoutRequestEmail = async (to, amount) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Payout Request Received',
     html: `
@@ -48,8 +53,8 @@ exports.sendPayoutRequestEmail = async (to, amount) => {
 };
 
 exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Payout Being Processed',
     html: `
@@ -64,8 +69,8 @@ exports.sendPayoutProcessingEmail = async (to, amount, transactionRef) => {
 };
 
 exports.sendPayoutCompletedEmail = async (to, amount) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Payout Completed',
     html: `
@@ -80,8 +85,8 @@ exports.sendPayoutCompletedEmail = async (to, amount) => {
 };
 
 exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to,
     subject: 'Payout Request Rejected',
     html: `
@@ -97,8 +102,8 @@ exports.sendPayoutRejectedEmail = async (to, amount, reason) => {
 };
 
 exports.sendReservationRequestEmail = async (hostEmail, details) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to: hostEmail,
     subject: 'New Reservation Request',
     html: `
@@ -117,8 +122,8 @@ exports.sendReservationRequestEmail = async (hostEmail, details) => {
 };
 
 exports.sendReservationApprovedEmail = async (guestEmail, details) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to: guestEmail,
     subject: 'Reservation Approved - Payment Required',
     html: `
@@ -132,8 +137,8 @@ exports.sendReservationApprovedEmail = async (guestEmail, details) => {
 };
 
 exports.sendPaymentReminderEmail = async (guestEmail, details) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to: guestEmail,
     subject: 'Payment Reminder - Remaining Balance Due',
     html: `
@@ -152,8 +157,8 @@ exports.sendPaymentReminderEmail = async (guestEmail, details) => {
 };
 
 exports.sendCancellationEmail = async (email, details) => {
-  await resend.emails.send({
-    from: `StayBnB <${FROM_EMAIL}>`,
+  await transporter.sendMail({
+    from: `"StayBnB" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: 'Reservation Cancelled',
     html: `
