@@ -30,13 +30,36 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// SIMPLIFIED CORS - Allow everything for testing
+// CORS Configuration - FIXED
+const allowedOrigins = [
+  'https://bnb-green.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+console.log('🌐 Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({
-  origin: '*', // Allow all origins
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ CORS allowed for origin:', origin);
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['*']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400
 }));
+
+app.options('*', cors());
 
 // Rate limiting
 const limiter = rateLimit({
