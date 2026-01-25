@@ -42,10 +42,11 @@ console.log('🌐 Allowed CORS origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
-      console.log('✅ CORS ALLOWED for origin:', origin);
+      console.log('✅ CORS allowed for origin:', origin);
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
@@ -56,9 +57,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400
+  maxAge: 86400 // 24 hours
 }));
 
+// Handle preflight requests explicitly
 app.options('*', cors());
 
 // Rate limiting
@@ -129,6 +131,7 @@ app.get('/health', (req, res) => {
 // Debug endpoint to fetch PayMongo payment intent details
 app.get('/api/debug-payment/:intentId', async (req, res) => {
   try {
+    const axios = require('axios');
     const response = await axios.get(
       `https://api.paymongo.com/v1/payment_intents/${req.params.intentId}`,
       {
@@ -183,6 +186,7 @@ console.log('✅ Payout routes loaded');
 // Refund features
 app.use('/api/refunds', require('./routes/refundRoutes'));
 console.log('✅ Refund routes loaded');
+
 // Admin features
 app.use('/api/admin', require('./routes/adminRoutes'));
 console.log('✅ Admin routes loaded');
@@ -221,7 +225,7 @@ app.get('/api', (req, res) => {
   });
 });
 
-// 404 handler for undefined routes - FIXED to avoid path-to-regexp error
+// 404 handler for undefined routes
 app.use((req, res, next) => {
   const error = new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404);
   next(error);
