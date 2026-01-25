@@ -126,8 +126,8 @@ exports.createPaymentIntent = async ({
             description: `Booking #${bookingId}`
           }],
           payment_method_types: ['gcash', 'card', 'grab_pay', 'paymaya'],
-          success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?booking_id=${bookingId}`,
-          cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?booking_id=${bookingId}`,
+          success_url: `${process.env.FRONTEND_URL || 'https://bnb-green.vercel.app'}/payment/success?booking_id=${bookingId}`,
+          cancel_url: `${process.env.FRONTEND_URL || 'https://bnb-green.vercel.app'}/payment/cancel?booking_id=${bookingId}`,
           description: `${listingTitle} - Booking #${bookingId}`,
           metadata: {
             booking_id: bookingId.toString(),
