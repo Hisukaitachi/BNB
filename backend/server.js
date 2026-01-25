@@ -85,12 +85,12 @@ app.use('/api/payments/webhook',
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files (uploads) - FIXED with permissive CORS
-app.use('/uploads', cors({ origin: '*' }), express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res, path) => {
-    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-  }
-}));
+// // Serve static files (uploads) - FIXED with permissive CORS
+// app.use('/uploads', cors({ origin: '*' }), express.static(path.join(__dirname, 'uploads'), {
+//   setHeaders: (res, path) => {
+//     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+//   }
+// }));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
