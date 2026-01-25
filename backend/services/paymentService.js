@@ -25,7 +25,7 @@ const getAuthHeaders = () => {
 };
 
 // ==========================================
-// CREATE PAYMENT INTENT
+// CREATE PAYMENT INTENT - WITH DEBUG LOGGING
 // ==========================================
 exports.createPaymentIntent = async ({ 
   bookingId, 
@@ -114,6 +114,31 @@ exports.createPaymentIntent = async ({
 
     console.log('💾 Payment record created in database (ID:', result.insertId, ')');
 
+    // 🔍 DEBUG: Check environment variables
+    console.log('');
+    console.log('🌐 ========================================');
+    console.log('🌐 URL CONFIGURATION DEBUG');
+    console.log('🌐 ========================================');
+    console.log('FRONTEND_URL env var:', process.env.FRONTEND_URL);
+    console.log('FRONTEND_URL type:', typeof process.env.FRONTEND_URL);
+    console.log('FRONTEND_URL length:', process.env.FRONTEND_URL ? process.env.FRONTEND_URL.length : 0);
+    console.log('Is undefined?', process.env.FRONTEND_URL === undefined);
+    console.log('Is empty string?', process.env.FRONTEND_URL === '');
+    console.log('');
+
+    // Construct URLs
+    const frontendUrl = process.env.FRONTEND_URL || 'https://bnb-green.vercel.app';
+    const successUrl = `${frontendUrl}/payment/success?booking_id=${bookingId}`;
+    const cancelUrl = `${frontendUrl}/payment/cancel?booking_id=${bookingId}`;
+
+    console.log('📍 Resolved frontend URL:', frontendUrl);
+    console.log('✅ Success URL:', successUrl);
+    console.log('❌ Cancel URL:', cancelUrl);
+    console.log('Success URL length:', successUrl.length);
+    console.log('Cancel URL length:', cancelUrl.length);
+    console.log('🌐 ========================================');
+    console.log('');
+
     // Create Checkout Session
     const checkoutPayload = {
       data: {
@@ -126,8 +151,8 @@ exports.createPaymentIntent = async ({
             description: `Booking #${bookingId}`
           }],
           payment_method_types: ['gcash', 'card', 'grab_pay', 'paymaya'],
-          success_url: `${process.env.FRONTEND_URL || 'https://bnb-green.vercel.app'}/payment/success?booking_id=${bookingId}`,
-          cancel_url: `${process.env.FRONTEND_URL || 'https://bnb-green.vercel.app'}/payment/cancel?booking_id=${bookingId}`,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
           description: `${listingTitle} - Booking #${bookingId}`,
           metadata: {
             booking_id: bookingId.toString(),
@@ -141,6 +166,9 @@ exports.createPaymentIntent = async ({
     };
 
     console.log('🔄 Creating checkout session...');
+    console.log('📦 Checkout payload (URLs only):');
+    console.log('   success_url:', checkoutPayload.data.attributes.success_url);
+    console.log('   cancel_url:', checkoutPayload.data.attributes.cancel_url);
 
     const checkoutResponse = await axios.post(`${API}/checkout_sessions`, checkoutPayload, {
       headers: getAuthHeaders()
