@@ -30,38 +30,13 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS Configuration - FIXED
-const allowedOrigins = [
-  'https://bnb-green.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  process.env.FRONTEND_URL
-].filter(Boolean);
-
-console.log('🌐 Allowed CORS origins:', allowedOrigins);
-
+// SIMPLIFIED CORS - Allow everything for testing
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, Postman, server-to-server)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log('✅ CORS allowed for origin:', origin);
-      callback(null, true);
-    } else {
-      console.log('❌ CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: '*', // Allow all origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400 // 24 hours
+  allowedHeaders: ['*']
 }));
-
-// Handle preflight requests explicitly
-app.options('*', cors());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -131,7 +106,6 @@ app.get('/health', (req, res) => {
 // Debug endpoint to fetch PayMongo payment intent details
 app.get('/api/debug-payment/:intentId', async (req, res) => {
   try {
-    const axios = require('axios');
     const response = await axios.get(
       `https://api.paymongo.com/v1/payment_intents/${req.params.intentId}`,
       {
@@ -186,7 +160,6 @@ console.log('✅ Payout routes loaded');
 // Refund features
 app.use('/api/refunds', require('./routes/refundRoutes'));
 console.log('✅ Refund routes loaded');
-
 // Admin features
 app.use('/api/admin', require('./routes/adminRoutes'));
 console.log('✅ Admin routes loaded');
@@ -225,7 +198,7 @@ app.get('/api', (req, res) => {
   });
 });
 
-// 404 handler for undefined routes
+// 404 handler for undefined routes - FIXED to avoid path-to-regexp error
 app.use((req, res, next) => {
   const error = new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404);
   next(error);
