@@ -30,25 +30,25 @@ exports.createListing = catchAsync(async (req, res, next) => {
     return next(new AppError('Title, description, price per night, and location are required', 400));
   }
 
-  // UPDATED: Handle multiple image uploads
-  let imageUrls = [];
-  let videoUrl = null;
+// UPDATED: Handle multiple image uploads with Cloudinary
+let imageUrls = [];
+let videoUrl = null;
 
-  if (req.files) {
-    console.log('📁 Processing uploaded files:', req.files);
-    
-    // Handle multiple images
-    if (req.files.images) {
-      const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-      imageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
-      console.log(`📁 ${imageUrls.length} image files processed:`, imageUrls);
-    }
-    
-    if (req.files.video && req.files.video[0]) {
-      videoUrl = `/uploads/${req.files.video[0].filename}`;
-      console.log('🎥 Video file processed:', videoUrl);
-    }
+if (req.files) {
+  console.log('📁 Processing uploaded files:', req.files);
+  
+  // Handle multiple images - Cloudinary stores full URL in file.path
+  if (req.files.images) {
+    const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+    imageUrls = imageFiles.map(file => file.path); // ✅ Use file.path for Cloudinary URL
+    console.log(`📁 ${imageUrls.length} image files processed (Cloudinary):`, imageUrls);
   }
+  
+  if (req.files.video && req.files.video[0]) {
+    videoUrl = req.files.video[0].path; // ✅ Use file.path for Cloudinary URL
+    console.log('🎥 Video file processed (Cloudinary):', videoUrl);
+  }
+}
 
   // If latitude or longitude are missing, try to geocode
   if (!latitude || !longitude) {
@@ -230,7 +230,7 @@ exports.updateListing = catchAsync(async (req, res, next) => {
   // UPDATED: Handle multiple new images
   if (req.files && req.files.images) {
       const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-      const newImageUrls = imageFiles.map(file => `/uploads/${file.filename}`);
+      const newImageUrls = imageFiles.map(file => file.path);
 
       // Use existing images provided by the frontend (the kept ones after removals)
       const keepImages = req.body.existingImages
@@ -264,7 +264,7 @@ exports.updateListing = catchAsync(async (req, res, next) => {
 
   // Handle video
   if (req.files && req.files.video && req.files.video[0]) {
-    updateFields.video_url = `/uploads/${req.files.video[0].filename}`;
+    updateFields.video_url = req.files.video[0].path;
     console.log('🎥 Video updated');
   }
 

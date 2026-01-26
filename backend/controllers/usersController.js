@@ -350,23 +350,8 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
   
   try {
-    const [currentUser] = await pool.query(
-      'SELECT profile_picture FROM users WHERE id = ?',
-      [userId]
-    );
-
-    const baseFilename = `profile-${userId}-${Date.now()}`;
-    
-    const profilePictures = await generateProfilePictureSizes(
-      req.file.path, 
-      req.file.destination, 
-      baseFilename
-    );
-
-    await fs.unlink(req.file.path);
-    console.log('Original uploaded image processed and deleted');
-
-    const profilePictureUrl = profilePictures.medium;
+    // ✅ With Cloudinary, the URL is already in req.file.path
+    const profilePictureUrl = req.file.path;
 
     const [result] = await pool.query(
       'UPDATE users SET profile_picture = ?, updated_at = NOW() WHERE id = ?',
@@ -377,39 +362,17 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
       return next(new AppError('User not found', 404));
     }
 
-    if (currentUser[0]?.profile_picture) {
-      const oldBasePath = currentUser[0].profile_picture.replace('-medium.jpg', '');
-      const sizesToDelete = ['thumbnail', 'small', 'medium'];
-      
-      for (const size of sizesToDelete) {
-        const oldImagePath = path.join(__dirname, '..', `${oldBasePath}-${size}.jpg`);
-        try {
-          await fs.unlink(oldImagePath);
-          console.log(`Old profile picture deleted: ${size}`);
-        } catch (error) {
-          console.log(`Old profile picture ${size} not found:`, error.message);
-        }
-      }
-    }
+    console.log('✅ Profile picture uploaded to Cloudinary:', profilePictureUrl);
 
     res.status(200).json({
       status: 'success',
       message: 'Profile picture updated successfully',
       data: {
-        profilePicture: profilePictureUrl,
-        profilePictures: profilePictures
+        profilePicture: profilePictureUrl
       }
     });
 
   } catch (error) {
-    if (req.file) {
-      try {
-        await fs.unlink(req.file.path);
-        console.log('Cleaned up failed upload file');
-      } catch (cleanupError) {
-        console.error('Error cleaning up file:', cleanupError);
-      }
-    }
     throw error;
   }
 });

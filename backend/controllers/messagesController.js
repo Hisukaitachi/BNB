@@ -153,12 +153,13 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
       }
       
       // Process each file with metadata
+// NEW - CORRECT
       mediaFiles = req.files.media.map((file, index) => {
         const isImage = file.mimetype.startsWith('image/');
         const isVideo = file.mimetype.startsWith('video/');
         
         return {
-          url: `/uploads/messages/${file.filename}`,
+          url: file.path,  // ✅ CORRECT - Cloudinary URL
           type: isImage ? 'image' : (isVideo ? 'video' : 'file'),
           filename: file.filename,
           originalName: file.originalname,

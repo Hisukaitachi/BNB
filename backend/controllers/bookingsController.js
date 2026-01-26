@@ -588,11 +588,11 @@ exports.updateCustomerInfo = catchAsync(async (req, res, next) => {
   if (req.files && req.files.length > 0) {
     console.log('📁 Processing uploaded files:', req.files.length);
     console.log('File 1:', req.files[0].filename);
-    idFrontUrl = `/uploads/ids/${req.files[0].filename}`;
+    idFrontUrl = req.files[0].path;
     
     if (req.files.length > 1) {
       console.log('File 2:', req.files[1].filename);
-      idBackUrl = `/uploads/ids/${req.files[1].filename}`;
+     idBackUrl = req.files[1].path; 
     }
   }
   
