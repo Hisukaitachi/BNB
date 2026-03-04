@@ -127,7 +127,7 @@ exports.createPaymentIntent = async ({
     console.log('');
 
     // Construct URLs
-    const frontendUrl = process.env.FRONTEND_URL || 'https://bnb-green.vercel.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const successUrl = `${frontendUrl}/payment/success?booking_id=${bookingId}`;
     const cancelUrl = `${frontendUrl}/payment/cancel?booking_id=${bookingId}`;
 
